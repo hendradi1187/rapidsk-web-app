@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { DatasetRegistrationForm } from "@/components/datasets/DatasetRegistrationForm";
 
 const datasets = [
   {
@@ -95,6 +96,7 @@ const datasets = [
 
 const Datasets = () => {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   return (
     <div className="min-h-screen">
@@ -132,7 +134,11 @@ const Datasets = () => {
               <Filter className="w-4 h-4 mr-2" />
               Filter
             </Button>
-            <Button size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Button 
+              size="sm" 
+              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={() => setIsFormOpen(true)}
+            >
               <Plus className="w-4 h-4 mr-2" />
               Register Dataset
             </Button>
@@ -211,6 +217,12 @@ const Datasets = () => {
             </Card>
           ))}
         </div>
+
+        {/* Registration Form Modal */}
+        <DatasetRegistrationForm 
+          open={isFormOpen} 
+          onOpenChange={setIsFormOpen}
+        />
       </div>
     </div>
   );
