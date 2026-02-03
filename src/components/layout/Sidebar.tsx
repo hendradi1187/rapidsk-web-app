@@ -10,12 +10,14 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Rocket,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: Rocket, label: "Onboarding", path: "/onboarding" },
   { icon: Building2, label: "Organizations", path: "/organizations" },
   { icon: Database, label: "Dataset Catalog", path: "/datasets" },
   { icon: FileText, label: "Contracts", path: "/contracts" },
