@@ -12,6 +12,7 @@ import DataTransfer from "./pages/DataTransfer";
 import Audit from "./pages/Audit";
 import Compliance from "./pages/Compliance";
 import Settings from "./pages/Settings";
+import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/audit" element={<Audit />} />
             <Route path="/compliance" element={<Compliance />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </MainLayout>
