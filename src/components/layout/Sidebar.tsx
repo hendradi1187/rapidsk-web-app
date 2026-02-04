@@ -1,12 +1,14 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
+  Rocket,
   Building2,
   Database,
   FileText,
   ArrowRightLeft,
   ClipboardCheck,
   Shield,
+  Code2,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +26,7 @@ const menuItems = [
   { icon: ArrowRightLeft, label: "Data Transfer", path: "/transfer" },
   { icon: ClipboardCheck, label: "Audit Trail", path: "/audit" },
   { icon: Shield, label: "Compliance", path: "/compliance" },
+  { icon: Code2, label: "API Docs", path: "/api-docs" },
 ];
 
 export const Sidebar = () => {

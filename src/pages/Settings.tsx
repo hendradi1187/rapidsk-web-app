@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +7,21 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   User,
   Shield,
   Bell,
@@ -13,9 +29,203 @@ import {
   Database,
   Globe,
   Save,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+
+interface GeoServerEndpoint {
+  id: number;
+  name: string;
+  url: string;
+  type: string;
+  status: "connected" | "disconnected";
+}
+
+interface NotificationSetting {
+  id: string;
+  title: string;
+  desc: string;
+  enabled: boolean;
+}
 
 const Settings = () => {
+  // Profile settings state
+  const [profileForm, setProfileForm] = useState({
+    name: "Super Admin",
+    email: "admin@rapidsk.id",
+    organization: "SKK Migas",
+    role: "Super Admin",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Localization state
+  const [localization, setLocalization] = useState({
+    timezone: "Asia/Jakarta",
+    language: "id",
+  });
+
+  // Security settings state
+  const [securitySettings, setSecuritySettings] = useState({
+    twoFactorEnabled: true,
+    sessionTimeout: true,
+  });
+
+  // Notification settings state
+  const [notifications, setNotifications] = useState<NotificationSetting[]>([
+    { id: "dataset", title: "New Dataset Registered", desc: "When a new dataset is added to the catalog", enabled: true },
+    { id: "contract", title: "Contract Requests", desc: "When a consumer requests data access", enabled: true },
+    { id: "transfer", title: "Transfer Failures", desc: "When a data transfer fails", enabled: true },
+    { id: "compliance", title: "Compliance Alerts", desc: "When compliance issues are detected", enabled: false },
+    { id: "audit", title: "Audit Notifications", desc: "When audit events occur", enabled: false },
+  ]);
+
+  // GeoServer endpoints state
+  const [geoServerEndpoints, setGeoServerEndpoints] = useState<GeoServerEndpoint[]>([
+    { id: 1, name: "PHE ONWJ GeoServer", url: "https://geoserver.pheonwj.id", type: "WMS", status: "connected" },
+    { id: 2, name: "Pertamina GeoServer", url: "https://geo.phe.id", type: "WFS", status: "connected" },
+    { id: 3, name: "Chevron Data Server", url: "https://data.chevron.id", type: "WCS", status: "connected" },
+    { id: 4, name: "Medco GeoServer", url: "https://geoserver.medco.id", type: "WMS", status: "connected" },
+    { id: 5, name: "ExxonMobil GeoServer", url: "https://geo.exxon.id", type: "WMS", status: "connected" },
+  ]);
+
+  // Identity Provider state
+  const [idpSettings, setIdpSettings] = useState({
+    provider: "keycloak",
+    realmUrl: "https://auth.rapidsk.id/realms/rapidsk",
+    clientId: "rapidsk-web",
+    clientSecret: "••••••••••••",
+  });
+
+  // Dialog states
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
+  const [isGeoServerDialogOpen, setIsGeoServerDialogOpen] = useState(false);
+  const [isIdpDialogOpen, setIsIdpDialogOpen] = useState(false);
+  const [isAddEndpointDialogOpen, setIsAddEndpointDialogOpen] = useState(false);
+
+  // Password form state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+
+  // New endpoint form
+  const [newEndpointForm, setNewEndpointForm] = useState({
+    name: "",
+    url: "",
+    type: "WMS",
+  });
+
+  // Handle save profile
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsSaving(false);
+    toast.success("Profile settings saved successfully");
+  };
+
+  // Handle save localization
+  const handleSaveLocalization = async () => {
+    setIsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsSaving(false);
+    toast.success("Localization settings saved successfully");
+  };
+
+  // Handle change password
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      toast.error("Please fill in all password fields");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+
+    setIsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setIsSaving(false);
+    setIsPasswordDialogOpen(false);
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    toast.success("Password changed successfully");
+  };
+
+  // Handle toggle notification
+  const handleToggleNotification = (id: string) => {
+    setNotifications(
+      notifications.map((n) =>
+        n.id === id ? { ...n, enabled: !n.enabled } : n
+      )
+    );
+    toast.success("Notification preference updated");
+  };
+
+  // Handle toggle security setting
+  const handleToggleSecurity = (setting: "twoFactorEnabled" | "sessionTimeout") => {
+    setSecuritySettings((prev) => ({
+      ...prev,
+      [setting]: !prev[setting],
+    }));
+    toast.success(
+      setting === "twoFactorEnabled"
+        ? `Two-Factor Authentication ${!securitySettings.twoFactorEnabled ? "enabled" : "disabled"}`
+        : `Session Timeout ${!securitySettings.sessionTimeout ? "enabled" : "disabled"}`
+    );
+  };
+
+  // Handle add GeoServer endpoint
+  const handleAddEndpoint = () => {
+    if (!newEndpointForm.name || !newEndpointForm.url) {
+      toast.error("Please fill in all endpoint fields");
+      return;
+    }
+
+    const newEndpoint: GeoServerEndpoint = {
+      id: Math.max(...geoServerEndpoints.map((e) => e.id)) + 1,
+      name: newEndpointForm.name,
+      url: newEndpointForm.url,
+      type: newEndpointForm.type,
+      status: "connected",
+    };
+
+    setGeoServerEndpoints([...geoServerEndpoints, newEndpoint]);
+    setNewEndpointForm({ name: "", url: "", type: "WMS" });
+    setIsAddEndpointDialogOpen(false);
+    toast.success("Endpoint added successfully");
+  };
+
+  // Handle remove endpoint
+  const handleRemoveEndpoint = (id: number) => {
+    setGeoServerEndpoints(geoServerEndpoints.filter((e) => e.id !== id));
+    toast.success("Endpoint removed successfully");
+  };
+
+  // Handle save IDP settings
+  const handleSaveIdpSettings = async () => {
+    setIsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsSaving(false);
+    setIsIdpDialogOpen(false);
+    toast.success("Identity Provider settings saved successfully");
+  };
+
   return (
     <div className="min-h-screen">
       <Header
@@ -46,23 +256,40 @@ const Settings = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Full Name</Label>
-                    <Input id="name" defaultValue="Super Admin" />
+                    <Input
+                      id="name"
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" defaultValue="admin@rapidsk.id" />
+                    <Input
+                      id="email"
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="org">Organization</Label>
-                    <Input id="org" defaultValue="SKK Migas" disabled />
+                    <Input id="org" value={profileForm.organization} disabled />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
-                    <Input id="role" defaultValue="Super Admin" disabled />
+                    <Input id="role" value={profileForm.role} disabled />
                   </div>
                 </div>
-                <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                  <Save className="w-4 h-4 mr-2" />
+                <Button
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                  onClick={handleSaveProfile}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
                   Save Changes
                 </Button>
               </CardContent>
@@ -78,14 +305,49 @@ const Settings = () => {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Input id="timezone" defaultValue="Asia/Jakarta (WIB)" />
+                    <Label>Timezone</Label>
+                    <Select
+                      value={localization.timezone}
+                      onValueChange={(v) => setLocalization({ ...localization, timezone: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Asia/Jakarta">Asia/Jakarta (WIB)</SelectItem>
+                        <SelectItem value="Asia/Makassar">Asia/Makassar (WITA)</SelectItem>
+                        <SelectItem value="Asia/Jayapura">Asia/Jayapura (WIT)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
-                    <Input id="language" defaultValue="Bahasa Indonesia" />
+                    <Label>Language</Label>
+                    <Select
+                      value={localization.language}
+                      onValueChange={(v) => setLocalization({ ...localization, language: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="id">Bahasa Indonesia</SelectItem>
+                        <SelectItem value="en">English</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
+                <Button
+                  variant="outline"
+                  onClick={handleSaveLocalization}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Localization
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -109,7 +371,15 @@ const Settings = () => {
                       Add an extra layer of security to your account
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <div className="flex items-center gap-2">
+                    {securitySettings.twoFactorEnabled && (
+                      <Badge className="badge-active">Enabled</Badge>
+                    )}
+                    <Switch
+                      checked={securitySettings.twoFactorEnabled}
+                      onCheckedChange={() => handleToggleSecurity("twoFactorEnabled")}
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div>
@@ -118,10 +388,21 @@ const Settings = () => {
                       Auto logout after 30 minutes of inactivity
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <div className="flex items-center gap-2">
+                    {securitySettings.sessionTimeout && (
+                      <Badge className="badge-active">Enabled</Badge>
+                    )}
+                    <Switch
+                      checked={securitySettings.sessionTimeout}
+                      onCheckedChange={() => handleToggleSecurity("sessionTimeout")}
+                    />
+                  </div>
                 </div>
                 <div className="pt-4 border-t border-border">
-                  <Button variant="outline">Change Password</Button>
+                  <Button variant="outline" onClick={() => setIsPasswordDialogOpen(true)}>
+                    <Key className="w-4 h-4 mr-2" />
+                    Change Password
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -136,7 +417,7 @@ const Settings = () => {
               <CardContent>
                 <div className="p-4 rounded-lg bg-success/10 border border-success/20">
                   <div className="flex items-center gap-3">
-                    <Shield className="w-6 h-6 text-success" />
+                    <CheckCircle2 className="w-6 h-6 text-success" />
                     <div>
                       <p className="font-medium text-success">Certificate Active</p>
                       <p className="text-sm text-muted-foreground">
@@ -156,21 +437,26 @@ const Settings = () => {
                   <Bell className="w-5 h-5" />
                   Notification Preferences
                 </CardTitle>
+                <CardDescription>
+                  Choose which notifications you want to receive
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {[
-                  { title: "New Dataset Registered", desc: "When a new dataset is added to the catalog" },
-                  { title: "Contract Requests", desc: "When a consumer requests data access" },
-                  { title: "Transfer Failures", desc: "When a data transfer fails" },
-                  { title: "Compliance Alerts", desc: "When compliance issues are detected" },
-                  { title: "Audit Notifications", desc: "When audit events occur" },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                {notifications.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                     <div>
                       <p className="font-medium">{item.title}</p>
                       <p className="text-sm text-muted-foreground">{item.desc}</p>
                     </div>
-                    <Switch defaultChecked={i < 3} />
+                    <div className="flex items-center gap-2">
+                      {item.enabled && (
+                        <Badge variant="secondary" className="text-xs">On</Badge>
+                      )}
+                      <Switch
+                        checked={item.enabled}
+                        onCheckedChange={() => handleToggleNotification(item.id)}
+                      />
+                    </div>
                   </div>
                 ))}
               </CardContent>
@@ -184,6 +470,9 @@ const Settings = () => {
                   <Database className="w-5 h-5" />
                   Connected Services
                 </CardTitle>
+                <CardDescription>
+                  Manage external service connections and integrations
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-4 rounded-lg border border-border">
@@ -195,13 +484,16 @@ const Settings = () => {
                       <div>
                         <p className="font-medium">GeoServer</p>
                         <p className="text-sm text-muted-foreground">
-                          Connected to 5 endpoints
+                          Connected to {geoServerEndpoints.length} endpoints
                         </p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm">
-                      Configure
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Badge className="badge-active">Connected</Badge>
+                      <Button variant="outline" size="sm" onClick={() => setIsGeoServerDialogOpen(true)}>
+                        Configure
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className="p-4 rounded-lg border border-border">
@@ -213,19 +505,303 @@ const Settings = () => {
                       <div>
                         <p className="font-medium">Identity Provider</p>
                         <p className="text-sm text-muted-foreground">
-                          Keycloak / Azure AD
+                          {idpSettings.provider === "keycloak" ? "Keycloak" : "Azure AD"}
                         </p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm">
-                      Configure
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Badge className="badge-active">Configured</Badge>
+                      <Button variant="outline" size="sm" onClick={() => setIsIdpDialogOpen(true)}>
+                        Configure
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Change Password Dialog */}
+        <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
+          <DialogContent className="sm:max-w-[450px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Key className="w-5 h-5" />
+                Change Password
+              </DialogTitle>
+              <DialogDescription>
+                Enter your current password and choose a new one
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPwd">Current Password</Label>
+                <div className="relative">
+                  <Input
+                    id="currentPwd"
+                    type={showPasswords.current ? "text" : "password"}
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    placeholder="Enter current password"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
+                  >
+                    {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newPwd">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="newPwd"
+                    type={showPasswords.new ? "text" : "password"}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    placeholder="Enter new password"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
+                  >
+                    {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPwd">Confirm New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPwd"
+                    type={showPasswords.confirm ? "text" : "password"}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    placeholder="Confirm new password"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
+                  >
+                    {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Password must be at least 8 characters long
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleChangePassword} disabled={isSaving} className="bg-accent hover:bg-accent/90">
+                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Change Password
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* GeoServer Configuration Dialog */}
+        <Dialog open={isGeoServerDialogOpen} onOpenChange={setIsGeoServerDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                GeoServer Configuration
+              </DialogTitle>
+              <DialogDescription>
+                Manage your GeoServer endpoint connections
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {geoServerEndpoints.length} endpoints configured
+                </p>
+                <Button size="sm" variant="outline" onClick={() => setIsAddEndpointDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Endpoint
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {geoServerEndpoints.map((endpoint) => (
+                  <div
+                    key={endpoint.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-info/10">
+                        <Database className="w-4 h-4 text-info" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{endpoint.name}</p>
+                        <p className="text-xs text-muted-foreground">{endpoint.url}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{endpoint.type}</Badge>
+                      <Badge className={endpoint.status === "connected" ? "badge-active" : "badge-inactive"}>
+                        {endpoint.status}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveEndpoint(endpoint.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsGeoServerDialogOpen(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Endpoint Dialog */}
+        <Dialog open={isAddEndpointDialogOpen} onOpenChange={setIsAddEndpointDialogOpen}>
+          <DialogContent className="sm:max-w-[450px]">
+            <DialogHeader>
+              <DialogTitle>Add GeoServer Endpoint</DialogTitle>
+              <DialogDescription>
+                Configure a new GeoServer endpoint connection
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="endpointName">Endpoint Name</Label>
+                <Input
+                  id="endpointName"
+                  placeholder="e.g., PHE ONWJ GeoServer"
+                  value={newEndpointForm.name}
+                  onChange={(e) => setNewEndpointForm({ ...newEndpointForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endpointUrl">Endpoint URL</Label>
+                <Input
+                  id="endpointUrl"
+                  placeholder="https://geoserver.example.com"
+                  value={newEndpointForm.url}
+                  onChange={(e) => setNewEndpointForm({ ...newEndpointForm, url: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Service Type</Label>
+                <Select
+                  value={newEndpointForm.type}
+                  onValueChange={(v) => setNewEndpointForm({ ...newEndpointForm, type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="WMS">WMS (Web Map Service)</SelectItem>
+                    <SelectItem value="WFS">WFS (Web Feature Service)</SelectItem>
+                    <SelectItem value="WCS">WCS (Web Coverage Service)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddEndpointDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddEndpoint} className="bg-accent hover:bg-accent/90">
+                Add Endpoint
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Identity Provider Configuration Dialog */}
+        <Dialog open={isIdpDialogOpen} onOpenChange={setIsIdpDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Key className="w-5 h-5" />
+                Identity Provider Configuration
+              </DialogTitle>
+              <DialogDescription>
+                Configure your authentication provider settings
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Provider Type</Label>
+                <Select
+                  value={idpSettings.provider}
+                  onValueChange={(v) => setIdpSettings({ ...idpSettings, provider: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="keycloak">Keycloak</SelectItem>
+                    <SelectItem value="azure">Azure AD</SelectItem>
+                    <SelectItem value="okta">Okta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="realmUrl">Realm URL / Tenant URL</Label>
+                <Input
+                  id="realmUrl"
+                  placeholder="https://auth.example.com/realms/your-realm"
+                  value={idpSettings.realmUrl}
+                  onChange={(e) => setIdpSettings({ ...idpSettings, realmUrl: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clientId">Client ID</Label>
+                <Input
+                  id="clientId"
+                  placeholder="your-client-id"
+                  value={idpSettings.clientId}
+                  onChange={(e) => setIdpSettings({ ...idpSettings, clientId: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clientSecret">Client Secret</Label>
+                <Input
+                  id="clientSecret"
+                  type="password"
+                  placeholder="your-client-secret"
+                  value={idpSettings.clientSecret}
+                  onChange={(e) => setIdpSettings({ ...idpSettings, clientSecret: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsIdpDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveIdpSettings} disabled={isSaving} className="bg-accent hover:bg-accent/90">
+                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Save Configuration
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

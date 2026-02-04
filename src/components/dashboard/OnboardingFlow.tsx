@@ -1,5 +1,7 @@
-import { Check, Circle, ArrowRight } from "lucide-react";
+import { Check, Circle, ArrowRight, Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 const steps = [
   { id: 1, title: "Setup Organization", description: "Create org & participants", status: "completed" },
@@ -13,7 +15,15 @@ const steps = [
 export const OnboardingFlow = () => {
   return (
     <div className="bg-card rounded-xl border border-border p-6">
-      <h3 className="text-lg font-semibold mb-6">Onboarding Progress</h3>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold">Onboarding Progress</h3>
+        <Link to="/onboarding">
+          <Button variant="outline" size="sm" className="gap-2">
+            <Rocket className="w-4 h-4" />
+            Buka Setup Wizard
+          </Button>
+        </Link>
+      </div>
       <div className="relative">
         {/* Progress Line */}
         <div className="absolute top-5 left-5 right-5 h-0.5 bg-border" />
