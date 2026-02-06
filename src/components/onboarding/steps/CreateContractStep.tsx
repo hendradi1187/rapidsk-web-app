@@ -8,15 +8,10 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useOnboarding } from "../OnboardingContext";
@@ -24,26 +19,19 @@ import { WizardNavigation } from "../WizardNavigation";
 import { contractSchema, ContractFormValues } from "../schemas/onboarding.schemas";
 import { useEffect } from "react";
 
-const organizations = [
-  { value: "skk-migas", label: "SKK Migas" },
-  { value: "phe-onwj", label: "PHE ONWJ" },
-  { value: "pertamina-hulu", label: "Pertamina Hulu Energi" },
-  { value: "chevron-indonesia", label: "Chevron Indonesia" },
-  { value: "medco-ep", label: "Medco E&P Indonesia" },
-];
-
 export const CreateContractStep = () => {
   const { formData, updateStepData, markStepComplete } = useOnboarding();
 
   const form = useForm<ContractFormValues>({
     resolver: zodResolver(contractSchema),
     defaultValues: formData.contract || {
-      contractName: "",
+      title: "",
       provider: "",
       consumer: "",
       startDate: "",
       endDate: "",
-      policies: [{ type: "access", rule: "", value: "" }],
+      description: "",
+      policies: [{ name: "", dataClassification: "", description: "" }],
     },
   });
 
@@ -83,10 +71,10 @@ export const CreateContractStep = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="contractName"
+                name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nama Kontrak *</FormLabel>
+                    <FormLabel>Judul Kontrak *</FormLabel>
                     <FormControl>
                       <Input placeholder="Contoh: Data Sharing Agreement 2024" {...field} />
                     </FormControl>
@@ -122,6 +110,26 @@ export const CreateContractStep = () => {
                   )}
                 />
               </div>
+              <div className="md:col-span-2">
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Deskripsi</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Deskripsi singkat tentang kontrak..."
+                          className="resize-none"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>Opsional, maksimal 500 karakter</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
           </div>
 
@@ -139,20 +147,10 @@ export const CreateContractStep = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Provider (Penyedia Data) *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih provider" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {organizations.map((org) => (
-                          <SelectItem key={org.value} value={org.value}>
-                            {org.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input placeholder="Nama organisasi provider" {...field} />
+                    </FormControl>
+                    <FormDescription>Nama organisasi penyedia data</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -163,20 +161,10 @@ export const CreateContractStep = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Consumer (Penerima Data) *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih consumer" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {organizations.map((org) => (
-                          <SelectItem key={org.value} value={org.value}>
-                            {org.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input placeholder="Nama organisasi consumer" {...field} />
+                    </FormControl>
+                    <FormDescription>Nama organisasi penerima data</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -184,18 +172,18 @@ export const CreateContractStep = () => {
             </div>
           </div>
 
-          {/* Access Policies Section */}
+          {/* Contract Policies Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <Shield className="w-4 h-4 text-accent" />
-                Kebijakan Akses
+                Contract Policies
               </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => append({ type: "access", rule: "", value: "" })}
+                onClick={() => append({ name: "", dataClassification: "", description: "" })}
                 className="gap-1"
               >
                 <Plus className="w-4 h-4" />
@@ -224,55 +212,49 @@ export const CreateContractStep = () => {
                       </Button>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name={`policies.${index}.type`}
+                      name={`policies.${index}.name`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Tipe Policy *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <FormLabel>Nama Policy *</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Contoh: Access Control Policy" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`policies.${index}.dataClassification`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Klasifikasi Data *</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Contoh: Confidential, Public, Internal" {...field} />
+                          </FormControl>
+                          <FormDescription>Tingkat klasifikasi data</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="md:col-span-2">
+                      <FormField
+                        control={form.control}
+                        name={`policies.${index}.description`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Deskripsi</FormLabel>
                             <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Pilih tipe" />
-                              </SelectTrigger>
+                              <Input placeholder="Deskripsi singkat policy (opsional)" {...field} />
                             </FormControl>
-                            <SelectContent>
-                              <SelectItem value="access">Access Control</SelectItem>
-                              <SelectItem value="usage">Usage Limitation</SelectItem>
-                              <SelectItem value="retention">Data Retention</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`policies.${index}.rule`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Rule *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Contoh: Read Only" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`policies.${index}.value`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Value *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Contoh: true" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}

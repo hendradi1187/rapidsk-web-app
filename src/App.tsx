@@ -7,6 +7,8 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
 import Organizations from "./pages/Organizations";
+import Domains from "./pages/Domains";
+import ParticipantsPage from "./pages/Participants";
 import Datasets from "./pages/Datasets";
 import Contracts from "./pages/Contracts";
 import DataTransfer from "./pages/DataTransfer";
@@ -29,6 +31,8 @@ const App = () => (
             <Route path="/" element={<Dashboard />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/organizations" element={<Organizations />} />
+            <Route path="/domains" element={<Domains />} />
+            <Route path="/participants" element={<ParticipantsPage />} />
             <Route path="/datasets" element={<Datasets />} />
             <Route path="/contracts" element={<Contracts />} />
             <Route path="/transfer" element={<DataTransfer />} />

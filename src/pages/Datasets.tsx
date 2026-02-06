@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,9 +18,12 @@ import {
   Eye,
   Trash2,
   MoreHorizontal,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Layers,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { DatasetRegistrationForm } from "@/components/datasets/DatasetRegistrationForm";
 import {
@@ -68,165 +72,58 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-
-interface Dataset {
-  id: number;
-  name: string;
-  provider: string;
-  domain: string;
-  format: string;
-  endpoint: string;
-  period: string;
-  wells: number;
-  status: string;
-  lastUpdated: string;
-}
-
-const initialDatasets: Dataset[] = [
-  {
-    id: 1,
-    name: "Well Production Data Q4 2025",
-    provider: "PHE ONWJ",
-    domain: "Lifting Data",
-    format: "WMS",
-    endpoint: "geoserver.pheonwj.id/wms",
-    period: "Oct - Dec 2025",
-    wells: 45,
-    status: "published",
-    lastUpdated: "2025-12-28",
-  },
-  {
-    id: 2,
-    name: "Reservoir Pressure Analysis",
-    provider: "Pertamina Hulu Energi",
-    domain: "Reservoir Data",
-    format: "WFS",
-    endpoint: "geo.phe.id/wfs",
-    period: "2025",
-    wells: 32,
-    status: "published",
-    lastUpdated: "2025-12-15",
-  },
-  {
-    id: 3,
-    name: "Daily Production Report",
-    provider: "Chevron Indonesia",
-    domain: "Lifting Data",
-    format: "WCS",
-    endpoint: "data.chevron.id/wcs",
-    period: "Streaming",
-    wells: 120,
-    status: "published",
-    lastUpdated: "2025-12-30",
-  },
-  {
-    id: 4,
-    name: "Well Test Results 2025",
-    provider: "Medco E&P",
-    domain: "Well Test",
-    format: "WMS",
-    endpoint: "geoserver.medco.id/wms",
-    period: "2025",
-    wells: 28,
-    status: "draft",
-    lastUpdated: "2025-12-20",
-  },
-  {
-    id: 5,
-    name: "Seismic Survey Data Block A",
-    provider: "PHE ONWJ",
-    domain: "Exploration",
-    format: "WCS",
-    endpoint: "geoserver.pheonwj.id/wcs",
-    period: "2024-2025",
-    wells: 0,
-    status: "published",
-    lastUpdated: "2025-11-30",
-  },
-  {
-    id: 6,
-    name: "Monthly Lifting Summary",
-    provider: "Pertamina Hulu Energi",
-    domain: "Lifting Data",
-    format: "WFS",
-    endpoint: "geo.phe.id/wfs",
-    period: "Monthly",
-    wells: 56,
-    status: "published",
-    lastUpdated: "2025-12-01",
-  },
-  {
-    id: 7,
-    name: "Field Development Plan Data",
-    provider: "ExxonMobil Indonesia",
-    domain: "Exploration",
-    format: "WMS",
-    endpoint: "geo.exxon.id/wms",
-    period: "2025",
-    wells: 15,
-    status: "published",
-    lastUpdated: "2025-12-10",
-  },
-  {
-    id: 8,
-    name: "Quarterly Well Test Report",
-    provider: "ConocoPhillips",
-    domain: "Well Test",
-    format: "WFS",
-    endpoint: "data.conocophillips.id/wfs",
-    period: "Q4 2025",
-    wells: 22,
-    status: "draft",
-    lastUpdated: "2025-12-22",
-  },
-];
-
-const domainTabs = ["All", "Lifting Data", "Reservoir Data", "Well Test", "Exploration"];
+import { useAllDomains } from "@/api/hooks/useDomains";
+import { useDatasets, useDeleteDataset } from "@/api/hooks/useDatasets";
+import { Dataset } from "@/api/types";
 
 const Datasets = () => {
+  // Domain selection
+  const [selectedDomainId, setSelectedDomainId] = useState<string>("");
+
   // State management
-  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeDomain, setActiveDomain] = useState("All");
   const [filterFormat, setFilterFormat] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [filterProvider, setFilterProvider] = useState<string>("all");
 
   // View dialog states
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
 
-  // Get unique providers for filter
-  const providers = useMemo(() => {
-    return [...new Set(datasets.map(d => d.provider))];
-  }, [datasets]);
+  // API hooks
+  const { data: domainsData, isLoading: isLoadingDomains } = useAllDomains({ limit: 100 });
+  const {
+    data: datasetsData,
+    isLoading: isLoadingDatasets,
+    isError,
+    error,
+    refetch,
+  } = useDatasets(selectedDomainId, { limit: 100 });
+  const deleteMutation = useDeleteDataset();
 
   // Filter datasets
   const filteredDatasets = useMemo(() => {
-    return datasets.filter((dataset) => {
+    if (!datasetsData?.data) return [];
+    return datasetsData.data.filter((dataset) => {
       const matchesSearch =
         dataset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        dataset.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        dataset.endpoint.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDomain = activeDomain === "All" || dataset.domain === activeDomain;
+        dataset.provider?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        dataset.endpoint?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesFormat = filterFormat === "all" || dataset.format === filterFormat;
       const matchesStatus = filterStatus === "all" || dataset.status === filterStatus;
-      const matchesProvider = filterProvider === "all" || dataset.provider === filterProvider;
-      return matchesSearch && matchesDomain && matchesFormat && matchesStatus && matchesProvider;
+      return matchesSearch && matchesFormat && matchesStatus;
     });
-  }, [datasets, searchQuery, activeDomain, filterFormat, filterStatus, filterProvider]);
+  }, [datasetsData?.data, searchQuery, filterFormat, filterStatus]);
 
   // Check if any filter is active
-  const hasActiveFilters = filterFormat !== "all" || filterStatus !== "all" || filterProvider !== "all";
+  const hasActiveFilters = filterFormat !== "all" || filterStatus !== "all";
 
   // Clear all filters
   const clearFilters = () => {
     setFilterFormat("all");
     setFilterStatus("all");
-    setFilterProvider("all");
   };
 
   // Handle external link click
@@ -243,30 +140,141 @@ const Datasets = () => {
   };
 
   // Handle delete dataset
-  const handleDeleteDataset = () => {
-    if (!selectedDataset) return;
-    setDatasets(datasets.filter(d => d.id !== selectedDataset.id));
-    setIsDeleteDialogOpen(false);
-    setSelectedDataset(null);
-    toast.success("Dataset deleted successfully");
+  const handleDeleteDataset = async () => {
+    if (!selectedDataset || !selectedDomainId) return;
+    try {
+      await deleteMutation.mutateAsync({
+        domainId: selectedDomainId,
+        id: String(selectedDataset.id),
+      });
+      setIsDeleteDialogOpen(false);
+      setSelectedDataset(null);
+      toast.success("Dataset deleted successfully");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to delete dataset");
+    }
   };
 
-  // Handle form submit - add new dataset
-  const handleFormSubmit = (data: any) => {
-    const newDataset: Dataset = {
-      id: Math.max(...datasets.map(d => d.id)) + 1,
-      name: data.name,
-      provider: data.provider,
-      domain: data.domain,
-      format: data.endpointType,
-      endpoint: data.endpointUrl,
-      period: data.period,
-      wells: data.wellCount || 0,
-      status: "draft",
-      lastUpdated: new Date().toISOString().split("T")[0],
-    };
-    setDatasets([...datasets, newDataset]);
+  // Format date
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   };
+
+  // No domain selected state
+  if (!selectedDomainId) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Dataset Catalog"
+          subtitle="Browse and manage registered datasets"
+        />
+        <div className="p-6 space-y-6">
+          {/* Domain Selector */}
+          <div className="bg-card rounded-xl border border-border p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Layers className="w-5 h-5 text-accent" />
+              <h3 className="font-semibold">Select Domain</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Please select a domain to view and manage datasets.
+            </p>
+            <Select value={selectedDomainId} onValueChange={setSelectedDomainId}>
+              <SelectTrigger className="w-full md:w-96">
+                <SelectValue placeholder="Select a domain..." />
+              </SelectTrigger>
+              <SelectContent>
+                {isLoadingDomains ? (
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Loading domains...
+                  </div>
+                ) : domainsData?.data?.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground">
+                    No domains available. Please create a domain first.
+                  </div>
+                ) : (
+                  domainsData?.data?.map((domain) => (
+                    <SelectItem key={domain.id} value={domain.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{domain.name}</span>
+                        <Badge variant="outline" className="text-xs font-mono">
+                          {domain.code}
+                        </Badge>
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Empty State */}
+          <div className="flex items-center justify-center h-[40vh]">
+            <div className="text-center">
+              <Database className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-lg font-medium text-muted-foreground">Select a domain to view datasets</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Datasets are organized by domain
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (isLoadingDatasets) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Dataset Catalog"
+          subtitle="Browse and manage registered datasets"
+        />
+        <div className="p-6">
+          <div className="flex items-center justify-center h-[60vh]">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
+              <p className="mt-2 text-muted-foreground">Loading datasets...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Dataset Catalog"
+          subtitle="Browse and manage registered datasets"
+        />
+        <div className="p-6">
+          <div className="flex items-center justify-center h-[60vh]">
+            <div className="text-center">
+              <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
+              <p className="mt-2 text-lg font-medium">Failed to load datasets</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                {(error as any)?.message || "An error occurred"}
+              </p>
+              <Button onClick={() => refetch()} variant="outline">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedDomain = domainsData?.data?.find((d) => d.id === selectedDomainId);
 
   return (
     <div className="min-h-screen">
@@ -275,6 +283,87 @@ const Datasets = () => {
         subtitle="Browse and manage registered datasets"
       />
       <div className="p-6 space-y-6">
+        {/* Domain Selector */}
+        <div className="flex items-center gap-4 p-4 bg-card rounded-xl border border-border">
+          <div className="flex items-center gap-2">
+            <Layers className="w-5 h-5 text-accent" />
+            <span className="text-sm font-medium">Domain:</span>
+          </div>
+          <Select value={selectedDomainId} onValueChange={setSelectedDomainId}>
+            <SelectTrigger className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {domainsData?.data?.map((domain) => (
+                <SelectItem key={domain.id} value={domain.id}>
+                  <div className="flex items-center gap-2">
+                    <span>{domain.name}</span>
+                    <Badge variant="outline" className="text-xs font-mono">
+                      {domain.code}
+                    </Badge>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedDomain && (
+            <Badge className={selectedDomain.status === "ACTIVE" ? "badge-active" : "badge-inactive"}>
+              {selectedDomain.status}
+            </Badge>
+          )}
+          <div className="ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="stat-card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-info/10">
+                <Database className="w-6 h-6 text-info" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{datasetsData?.total || 0}</p>
+                <p className="text-sm text-muted-foreground">Total Datasets</p>
+              </div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-success/10">
+                <Database className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {datasetsData?.data?.filter((d) => d.status === "published").length || 0}
+                </p>
+                <p className="text-sm text-muted-foreground">Published</p>
+              </div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-warning/10">
+                <Database className="w-6 h-6 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {datasetsData?.data?.filter((d) => d.status === "draft").length || 0}
+                </p>
+                <p className="text-sm text-muted-foreground">Draft</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Toolbar */}
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div className="relative w-full md:w-96">
@@ -312,7 +401,7 @@ const Datasets = () => {
                   Filter
                   {hasActiveFilters && (
                     <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                      {[filterFormat !== "all", filterStatus !== "all", filterProvider !== "all"].filter(Boolean).length}
+                      {[filterFormat !== "all", filterStatus !== "all"].filter(Boolean).length}
                     </Badge>
                   )}
                 </Button>
@@ -355,22 +444,6 @@ const Datasets = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Provider</Label>
-                    <Select value={filterProvider} onValueChange={setFilterProvider}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All providers" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All providers</SelectItem>
-                        {providers.map((provider) => (
-                          <SelectItem key={provider} value={provider}>
-                            {provider}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               </PopoverContent>
             </Popover>
@@ -383,26 +456,6 @@ const Datasets = () => {
               Register Dataset
             </Button>
           </div>
-        </div>
-
-        {/* Domain Filters */}
-        <div className="flex gap-2 flex-wrap">
-          {domainTabs.map((domain) => (
-            <Button
-              key={domain}
-              variant={activeDomain === domain ? "default" : "outline"}
-              size="sm"
-              className={activeDomain === domain ? "bg-accent text-accent-foreground" : ""}
-              onClick={() => setActiveDomain(domain)}
-            >
-              {domain}
-              {domain !== "All" && (
-                <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                  {datasets.filter(d => d.domain === domain).length}
-                </Badge>
-              )}
-            </Button>
-          ))}
         </div>
 
         {/* Dataset Grid/List */}
@@ -473,22 +526,23 @@ const Datasets = () => {
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Building2 className="w-4 h-4" />
-                      <span>{dataset.provider}</span>
+                      <span>{dataset.provider || "Unknown provider"}</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <MapPin className="w-4 h-4" />
                       <span className="truncate">{dataset.endpoint}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="w-4 h-4" />
-                      <span>{dataset.period}</span>
-                    </div>
+                    {dataset.created_at && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar className="w-4 h-4" />
+                        <span>{formatDate(dataset.created_at)}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-border">
                     <div className="flex gap-2">
                       <Badge variant="outline">{dataset.format}</Badge>
-                      <Badge variant="secondary">{dataset.domain}</Badge>
                     </div>
                     <Button
                       variant="ghost"
@@ -511,11 +565,9 @@ const Datasets = () => {
                 <TableRow className="table-header">
                   <TableHead>Dataset</TableHead>
                   <TableHead>Provider</TableHead>
-                  <TableHead>Domain</TableHead>
                   <TableHead>Format</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="text-center">Wells</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -535,15 +587,10 @@ const Datasets = () => {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{dataset.provider}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{dataset.domain}</Badge>
-                    </TableCell>
+                    <TableCell>{dataset.provider || "-"}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{dataset.format}</Badge>
                     </TableCell>
-                    <TableCell>{dataset.period}</TableCell>
-                    <TableCell className="text-center">{dataset.wells}</TableCell>
                     <TableCell>
                       <Badge
                         className={
@@ -554,6 +601,11 @@ const Datasets = () => {
                       >
                         {dataset.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {dataset.created_at ? formatDate(dataset.created_at) : "-"}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -596,7 +648,7 @@ const Datasets = () => {
         <DatasetRegistrationForm
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
-          onSubmit={handleFormSubmit}
+          domainId={selectedDomainId}
         />
 
         {/* View Dataset Dialog */}
@@ -616,7 +668,6 @@ const Datasets = () => {
                     <p className="text-sm text-muted-foreground">{selectedDataset.provider}</p>
                     <div className="flex gap-2 mt-2">
                       <Badge variant="outline">{selectedDataset.format}</Badge>
-                      <Badge variant="secondary">{selectedDataset.domain}</Badge>
                       <Badge
                         className={
                           selectedDataset.status === "published"
@@ -630,23 +681,34 @@ const Datasets = () => {
                   </div>
                 </div>
 
+                {selectedDataset.description && (
+                  <div className="pt-4 border-t">
+                    <p className="text-sm text-muted-foreground mb-1">Description</p>
+                    <p className="text-sm">{selectedDataset.description}</p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                   <div>
                     <p className="text-sm text-muted-foreground">Endpoint</p>
                     <p className="font-medium text-sm truncate">{selectedDataset.endpoint}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Period</p>
-                    <p className="font-medium">{selectedDataset.period}</p>
+                    <p className="text-sm text-muted-foreground">Version</p>
+                    <p className="font-medium">{selectedDataset.version || "-"}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Wells</p>
-                    <p className="font-medium">{selectedDataset.wells}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Last Updated</p>
-                    <p className="font-medium">{selectedDataset.lastUpdated}</p>
-                  </div>
+                  {selectedDataset.created_at && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Created At</p>
+                      <p className="font-medium">{formatDate(selectedDataset.created_at)}</p>
+                    </div>
+                  )}
+                  {selectedDataset.updated_at && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Updated At</p>
+                      <p className="font-medium">{formatDate(selectedDataset.updated_at)}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -683,7 +745,9 @@ const Datasets = () => {
               <AlertDialogAction
                 onClick={handleDeleteDataset}
                 className="bg-destructive hover:bg-destructive/90"
+                disabled={deleteMutation.isPending}
               >
+                {deleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>

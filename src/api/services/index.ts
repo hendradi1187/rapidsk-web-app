@@ -20,3 +20,4 @@ export {
   agreementsApi,
 } from "./policy-contract";
 export { consumerApi, providerApi } from "./connector";
+export { dataTransfersApi } from "./data-transfer";

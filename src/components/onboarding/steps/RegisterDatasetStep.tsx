@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Database, Globe, FileType } from "lucide-react";
+import { Database, Globe, Calendar } from "lucide-react";
 import {
   Form,
   FormControl,
@@ -25,25 +25,6 @@ import { WizardNavigation } from "../WizardNavigation";
 import { datasetSchema, DatasetFormValues } from "../schemas/onboarding.schemas";
 import { useEffect } from "react";
 
-const providers = [
-  { value: "phe-onwj", label: "PHE ONWJ" },
-  { value: "pertamina-hulu", label: "Pertamina Hulu Energi" },
-  { value: "chevron-indonesia", label: "Chevron Indonesia" },
-  { value: "medco-ep", label: "Medco E&P Indonesia" },
-  { value: "conocophillips", label: "ConocoPhillips Indonesia" },
-  { value: "eni-indonesia", label: "ENI Indonesia" },
-  { value: "other", label: "Lainnya" },
-];
-
-const domains = [
-  { value: "seismic", label: "Seismic Data" },
-  { value: "well", label: "Well Data" },
-  { value: "production", label: "Production Data" },
-  { value: "reservoir", label: "Reservoir Data" },
-  { value: "geospatial", label: "Geospatial Data" },
-  { value: "other", label: "Lainnya" },
-];
-
 export const RegisterDatasetStep = () => {
   const { formData, updateStepData, markStepComplete } = useOnboarding();
 
@@ -53,10 +34,10 @@ export const RegisterDatasetStep = () => {
       name: "",
       description: "",
       provider: "",
-      domain: "",
-      endpointType: undefined,
-      endpointUrl: "",
       format: undefined,
+      endpoint: "",
+      period: "",
+      wells: undefined,
       accessLevel: undefined,
     },
   });
@@ -109,44 +90,10 @@ export const RegisterDatasetStep = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Provider/KKKS *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih provider" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {providers.map((p) => (
-                          <SelectItem key={p.value} value={p.value}>
-                            {p.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="domain"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Domain Data *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih domain" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {domains.map((d) => (
-                          <SelectItem key={d.value} value={d.value}>
-                            {d.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input placeholder="Nama provider, misal: PHE ONWJ" {...field} />
+                    </FormControl>
+                    <FormDescription>Nama organisasi penyedia data</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -169,6 +116,27 @@ export const RegisterDatasetStep = () => {
                         <SelectItem value="confidential">Confidential</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="wells"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Jumlah Wells</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="Opsional"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                      />
+                    </FormControl>
+                    <FormDescription>Opsional, jumlah sumur terkait</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -206,14 +174,14 @@ export const RegisterDatasetStep = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="endpointType"
+                name="format"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tipe Endpoint *</FormLabel>
+                    <FormLabel>Format / Tipe Endpoint *</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Pilih tipe endpoint" />
+                          <SelectValue placeholder="Pilih format endpoint" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -222,13 +190,16 @@ export const RegisterDatasetStep = () => {
                         <SelectItem value="WCS">WCS (Web Coverage Service)</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormDescription>
+                      Format layanan GeoServer yang digunakan
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField
                 control={form.control}
-                name="endpointUrl"
+                name="endpoint"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>URL Endpoint *</FormLabel>
@@ -242,35 +213,26 @@ export const RegisterDatasetStep = () => {
             </div>
           </div>
 
-          {/* Data Format Section */}
+          {/* Period Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <FileType className="w-4 h-4 text-accent" />
-              Format Data
+              <Calendar className="w-4 h-4 text-accent" />
+              Periode Data
             </div>
             <Separator />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="format"
+                name="period"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Format Data *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih format" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="GeoJSON">GeoJSON</SelectItem>
-                        <SelectItem value="GML">GML</SelectItem>
-                        <SelectItem value="KML">KML</SelectItem>
-                        <SelectItem value="GeoTIFF">GeoTIFF</SelectItem>
-                        <SelectItem value="Shapefile">Shapefile</SelectItem>
-                        <SelectItem value="CSV">CSV</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Period *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Contoh: Q1 2024, 2023-2024, Jan 2024" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Periode waktu data, misal: Q1 2024, 2023-2024
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

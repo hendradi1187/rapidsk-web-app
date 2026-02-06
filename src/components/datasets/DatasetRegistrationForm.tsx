@@ -40,7 +40,8 @@ import {
   Check,
   Loader2,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
+import { useCreateDataset } from "@/api/hooks/useDatasets";
 
 const datasetSchema = z.object({
   name: z
@@ -54,7 +55,6 @@ const datasetSchema = z.object({
     .max(500, { message: "Deskripsi maksimal 500 karakter" })
     .optional(),
   provider: z.string().min(1, { message: "Pilih provider" }),
-  domain: z.string().min(1, { message: "Pilih domain data" }),
   endpointType: z.enum(["WMS", "WFS", "WCS"], {
     required_error: "Pilih tipe endpoint",
   }),
@@ -71,15 +71,11 @@ const datasetSchema = z.object({
           message: "Format endpoint tidak valid",
         })
     ),
-  format: z.enum(["GeoJSON", "GML", "KML", "GeoTIFF", "Shapefile", "CSV"], {
-    required_error: "Pilih format data",
-  }),
   period: z.string().min(1, { message: "Periode data wajib diisi" }),
   wellCount: z.coerce
     .number()
     .min(0, { message: "Jumlah sumur tidak boleh negatif" })
     .optional(),
-  tags: z.string().optional(),
   accessLevel: z.enum(["public", "restricted", "confidential"], {
     required_error: "Pilih level akses",
   }),
@@ -90,7 +86,7 @@ type DatasetFormValues = z.infer<typeof datasetSchema>;
 interface DatasetRegistrationFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit?: (data: DatasetFormValues) => void;
+  domainId: string;
 }
 
 const providers = [
@@ -103,22 +99,12 @@ const providers = [
   "SKK Migas",
 ];
 
-const domains = [
-  "Lifting Data",
-  "Reservoir Data",
-  "Well Test",
-  "Exploration",
-  "Production Data",
-  "Seismic Data",
-];
-
 export const DatasetRegistrationForm = ({
   open,
   onOpenChange,
-  onSubmit,
+  domainId,
 }: DatasetRegistrationFormProps) => {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const createMutation = useCreateDataset();
 
   const form = useForm<DatasetFormValues>({
     resolver: zodResolver(datasetSchema),
@@ -126,30 +112,41 @@ export const DatasetRegistrationForm = ({
       name: "",
       description: "",
       provider: "",
-      domain: "",
       endpointUrl: "",
       period: "",
       wellCount: 0,
-      tags: "",
       accessLevel: "restricted",
     },
   });
 
   const handleSubmit = async (data: DatasetFormValues) => {
-    setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    toast({
-      title: "Dataset Berhasil Didaftarkan",
-      description: `Dataset "${data.name}" telah ditambahkan ke katalog.`,
-    });
-    
-    onSubmit?.(data);
-    form.reset();
-    setIsSubmitting(false);
-    onOpenChange(false);
+    try {
+      await createMutation.mutateAsync({
+        domainId,
+        data: {
+          name: data.name,
+          description: data.description || null,
+          provider: data.provider,
+          domain: "", // Will be set by API based on domainId
+          format: data.endpointType,
+          endpoint: data.endpointUrl,
+          period: data.period,
+          wells: data.wellCount,
+          accessLevel: data.accessLevel,
+        },
+      });
+
+      toast.success("Dataset Berhasil Didaftarkan", {
+        description: `Dataset "${data.name}" telah ditambahkan ke katalog.`,
+      });
+
+      form.reset();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error("Gagal mendaftarkan dataset", {
+        description: err?.response?.data?.detail || "Terjadi kesalahan",
+      });
+    }
   };
 
   return (
@@ -218,66 +215,36 @@ export const DatasetRegistrationForm = ({
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="provider"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4" />
-                        Provider (KKKS) *
-                      </FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Pilih provider" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {providers.map((provider) => (
-                            <SelectItem key={provider} value={provider}>
-                              {provider}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="domain"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Domain Data *</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Pilih domain" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {domains.map((domain) => (
-                            <SelectItem key={domain} value={domain}>
-                              {domain}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="provider"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4" />
+                      Provider (KKKS) *
+                    </FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih provider" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {providers.map((provider) => (
+                          <SelectItem key={provider} value={provider}>
+                            {provider}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             {/* GeoServer Endpoint */}
@@ -371,35 +338,6 @@ export const DatasetRegistrationForm = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="format"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Format Data *</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Pilih format" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="GeoJSON">GeoJSON</SelectItem>
-                          <SelectItem value="GML">GML</SelectItem>
-                          <SelectItem value="KML">KML</SelectItem>
-                          <SelectItem value="GeoTIFF">GeoTIFF</SelectItem>
-                          <SelectItem value="Shapefile">Shapefile</SelectItem>
-                          <SelectItem value="CSV">CSV</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
                   name="accessLevel"
                   render={({ field }) => (
                     <FormItem>
@@ -444,9 +382,7 @@ export const DatasetRegistrationForm = ({
                     </FormItem>
                   )}
                 />
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="period"
@@ -466,42 +402,22 @@ export const DatasetRegistrationForm = ({
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="wellCount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jumlah Sumur (Opsional)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={0}
-                          placeholder="0"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
 
               <FormField
                 control={form.control}
-                name="tags"
+                name="wellCount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tags (Opsional)</FormLabel>
+                    <FormLabel>Jumlah Sumur (Opsional)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="contoh: production, quarterly, offshore"
+                        type="number"
+                        min={0}
+                        placeholder="0"
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>
-                      Pisahkan tag dengan koma untuk memudahkan pencarian
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -514,16 +430,16 @@ export const DatasetRegistrationForm = ({
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
+                disabled={createMutation.isPending}
               >
                 Batal
               </Button>
               <Button
                 type="submit"
                 className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                disabled={isSubmitting}
+                disabled={createMutation.isPending}
               >
-                {isSubmitting ? (
+                {createMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Mendaftarkan...

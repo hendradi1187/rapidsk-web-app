@@ -1,55 +1,73 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { organizationsApi, domainsApi } from "@/api/services/governance";
+import { participantsApi } from "@/api/services/onboarding";
+import { vocabulariesApi, datasetsApi } from "@/api/services/data-catalog";
+import { contractsApi, contractPoliciesApi } from "@/api/services/policy-contract";
+import { dataTransfersApi } from "@/api/services/data-transfer";
+import type { ParticipantOrganizationType } from "@/api/types/onboarding";
 
 export interface OrganizationStepData {
   orgName: string;
+  orgCode: string;
   orgType: string;
   description: string;
   participantName: string;
   participantEmail: string;
+  participantPhone: string;
+  participantAddress: string;
   participantRole: string;
+  domainName: string;
+  domainCode: string;
+  domainDescription: string;
 }
 
 export interface VocabularyStepData {
   vocabularyName: string;
-  namespace: string;
+  version: string;
+  vocabularyDescription?: string;
   terms: Array<{
-    name: string;
-    definition: string;
-    dataType: string;
+    term: string;
+    datatype: string;
+    unit?: string;
+    description?: string;
   }>;
 }
 
 export interface DatasetStepData {
   name: string;
-  description: string;
+  description?: string;
   provider: string;
-  domain: string;
-  endpointType: string;
-  endpointUrl: string;
-  format: string;
-  accessLevel: string;
+  format: "WMS" | "WFS" | "WCS";
+  endpoint: string;
+  period: string;
+  wells?: number;
+  accessLevel: "public" | "restricted" | "confidential";
 }
 
 export interface ContractStepData {
-  contractName: string;
+  title: string;
   provider: string;
   consumer: string;
   startDate: string;
-  endDate: string;
+  endDate?: string;
+  description?: string;
   policies: Array<{
-    type: string;
-    rule: string;
-    value: string;
+    name: string;
+    dataClassification: string;
+    description?: string;
   }>;
 }
 
 export interface TransferStepData {
-  transferName: string;
-  sourceDataset: string;
+  name: string;
+  from: string;
+  to: string;
+  type: "streaming" | "batch";
   targetEndpoint: string;
-  protocol: string;
-  scheduleType: string;
-  cronExpression: string;
+  protocol: "HTTP" | "HTTPS" | "S3" | "FTP" | "SFTP";
+  scheduleType: "realtime" | "scheduled" | "manual";
+  cronExpression?: string;
+  encrypted: boolean;
 }
 
 export interface MonitoringStepData {
@@ -69,6 +87,18 @@ export interface OnboardingFormData {
   monitoring: MonitoringStepData | null;
 }
 
+// IDs created during onboarding flow, used to chain steps
+interface CreatedIds {
+  organizationId?: string;
+  participantId?: string;
+  domainId?: string;
+  vocabularyId?: string;
+  datasetId?: string;
+  contractId?: string;
+  transferId?: string;
+  contractPolicyIds?: string[];
+}
+
 interface SubmissionResult {
   success: boolean;
   organizationId?: string;
@@ -83,6 +113,7 @@ interface OnboardingContextType {
   currentStep: number;
   completedSteps: Set<number>;
   formData: OnboardingFormData;
+  createdIds: CreatedIds;
   totalSteps: number;
   goToStep: (step: number) => void;
   nextStep: () => void;
@@ -121,6 +152,7 @@ interface StoredState {
   currentStep: number;
   completedSteps: number[];
   formData: OnboardingFormData;
+  createdIds: CreatedIds;
 }
 
 const loadFromStorage = (): StoredState | null => {
@@ -143,34 +175,17 @@ const saveToStorage = (state: StoredState) => {
   }
 };
 
-// Simulated API endpoints
-const API_BASE_URL = "/api/v1";
-
-// Simulated API call function
-const simulateApiCall = async <T,>(
-  endpoint: string,
-  data: T,
-  delay: number = 1000
-): Promise<{ success: boolean; id?: string; error?: string }> => {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, delay));
-
-  // Log the API call for debugging
-  console.log(`[API] POST ${API_BASE_URL}${endpoint}`, data);
-
-  // Simulate random success/failure (95% success rate)
-  const isSuccess = Math.random() > 0.05;
-
-  if (isSuccess) {
-    return {
-      success: true,
-      id: `${endpoint.split("/").pop()}_${Date.now()}`,
-    };
-  } else {
-    return {
-      success: false,
-      error: "Simulated server error. Please try again.",
-    };
+// Map form orgType to backend ParticipantOrganizationType
+const mapOrgType = (orgType: string): ParticipantOrganizationType => {
+  switch (orgType) {
+    case "KKKS":
+      return "ENTERPRISE";
+    case "Regulator":
+      return "GOV_CENTRAL";
+    case "ServiceProvider":
+      return "ENTERPRISE";
+    default:
+      return "ENTERPRISE";
   }
 };
 
@@ -178,6 +193,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState<OnboardingFormData>(initialFormData);
+  const [createdIds, setCreatedIds] = useState<CreatedIds>({});
 
   // Backend integration states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -192,6 +208,9 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
       setCurrentStep(savedState.currentStep);
       setCompletedSteps(new Set(savedState.completedSteps));
       setFormData(savedState.formData);
+      if (savedState.createdIds) {
+        setCreatedIds(savedState.createdIds);
+      }
     }
   }, []);
 
@@ -201,14 +220,14 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
       currentStep,
       completedSteps: Array.from(completedSteps),
       formData,
+      createdIds,
     };
     saveToStorage(state);
-  }, [currentStep, completedSteps, formData]);
+  }, [currentStep, completedSteps, formData, createdIds]);
 
   const isStepAccessible = (step: number): boolean => {
     if (step === 0) return true;
     if (completedSteps.has(step)) return true;
-    // Can access next step if previous step is completed
     return completedSteps.has(step - 1);
   };
 
@@ -248,6 +267,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     setCurrentStep(0);
     setCompletedSteps(new Set());
     setFormData(initialFormData);
+    setCreatedIds({});
     setIsOnboardingComplete(false);
     setSubmissionResult(null);
     setSubmissionError(null);
@@ -259,23 +279,192 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     const stepData = formData[step];
     if (!stepData) return false;
 
-    const endpoints: Record<keyof OnboardingFormData, string> = {
-      organization: "/organizations",
-      vocabulary: "/vocabularies",
-      dataset: "/datasets",
-      contract: "/contracts",
-      transfer: "/transfers",
-      monitoring: "/monitoring/config",
-    };
-
     try {
-      const result = await simulateApiCall(endpoints[step], stepData, 800);
-      if (result.success) {
-        console.log(`[Onboarding] Step "${step}" saved successfully with ID: ${result.id}`);
-        return true;
-      } else {
-        console.error(`[Onboarding] Failed to save step "${step}": ${result.error}`);
-        return false;
+      switch (step) {
+        case "organization": {
+          const orgData = stepData as OrganizationStepData;
+
+          // 1. Create Organization
+          const org = await organizationsApi.create({
+            name: orgData.orgName,
+            code: orgData.orgCode,
+            description: orgData.description,
+          });
+          console.log("[Onboarding] Organization created:", org.id);
+
+          // 2. Create Participant
+          const participant = await participantsApi.create({
+            organization_name: orgData.orgName,
+            organization_type: mapOrgType(orgData.orgType),
+            address: orgData.participantAddress,
+            contact_person: {
+              name: orgData.participantName,
+              email: orgData.participantEmail,
+              phone: orgData.participantPhone,
+            },
+          });
+          console.log("[Onboarding] Participant created:", participant.id);
+
+          // 3. Create Domain under organization
+          const domain = await domainsApi.create(org.id, {
+            name: orgData.domainName,
+            code: orgData.domainCode,
+            description: orgData.domainDescription,
+            status: "ACTIVE",
+          });
+          console.log("[Onboarding] Domain created:", domain.id);
+
+          setCreatedIds((prev) => ({
+            ...prev,
+            organizationId: org.id,
+            participantId: participant.id,
+            domainId: domain.id,
+          }));
+
+          return true;
+        }
+
+        case "vocabulary": {
+          const vocabData = stepData as VocabularyStepData;
+          const domainId = createdIds.domainId;
+          if (!domainId) {
+            console.error("[Onboarding] No domainId available for vocabulary creation");
+            return false;
+          }
+
+          const vocab = await vocabulariesApi.create(domainId, {
+            name: vocabData.vocabularyName,
+            version: vocabData.version || "1.0.0",
+            description: vocabData.vocabularyDescription || null,
+            terms: vocabData.terms.map((t) => ({
+              term: t.term,
+              datatype: t.datatype,
+              unit: t.unit || null,
+              description: t.description || null,
+            })),
+          });
+          console.log("[Onboarding] Vocabulary created:", vocab.id);
+
+          setCreatedIds((prev) => ({
+            ...prev,
+            vocabularyId: vocab.id,
+          }));
+
+          return true;
+        }
+
+        case "dataset": {
+          const dsData = stepData as DatasetStepData;
+          const domainId = createdIds.domainId;
+          if (!domainId) {
+            console.error("[Onboarding] No domainId available for dataset creation");
+            return false;
+          }
+
+          const dataset = await datasetsApi.create(domainId, {
+            name: dsData.name,
+            description: dsData.description || null,
+            provider: dsData.provider,
+            domain: formData.organization?.domainName || "",
+            format: dsData.format,
+            endpoint: dsData.endpoint,
+            period: dsData.period,
+            wells: dsData.wells,
+            accessLevel: dsData.accessLevel,
+          });
+          console.log("[Onboarding] Dataset created:", dataset.id);
+
+          setCreatedIds((prev) => ({
+            ...prev,
+            datasetId: String(dataset.id),
+          }));
+
+          return true;
+        }
+
+        case "contract": {
+          const contractData = stepData as ContractStepData;
+          const domainId = createdIds.domainId;
+          if (!domainId) {
+            console.error("[Onboarding] No domainId available for contract creation");
+            return false;
+          }
+
+          // 1. Create contract policies first
+          const policyIds: string[] = [];
+          for (const policy of contractData.policies) {
+            const cp = await contractPoliciesApi.create(domainId, {
+              name: policy.name,
+              data_clasification: policy.dataClassification,
+              effective_from: contractData.startDate,
+              effective_to: contractData.endDate || "",
+              description: policy.description || null,
+            });
+            policyIds.push(cp.id);
+            console.log("[Onboarding] Contract policy created:", cp.id);
+          }
+
+          // 2. Create contract with policy references
+          const contract = await contractsApi.create(domainId, {
+            title: contractData.title,
+            provider: contractData.provider,
+            consumer: contractData.consumer,
+            domain: formData.organization?.domainName || "",
+            policy: policyIds[0] || "",
+            startDate: contractData.startDate,
+            endDate: contractData.endDate,
+            description: contractData.description || null,
+            contract_policies: policyIds,
+          });
+          console.log("[Onboarding] Contract created:", contract.id);
+
+          setCreatedIds((prev) => ({
+            ...prev,
+            contractId: String(contract.id),
+            contractPolicyIds: policyIds,
+          }));
+
+          return true;
+        }
+
+        case "transfer": {
+          const transferData = stepData as TransferStepData;
+          const domainId = createdIds.domainId;
+          if (!domainId) {
+            console.error("[Onboarding] No domainId available for transfer creation");
+            return false;
+          }
+
+          const transfer = await dataTransfersApi.create(domainId, {
+            name: transferData.name,
+            from: transferData.from,
+            to: transferData.to,
+            type: transferData.type,
+            targetEndpoint: transferData.targetEndpoint,
+            protocol: transferData.protocol,
+            scheduleType: transferData.scheduleType,
+            cronExpression: transferData.cronExpression,
+            encrypted: transferData.encrypted,
+          });
+          console.log("[Onboarding] Data transfer created:", transfer.id);
+
+          setCreatedIds((prev) => ({
+            ...prev,
+            transferId: String(transfer.id),
+          }));
+
+          return true;
+        }
+
+        case "monitoring": {
+          // Monitoring config - no direct backend API endpoint yet.
+          // Store locally and log for future integration.
+          console.log("[Onboarding] Monitoring config saved (local only):", stepData);
+          return true;
+        }
+
+        default:
+          return false;
       }
     } catch (error) {
       console.error(`[Onboarding] Error saving step "${step}":`, error);
@@ -289,81 +478,167 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     setSubmissionError(null);
 
     const errors: string[] = [];
-    let organizationId: string | undefined;
-    let datasetId: string | undefined;
-    let contractId: string | undefined;
-    let transferId: string | undefined;
+    let organizationId: string | undefined = createdIds.organizationId;
+    let domainId: string | undefined = createdIds.domainId;
+    let datasetId: string | undefined = createdIds.datasetId;
+    let contractId: string | undefined = createdIds.contractId;
+    let transferId: string | undefined = createdIds.transferId;
 
     try {
-      // Step 1: Create Organization
-      if (formData.organization) {
-        console.log("[Onboarding] Submitting organization...");
-        const orgResult = await simulateApiCall("/organizations", formData.organization, 1000);
-        if (orgResult.success) {
-          organizationId = orgResult.id;
-        } else {
-          errors.push(`Organization: ${orgResult.error}`);
+      // Step 1: Create Organization + Participant + Domain (if not already created)
+      if (formData.organization && !organizationId) {
+        const orgData = formData.organization;
+        try {
+          const org = await organizationsApi.create({
+            name: orgData.orgName,
+            code: orgData.orgCode,
+            description: orgData.description,
+          });
+          organizationId = org.id;
+
+          await participantsApi.create({
+            organization_name: orgData.orgName,
+            organization_type: mapOrgType(orgData.orgType),
+            address: orgData.participantAddress,
+            contact_person: {
+              name: orgData.participantName,
+              email: orgData.participantEmail,
+              phone: orgData.participantPhone,
+            },
+          });
+
+          const domain = await domainsApi.create(org.id, {
+            name: orgData.domainName,
+            code: orgData.domainCode,
+            description: orgData.domainDescription,
+            status: "ACTIVE",
+          });
+          domainId = domain.id;
+
+          setCreatedIds((prev) => ({
+            ...prev,
+            organizationId: org.id,
+            domainId: domain.id,
+          }));
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Failed to create organization";
+          errors.push(`Organization: ${msg}`);
         }
       }
 
       // Step 2: Create Vocabulary
-      if (formData.vocabulary) {
-        console.log("[Onboarding] Submitting vocabulary...");
-        await simulateApiCall("/vocabularies", formData.vocabulary, 800);
-      }
-
-      // Step 3: Register Dataset
-      if (formData.dataset) {
-        console.log("[Onboarding] Submitting dataset...");
-        const datasetResult = await simulateApiCall("/datasets", {
-          ...formData.dataset,
-          organizationId,
-        }, 1200);
-        if (datasetResult.success) {
-          datasetId = datasetResult.id;
-        } else {
-          errors.push(`Dataset: ${datasetResult.error}`);
+      if (formData.vocabulary && domainId && !createdIds.vocabularyId) {
+        try {
+          const vocabData = formData.vocabulary;
+          await vocabulariesApi.create(domainId, {
+            name: vocabData.vocabularyName,
+            version: vocabData.version || "1.0.0",
+            description: vocabData.vocabularyDescription || null,
+            terms: vocabData.terms.map((t) => ({
+              term: t.term,
+              datatype: t.datatype,
+              unit: t.unit || null,
+              description: t.description || null,
+            })),
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Failed to create vocabulary";
+          errors.push(`Vocabulary: ${msg}`);
         }
       }
 
-      // Step 4: Create Contract
-      if (formData.contract) {
-        console.log("[Onboarding] Submitting contract...");
-        const contractResult = await simulateApiCall("/contracts", {
-          ...formData.contract,
-          datasetId,
-        }, 1000);
-        if (contractResult.success) {
-          contractId = contractResult.id;
-        } else {
-          errors.push(`Contract: ${contractResult.error}`);
+      // Step 3: Create Dataset
+      if (formData.dataset && domainId && !datasetId) {
+        try {
+          const dsData = formData.dataset;
+          const ds = await datasetsApi.create(domainId, {
+            name: dsData.name,
+            description: dsData.description || null,
+            provider: dsData.provider,
+            domain: formData.organization?.domainName || "",
+            format: dsData.format,
+            endpoint: dsData.endpoint,
+            period: dsData.period,
+            wells: dsData.wells,
+            accessLevel: dsData.accessLevel,
+          });
+          datasetId = String(ds.id);
+          setCreatedIds((prev) => ({ ...prev, datasetId: String(ds.id) }));
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Failed to create dataset";
+          errors.push(`Dataset: ${msg}`);
         }
       }
 
-      // Step 5: Setup Transfer
-      if (formData.transfer) {
-        console.log("[Onboarding] Submitting transfer configuration...");
-        const transferResult = await simulateApiCall("/transfers", {
-          ...formData.transfer,
-          contractId,
-        }, 1000);
-        if (transferResult.success) {
-          transferId = transferResult.id;
-        } else {
-          errors.push(`Transfer: ${transferResult.error}`);
+      // Step 4: Create Contract (with contract policies)
+      if (formData.contract && domainId && !contractId) {
+        try {
+          const contractData = formData.contract;
+
+          // Create contract policies first
+          const policyIds: string[] = [];
+          for (const policy of contractData.policies) {
+            const cp = await contractPoliciesApi.create(domainId, {
+              name: policy.name,
+              data_clasification: policy.dataClassification,
+              effective_from: contractData.startDate,
+              effective_to: contractData.endDate || "",
+              description: policy.description || null,
+            });
+            policyIds.push(cp.id);
+          }
+
+          const contract = await contractsApi.create(domainId, {
+            title: contractData.title,
+            provider: contractData.provider,
+            consumer: contractData.consumer,
+            domain: formData.organization?.domainName || "",
+            policy: policyIds[0] || "",
+            startDate: contractData.startDate,
+            endDate: contractData.endDate,
+            description: contractData.description || null,
+            contract_policies: policyIds,
+          });
+          contractId = String(contract.id);
+          setCreatedIds((prev) => ({
+            ...prev,
+            contractId: String(contract.id),
+            contractPolicyIds: policyIds,
+          }));
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Failed to create contract";
+          errors.push(`Contract: ${msg}`);
         }
       }
 
-      // Step 6: Configure Monitoring
+      // Step 5: Create Data Transfer
+      if (formData.transfer && domainId && !transferId) {
+        try {
+          const transferData = formData.transfer;
+          const transfer = await dataTransfersApi.create(domainId, {
+            name: transferData.name,
+            from: transferData.from,
+            to: transferData.to,
+            type: transferData.type,
+            targetEndpoint: transferData.targetEndpoint,
+            protocol: transferData.protocol,
+            scheduleType: transferData.scheduleType,
+            cronExpression: transferData.cronExpression,
+            encrypted: transferData.encrypted,
+          });
+          transferId = String(transfer.id);
+          setCreatedIds((prev) => ({ ...prev, transferId: String(transfer.id) }));
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Failed to create data transfer";
+          errors.push(`Transfer: ${msg}`);
+        }
+      }
+
+      // Step 6: Monitoring (no backend API yet)
       if (formData.monitoring) {
-        console.log("[Onboarding] Submitting monitoring configuration...");
-        await simulateApiCall("/monitoring/config", {
-          ...formData.monitoring,
-          organizationId,
-        }, 800);
+        console.log("[Onboarding] Monitoring config:", formData.monitoring);
       }
 
-      // All done
       const result: SubmissionResult = {
         success: errors.length === 0,
         organizationId,
@@ -401,6 +676,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
         currentStep,
         completedSteps,
         formData,
+        createdIds,
         totalSteps: TOTAL_STEPS,
         goToStep,
         nextStep,

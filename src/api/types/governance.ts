@@ -1,58 +1,40 @@
 import { PaginatedResponse } from "./common";
 
 // ============ ORGANIZATION ============
-// Based on UI data from Organizations.tsx
-
-export type OrganizationType = "KKKS" | "Regulator" | "ServiceProvider";
-export type OrganizationRole = "Provider" | "Consumer";
-export type OrganizationStatus = "active" | "pending" | "inactive";
+// Based on OpenAPI spec /api/v1/governance/organizations
 
 export interface Organization {
-  id: number;
+  id: string; // UUID
   name: string;
-  type: OrganizationType;
-  role: OrganizationRole;
-  units: string[];
-  datasets: number;
-  contracts: number;
-  status: OrganizationStatus;
-  avatar: string;
-  // API fields
-  code?: string;
-  description?: string;
-  created_by?: string | null;
-  created_at?: string;
-  updated_at?: string;
+  code: string;
+  description: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface OrganizationCreateRequest {
-  name: string;
-  code: string;
-  type: OrganizationType;
-  role: OrganizationRole;
-  description?: string;
-  units?: string[];
+  name: string; // 3-255 chars
+  code: string; // 2-20 chars, unique
+  description: string; // min 10 chars
 }
 
 export interface OrganizationUpdateRequest {
-  name?: string | null;
-  description?: string | null;
-  type?: OrganizationType | null;
-  role?: OrganizationRole | null;
-  units?: string[] | null;
-  status?: OrganizationStatus | null;
+  name?: string | null; // 3-255 chars
+  description?: string | null; // min 10 chars
 }
 
 export type OrganizationListResponse = PaginatedResponse<Organization>;
 export type OrganizationResponse = Organization;
 
 // ============ DOMAIN ============
+// Based on OpenAPI spec /api/v1/governance/domains
 
 export type DomainStatus = "ACTIVE" | "INACTIVE";
 
 export interface Domain {
-  id: string;
-  organization_id: string;
+  id: string; // UUID
+  organization_id: string; // UUID
   name: string;
   code: string;
   description: string;
@@ -63,10 +45,10 @@ export interface Domain {
 }
 
 export interface DomainCreateRequest {
-  organization_id: string;
-  name: string;
-  code: string;
-  description: string;
+  organization_id: string; // UUID
+  name: string; // 3-255 chars
+  code: string; // 2-20 chars
+  description: string; // min 10 chars
   status?: DomainStatus | null;
 }
 

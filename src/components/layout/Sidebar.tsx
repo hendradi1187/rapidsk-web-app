@@ -3,6 +3,8 @@ import {
   LayoutDashboard,
   Rocket,
   Building2,
+  Layers,
+  Users2, // Added icon
   Database,
   FileText,
   ArrowRightLeft,
@@ -20,6 +22,8 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Rocket, label: "Onboarding", path: "/onboarding" },
   { icon: Building2, label: "Organizations", path: "/organizations" },
+  { icon: Layers, label: "Domains", path: "/domains" },
+  { icon: Users2, label: "Participants", path: "/participants" }, // Added item
   { icon: Database, label: "Dataset Catalog", path: "/datasets" },
   { icon: FileText, label: "Contracts", path: "/contracts" },
   { icon: ArrowRightLeft, label: "Data Transfer", path: "/transfer" },

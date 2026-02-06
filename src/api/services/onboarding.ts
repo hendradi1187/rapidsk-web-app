@@ -15,7 +15,8 @@ import {
   ConnectionPoolListResponse,
 } from "../types";
 
-const BASE_PATH = "/api/v1/onboarding";
+// Backend path: /api/v1/onboarding/onboarding/...
+const BASE_PATH = "/api/v1/onboarding/onboarding";
 
 // ============ PARTICIPANTS ============
 
@@ -124,8 +125,8 @@ export const participantDomainsApi = {
   /**
    * Delete a participant domain
    */
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`${BASE_PATH}/participant-domains/${id}`);
+  delete: async (participantId: string, domainId: string): Promise<void> => {
+    await apiClient.delete(`${BASE_PATH}/participants/${participantId}/domains/${domainId}`);
   },
 };
 

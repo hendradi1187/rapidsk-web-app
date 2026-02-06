@@ -19,7 +19,8 @@ import {
   AgreementListResponse,
 } from "../types";
 
-const BASE_PATH = "/api/v1";
+// Backend path: /api/v1/policy-contract/{domain_id}/...
+const BASE_PATH = "/api/v1/policy-contract";
 
 // ============ DATASET POLICIES ============
 
@@ -162,7 +163,7 @@ export const contractPoliciesApi = {
    */
   create: async (domainId: string, data: ContractPolicyCreateRequest): Promise<ContractPolicy> => {
     const response = await apiClient.post<ContractPolicy>(
-      `${BASE_PATH}/${domainId}/contract-policiess`, // Note: typo in the actual API endpoint
+      `${BASE_PATH}/${domainId}/contract-policies`,
       data
     );
     return response.data;

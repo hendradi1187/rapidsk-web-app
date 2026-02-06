@@ -1,18 +1,65 @@
-import { Check, Circle, ArrowRight, Rocket } from "lucide-react";
+import { Check, Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useOrganizations } from "@/api/hooks/useOrganizations";
+import { useAllDomains } from "@/api/hooks/useDomains";
+import { useParticipants } from "@/api/hooks/useParticipants";
+import { useMemo } from "react";
 
-const steps = [
-  { id: 1, title: "Setup Organization", description: "Create org & participants", status: "completed" },
-  { id: 2, title: "Define Vocabulary", description: "Metadata schema & terms", status: "completed" },
-  { id: 3, title: "Register Dataset", description: "Add GeoServer endpoints", status: "current" },
-  { id: 4, title: "Create Contract", description: "Define policies", status: "upcoming" },
-  { id: 5, title: "Setup Transfer", description: "Configure data channels", status: "upcoming" },
-  { id: 6, title: "Enable Monitoring", description: "Audit & compliance", status: "upcoming" },
+const stepDefinitions = [
+  { id: 1, title: "Setup Organization", description: "Create org & participants" },
+  { id: 2, title: "Define Domain", description: "Create governance domain" },
+  { id: 3, title: "Register Dataset", description: "Add GeoServer endpoints" },
+  { id: 4, title: "Create Contract", description: "Define policies" },
+  { id: 5, title: "Setup Transfer", description: "Configure data channels" },
+  { id: 6, title: "Enable Monitoring", description: "Audit & compliance" },
 ];
 
 export const OnboardingFlow = () => {
+  const { data: orgsData } = useOrganizations({ limit: 1 });
+  const { data: domainsData } = useAllDomains({ limit: 1 });
+  const { data: participantsData } = useParticipants({ limit: 1 });
+
+  const { steps, completedCount } = useMemo(() => {
+    const hasOrgs = (orgsData?.total ?? 0) > 0;
+    const hasDomains = (domainsData?.total ?? 0) > 0;
+    const hasParticipants = (participantsData?.total ?? 0) > 0;
+
+    // Determine step statuses based on real data
+    const statuses: Array<"completed" | "current" | "upcoming"> = [];
+
+    // Step 1: Organization - completed if org + participant exist
+    statuses.push(hasOrgs && hasParticipants ? "completed" : hasOrgs ? "completed" : "current");
+
+    // Step 2: Domain - completed if domains exist
+    if (statuses[0] === "completed") {
+      statuses.push(hasDomains ? "completed" : "current");
+    } else {
+      statuses.push("upcoming");
+    }
+
+    // Steps 3-6: can't be determined without domain-scoped queries
+    for (let i = 2; i < 6; i++) {
+      if (statuses[i - 1] === "completed") {
+        statuses.push("current");
+      } else {
+        statuses.push("upcoming");
+      }
+    }
+
+    const completed = statuses.filter((s) => s === "completed").length;
+    return {
+      steps: stepDefinitions.map((def, i) => ({ ...def, status: statuses[i] })),
+      completedCount: completed,
+    };
+  }, [orgsData, domainsData, participantsData]);
+
+  const progressPercent =
+    completedCount === 0
+      ? 0
+      : Math.round((completedCount / stepDefinitions.length) * 100);
+
   return (
     <div className="bg-card rounded-xl border border-border p-6">
       <div className="flex items-center justify-between mb-6">
@@ -29,7 +76,7 @@ export const OnboardingFlow = () => {
         <div className="absolute top-5 left-5 right-5 h-0.5 bg-border" />
         <div
           className="absolute top-5 left-5 h-0.5 bg-accent transition-all duration-500"
-          style={{ width: "33%" }}
+          style={{ width: `${progressPercent}%` }}
         />
 
         {/* Steps */}

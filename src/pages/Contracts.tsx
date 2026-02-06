@@ -20,6 +20,10 @@ import {
   MoreHorizontal,
   Download,
   Building2,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Layers,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -57,195 +61,22 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-
-interface Contract {
-  id: number;
-  title: string;
-  provider: string;
-  consumer: string;
-  domain: string;
-  policy: string;
-  status: string;
-  startDate: string;
-  endDate: string;
-}
-
-interface Policy {
-  id: number;
-  name: string;
-  description: string;
-  datasets: number;
-  active: boolean;
-}
-
-interface Agreement {
-  id: number;
-  contractId: number;
-  contractTitle: string;
-  provider: string;
-  consumer: string;
-  signedDate: string;
-  documentUrl: string;
-  status: string;
-}
-
-const initialContracts: Contract[] = [
-  {
-    id: 1,
-    title: "Lifting Data Access Agreement",
-    provider: "PHE ONWJ",
-    consumer: "SKK Migas",
-    domain: "Lifting Data",
-    policy: "Internal monitoring only",
-    status: "active",
-    startDate: "2025-01-01",
-    endDate: "2025-12-31",
-  },
-  {
-    id: 2,
-    title: "Reservoir Data Sharing Contract",
-    provider: "Pertamina Hulu Energi",
-    consumer: "SKK Migas",
-    domain: "Reservoir Data",
-    policy: "Analysis and reporting",
-    status: "active",
-    startDate: "2025-03-15",
-    endDate: "2026-03-14",
-  },
-  {
-    id: 3,
-    title: "Daily Production Stream",
-    provider: "Chevron Indonesia",
-    consumer: "SKK Migas",
-    domain: "Production Data",
-    policy: "Real-time monitoring",
-    status: "pending",
-    startDate: "2025-02-01",
-    endDate: "2026-01-31",
-  },
-  {
-    id: 4,
-    title: "Well Test Data Exchange",
-    provider: "Medco E&P",
-    consumer: "SKK Migas",
-    domain: "Well Test",
-    policy: "Quarterly reports only",
-    status: "draft",
-    startDate: "-",
-    endDate: "-",
-  },
-  {
-    id: 5,
-    title: "Seismic Data Access Agreement",
-    provider: "PHE ONWJ",
-    consumer: "Kementerian ESDM",
-    domain: "Exploration",
-    policy: "Analysis and reporting",
-    status: "active",
-    startDate: "2025-06-01",
-    endDate: "2026-05-31",
-  },
-  {
-    id: 6,
-    title: "Field Development Data Sharing",
-    provider: "ExxonMobil Indonesia",
-    consumer: "SKK Migas",
-    domain: "Production Data",
-    policy: "Internal monitoring only",
-    status: "expired",
-    startDate: "2024-01-01",
-    endDate: "2024-12-31",
-  },
-];
-
-const initialPolicies: Policy[] = [
-  {
-    id: 1,
-    name: "Internal Monitoring Only",
-    description: "Data used exclusively for SKK Migas internal monitoring purposes",
-    datasets: 24,
-    active: true,
-  },
-  {
-    id: 2,
-    name: "Analysis and Reporting",
-    description: "Data can be used for analysis and official reports",
-    datasets: 18,
-    active: true,
-  },
-  {
-    id: 3,
-    name: "Real-time Access",
-    description: "Streaming data access with <1 hour latency requirement",
-    datasets: 8,
-    active: true,
-  },
-  {
-    id: 4,
-    name: "Quarterly Reports Only",
-    description: "Data access limited to quarterly reporting cycles",
-    datasets: 5,
-    active: true,
-  },
-];
-
-const initialAgreements: Agreement[] = [
-  {
-    id: 1,
-    contractId: 1,
-    contractTitle: "Lifting Data Access Agreement",
-    provider: "PHE ONWJ",
-    consumer: "SKK Migas",
-    signedDate: "2025-01-01",
-    documentUrl: "/agreements/agreement-001.pdf",
-    status: "signed",
-  },
-  {
-    id: 2,
-    contractId: 2,
-    contractTitle: "Reservoir Data Sharing Contract",
-    provider: "Pertamina Hulu Energi",
-    consumer: "SKK Migas",
-    signedDate: "2025-03-15",
-    documentUrl: "/agreements/agreement-002.pdf",
-    status: "signed",
-  },
-  {
-    id: 3,
-    contractId: 5,
-    contractTitle: "Seismic Data Access Agreement",
-    provider: "PHE ONWJ",
-    consumer: "Kementerian ESDM",
-    signedDate: "2025-06-01",
-    documentUrl: "/agreements/agreement-003.pdf",
-    status: "signed",
-  },
-];
-
-const providers = [
-  "PHE ONWJ",
-  "Pertamina Hulu Energi",
-  "Chevron Indonesia",
-  "Medco E&P",
-  "ExxonMobil Indonesia",
-  "ConocoPhillips",
-];
-
-const consumers = ["SKK Migas", "Kementerian ESDM"];
-
-const domains = [
-  "Lifting Data",
-  "Reservoir Data",
-  "Production Data",
-  "Well Test",
-  "Exploration",
-];
+import { useAllDomains } from "@/api/hooks/useDomains";
+import {
+  useContracts,
+  useCreateContract,
+  useDeleteContract,
+  useContractPolicies,
+  useCreateContractPolicy,
+  useAgreements,
+} from "@/api/hooks/useContracts";
+import { Contract, ContractPolicy, Agreement } from "@/api/types";
 
 const Contracts = () => {
+  // Domain selection
+  const [selectedDomainId, setSelectedDomainId] = useState<string>("");
+
   // State management
-  const [contracts, setContracts] = useState<Contract[]>(initialContracts);
-  const [policies, setPolicies] = useState<Policy[]>(initialPolicies);
-  const [agreements] = useState<Agreement[]>(initialAgreements);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("contracts");
 
@@ -255,7 +86,6 @@ const Contracts = () => {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
-  const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
   // Form states
@@ -263,9 +93,7 @@ const Contracts = () => {
     title: "",
     provider: "",
     consumer: "",
-    domain: "",
     policy: "",
-    status: "draft",
     startDate: "",
     endDate: "",
   });
@@ -273,48 +101,80 @@ const Contracts = () => {
   const [policyForm, setPolicyForm] = useState({
     name: "",
     description: "",
-    active: true,
+    data_clasification: "INTERNAL",
+    effective_from: "",
+    effective_to: "",
   });
+
+  // API hooks
+  const { data: domainsData, isLoading: isLoadingDomains } = useAllDomains({ limit: 100 });
+  const {
+    data: contractsData,
+    isLoading: isLoadingContracts,
+    isError: isContractsError,
+    refetch: refetchContracts,
+  } = useContracts(selectedDomainId, { limit: 100 });
+  const {
+    data: policiesData,
+    isLoading: isLoadingPolicies,
+    refetch: refetchPolicies,
+  } = useContractPolicies(selectedDomainId, { limit: 100 });
+  const {
+    data: agreementsData,
+    isLoading: isLoadingAgreements,
+    refetch: refetchAgreements,
+  } = useAgreements(selectedDomainId, { limit: 100 });
+
+  const createContractMutation = useCreateContract();
+  const deleteContractMutation = useDeleteContract();
+  const createPolicyMutation = useCreateContractPolicy();
 
   // Filter contracts based on search
   const filteredContracts = useMemo(() => {
-    return contracts.filter(
+    if (!contractsData?.data) return [];
+    return contractsData.data.filter(
       (contract) =>
-        contract.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        contract.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        contract.consumer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        contract.domain.toLowerCase().includes(searchQuery.toLowerCase())
+        contract.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contract.provider?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contract.consumer?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [contracts, searchQuery]);
+  }, [contractsData?.data, searchQuery]);
 
   // Filter policies based on search
   const filteredPolicies = useMemo(() => {
-    return policies.filter(
+    if (!policiesData?.data) return [];
+    return policiesData.data.filter(
       (policy) =>
         policy.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        policy.description.toLowerCase().includes(searchQuery.toLowerCase())
+        policy.description?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [policies, searchQuery]);
+  }, [policiesData?.data, searchQuery]);
 
   // Filter agreements based on search
   const filteredAgreements = useMemo(() => {
-    return agreements.filter(
-      (agreement) =>
-        agreement.contractTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        agreement.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        agreement.consumer.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [agreements, searchQuery]);
+    if (!agreementsData?.data) return [];
+    return agreementsData.data;
+  }, [agreementsData?.data]);
 
   // Calculate stats dynamically
   const stats = useMemo(() => {
+    const contracts = contractsData?.data || [];
     return {
       active: contracts.filter((c) => c.status === "active").length,
       pending: contracts.filter((c) => c.status === "pending").length,
       draft: contracts.filter((c) => c.status === "draft").length,
       expired: contracts.filter((c) => c.status === "expired").length,
     };
-  }, [contracts]);
+  }, [contractsData?.data]);
+
+  // Format date
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
   // Reset contract form
   const resetContractForm = () => {
@@ -322,9 +182,7 @@ const Contracts = () => {
       title: "",
       provider: "",
       consumer: "",
-      domain: "",
       policy: "",
-      status: "draft",
       startDate: "",
       endDate: "",
     });
@@ -337,76 +195,80 @@ const Contracts = () => {
     setPolicyForm({
       name: "",
       description: "",
-      active: true,
+      data_clasification: "INTERNAL",
+      effective_from: "",
+      effective_to: "",
     });
-    setIsEditMode(false);
-    setSelectedPolicy(null);
   };
 
-  // Handle add/edit contract
-  const handleSaveContract = () => {
+  // Handle add contract
+  const handleSaveContract = async () => {
     if (!contractForm.title.trim()) {
       toast.error("Contract title is required");
       return;
     }
 
-    if (isEditMode && selectedContract) {
-      setContracts(
-        contracts.map((c) =>
-          c.id === selectedContract.id
-            ? { ...c, ...contractForm }
-            : c
-        )
-      );
-      toast.success("Contract updated successfully");
-    } else {
-      const newContract: Contract = {
-        id: Math.max(...contracts.map((c) => c.id)) + 1,
-        ...contractForm,
-      };
-      setContracts([...contracts, newContract]);
+    try {
+      await createContractMutation.mutateAsync({
+        domainId: selectedDomainId,
+        data: {
+          title: contractForm.title,
+          provider: contractForm.provider,
+          consumer: contractForm.consumer,
+          domain: "",
+          policy: contractForm.policy,
+          startDate: contractForm.startDate,
+          endDate: contractForm.endDate,
+        },
+      });
       toast.success("Contract created successfully");
+      setIsContractDialogOpen(false);
+      resetContractForm();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to create contract");
     }
-    setIsContractDialogOpen(false);
-    resetContractForm();
   };
 
-  // Handle add/edit policy
-  const handleSavePolicy = () => {
+  // Handle add policy
+  const handleSavePolicy = async () => {
     if (!policyForm.name.trim()) {
       toast.error("Policy name is required");
       return;
     }
 
-    if (isEditMode && selectedPolicy) {
-      setPolicies(
-        policies.map((p) =>
-          p.id === selectedPolicy.id
-            ? { ...p, ...policyForm }
-            : p
-        )
-      );
-      toast.success("Policy updated successfully");
-    } else {
-      const newPolicy: Policy = {
-        id: Math.max(...policies.map((p) => p.id)) + 1,
-        ...policyForm,
-        datasets: 0,
-      };
-      setPolicies([...policies, newPolicy]);
+    try {
+      await createPolicyMutation.mutateAsync({
+        domainId: selectedDomainId,
+        data: {
+          name: policyForm.name,
+          description: policyForm.description || null,
+          data_clasification: policyForm.data_clasification,
+          effective_from: policyForm.effective_from,
+          effective_to: policyForm.effective_to,
+        },
+      });
       toast.success("Policy created successfully");
+      setIsPolicyDialogOpen(false);
+      resetPolicyForm();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to create policy");
     }
-    setIsPolicyDialogOpen(false);
-    resetPolicyForm();
   };
 
   // Handle delete contract
-  const handleDeleteContract = () => {
+  const handleDeleteContract = async () => {
     if (!selectedContract) return;
-    setContracts(contracts.filter((c) => c.id !== selectedContract.id));
-    setIsDeleteDialogOpen(false);
-    setSelectedContract(null);
-    toast.success("Contract deleted successfully");
+    try {
+      await deleteContractMutation.mutateAsync({
+        domainId: selectedDomainId,
+        id: String(selectedContract.id),
+      });
+      setIsDeleteDialogOpen(false);
+      setSelectedContract(null);
+      toast.success("Contract deleted successfully");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to delete contract");
+    }
   };
 
   // Handle view contract
@@ -415,39 +277,126 @@ const Contracts = () => {
     setIsViewDialogOpen(true);
   };
 
-  // Handle edit contract
-  const handleEditContract = (contract: Contract) => {
-    setSelectedContract(contract);
-    setContractForm({
-      title: contract.title,
-      provider: contract.provider,
-      consumer: contract.consumer,
-      domain: contract.domain,
-      policy: contract.policy,
-      status: contract.status,
-      startDate: contract.startDate,
-      endDate: contract.endDate,
-    });
-    setIsEditMode(true);
-    setIsContractDialogOpen(true);
-  };
-
-  // Handle edit policy
-  const handleEditPolicy = (policy: Policy) => {
-    setSelectedPolicy(policy);
-    setPolicyForm({
-      name: policy.name,
-      description: policy.description,
-      active: policy.active,
-    });
-    setIsEditMode(true);
-    setIsPolicyDialogOpen(true);
-  };
-
   // Handle download agreement
   const handleDownloadAgreement = (agreement: Agreement) => {
-    toast.success(`Downloading ${agreement.contractTitle}...`);
+    toast.success(`Downloading agreement...`);
   };
+
+  // Refresh data
+  const handleRefresh = () => {
+    refetchContracts();
+    refetchPolicies();
+    refetchAgreements();
+  };
+
+  const selectedDomain = domainsData?.data?.find((d) => d.id === selectedDomainId);
+
+  // No domain selected state
+  if (!selectedDomainId) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Contracts & Policies"
+          subtitle="Manage data sharing agreements and access policies"
+        />
+        <div className="p-6 space-y-6">
+          {/* Domain Selector */}
+          <div className="bg-card rounded-xl border border-border p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Layers className="w-5 h-5 text-accent" />
+              <h3 className="font-semibold">Select Domain</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Please select a domain to view and manage contracts.
+            </p>
+            <Select value={selectedDomainId} onValueChange={setSelectedDomainId}>
+              <SelectTrigger className="w-full md:w-96">
+                <SelectValue placeholder="Select a domain..." />
+              </SelectTrigger>
+              <SelectContent>
+                {isLoadingDomains ? (
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Loading domains...
+                  </div>
+                ) : domainsData?.data?.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground">
+                    No domains available. Please create a domain first.
+                  </div>
+                ) : (
+                  domainsData?.data?.map((domain) => (
+                    <SelectItem key={domain.id} value={domain.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{domain.name}</span>
+                        <Badge variant="outline" className="text-xs font-mono">
+                          {domain.code}
+                        </Badge>
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Empty State */}
+          <div className="flex items-center justify-center h-[40vh]">
+            <div className="text-center">
+              <FileText className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-lg font-medium text-muted-foreground">Select a domain to view contracts</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Contracts are organized by domain
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (isLoadingContracts || isLoadingPolicies || isLoadingAgreements) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Contracts & Policies"
+          subtitle="Manage data sharing agreements and access policies"
+        />
+        <div className="p-6">
+          <div className="flex items-center justify-center h-[60vh]">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
+              <p className="mt-2 text-muted-foreground">Loading contracts...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isContractsError) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Contracts & Policies"
+          subtitle="Manage data sharing agreements and access policies"
+        />
+        <div className="p-6">
+          <div className="flex items-center justify-center h-[60vh]">
+            <div className="text-center">
+              <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
+              <p className="mt-2 text-lg font-medium">Failed to load contracts</p>
+              <Button onClick={handleRefresh} variant="outline" className="mt-4">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -456,25 +405,61 @@ const Contracts = () => {
         subtitle="Manage data sharing agreements and access policies"
       />
       <div className="p-6 space-y-6">
+        {/* Domain Selector */}
+        <div className="flex items-center gap-4 p-4 bg-card rounded-xl border border-border">
+          <div className="flex items-center gap-2">
+            <Layers className="w-5 h-5 text-accent" />
+            <span className="text-sm font-medium">Domain:</span>
+          </div>
+          <Select value={selectedDomainId} onValueChange={setSelectedDomainId}>
+            <SelectTrigger className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {domainsData?.data?.map((domain) => (
+                <SelectItem key={domain.id} value={domain.id}>
+                  <div className="flex items-center gap-2">
+                    <span>{domain.name}</span>
+                    <Badge variant="outline" className="text-xs font-mono">
+                      {domain.code}
+                    </Badge>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedDomain && (
+            <Badge className={selectedDomain.status === "ACTIVE" ? "badge-active" : "badge-inactive"}>
+              {selectedDomain.status}
+            </Badge>
+          )}
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
         <Tabs defaultValue="contracts" className="space-y-6" value={activeTab} onValueChange={setActiveTab}>
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
             <TabsList className="bg-muted">
               <TabsTrigger value="contracts">
                 Contracts
                 <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                  {contracts.length}
+                  {contractsData?.total || 0}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="policies">
                 Policies
                 <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                  {policies.length}
+                  {policiesData?.total || 0}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="agreements">
                 Agreements
                 <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                  {agreements.length}
+                  {agreementsData?.total || 0}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -572,7 +557,7 @@ const Contracts = () => {
                 <div className="text-center py-12 text-muted-foreground">
                   <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p className="text-lg font-medium">No contracts found</p>
-                  <p className="text-sm">Try adjusting your search criteria</p>
+                  <p className="text-sm">Create your first contract to get started</p>
                 </div>
               ) : (
                 filteredContracts.map((contract, index) => (
@@ -588,18 +573,19 @@ const Contracts = () => {
                             <FileText className="w-6 h-6 text-accent" />
                           </div>
                           <div>
-                            <h3 className="font-semibold">{contract.title}</h3>
+                            <h3 className="font-semibold">{contract.title || contract.name}</h3>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                               <span>{contract.provider}</span>
                               <ArrowRight className="w-4 h-4" />
                               <span>{contract.consumer}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-2">
-                              <Badge variant="outline">{contract.domain}</Badge>
-                              <Badge variant="secondary" className="text-xs">
-                                <Shield className="w-3 h-3 mr-1" />
-                                {contract.policy}
-                              </Badge>
+                              {contract.policy && (
+                                <Badge variant="secondary" className="text-xs">
+                                  <Shield className="w-3 h-3 mr-1" />
+                                  {contract.policy}
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -607,9 +593,9 @@ const Contracts = () => {
                           <div className="text-right text-sm">
                             <div className="flex items-center gap-1 text-muted-foreground">
                               <Calendar className="w-4 h-4" />
-                              <span>{contract.startDate}</span>
+                              <span>{contract.startDate || "-"}</span>
                               <span>→</span>
-                              <span>{contract.endDate}</span>
+                              <span>{contract.endDate || "-"}</span>
                             </div>
                           </div>
                           <Badge
@@ -643,10 +629,6 @@ const Contracts = () => {
                                 <Eye className="w-4 h-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEditContract(contract)}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit Contract
-                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => {
@@ -675,7 +657,7 @@ const Contracts = () => {
                 <div className="col-span-full text-center py-12 text-muted-foreground">
                   <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p className="text-lg font-medium">No policies found</p>
-                  <p className="text-sm">Try adjusting your search criteria</p>
+                  <p className="text-sm">Create your first policy to get started</p>
                 </div>
               ) : (
                 <>
@@ -688,26 +670,18 @@ const Contracts = () => {
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-base">{policy.name}</CardTitle>
-                          <Badge className={policy.active ? "badge-active" : "badge-inactive"}>
-                            {policy.active ? "Active" : "Inactive"}
-                          </Badge>
+                          <Badge variant="outline">{policy.data_clasification}</Badge>
                         </div>
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm text-muted-foreground mb-4">
-                          {policy.description}
+                          {policy.description || "No description"}
                         </p>
-                        <div className="flex items-center justify-between pt-4 border-t border-border">
-                          <span className="text-sm text-muted-foreground">
-                            {policy.datasets} datasets using this policy
+                        <div className="flex items-center justify-between pt-4 border-t border-border text-sm text-muted-foreground">
+                          <span>
+                            {policy.effective_from && formatDate(policy.effective_from)} -{" "}
+                            {policy.effective_to && formatDate(policy.effective_to)}
                           </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditPolicy(policy)}
-                          >
-                            Edit
-                          </Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -751,16 +725,12 @@ const Contracts = () => {
                             <CheckCircle2 className="w-6 h-6 text-success" />
                           </div>
                           <div>
-                            <h3 className="font-semibold">{agreement.contractTitle}</h3>
+                            <h3 className="font-semibold">Agreement #{agreement.id.slice(0, 8)}</h3>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                              <Building2 className="w-4 h-4" />
-                              <span>{agreement.provider}</span>
-                              <ArrowRight className="w-4 h-4" />
-                              <span>{agreement.consumer}</span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                               <Calendar className="w-4 h-4" />
-                              <span>Signed on {agreement.signedDate}</span>
+                              <span>
+                                {formatDate(agreement.effective_from)} - {formatDate(agreement.effective_to)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -772,7 +742,7 @@ const Contracts = () => {
                             onClick={() => handleDownloadAgreement(agreement)}
                           >
                             <Download className="w-4 h-4 mr-2" />
-                            Download PDF
+                            Download
                           </Button>
                         </div>
                       </div>
@@ -784,13 +754,13 @@ const Contracts = () => {
           </TabsContent>
         </Tabs>
 
-        {/* New/Edit Contract Dialog */}
+        {/* New Contract Dialog */}
         <Dialog open={isContractDialogOpen} onOpenChange={setIsContractDialogOpen}>
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
-              <DialogTitle>{isEditMode ? "Edit Contract" : "New Contract"}</DialogTitle>
+              <DialogTitle>New Contract</DialogTitle>
               <DialogDescription>
-                {isEditMode ? "Update contract details" : "Create a new data sharing contract"}
+                Create a new data sharing contract
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -805,79 +775,29 @@ const Contracts = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Provider (KKKS) *</Label>
-                  <Select
+                  <Label>Provider *</Label>
+                  <Input
+                    placeholder="Provider name"
                     value={contractForm.provider}
-                    onValueChange={(v) => setContractForm({ ...contractForm, provider: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providers.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setContractForm({ ...contractForm, provider: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Consumer *</Label>
-                  <Select
+                  <Input
+                    placeholder="Consumer name"
                     value={contractForm.consumer}
-                    onValueChange={(v) => setContractForm({ ...contractForm, consumer: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select consumer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {consumers.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setContractForm({ ...contractForm, consumer: e.target.value })}
+                  />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Domain *</Label>
-                  <Select
-                    value={contractForm.domain}
-                    onValueChange={(v) => setContractForm({ ...contractForm, domain: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select domain" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {domains.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Policy *</Label>
-                  <Select
-                    value={contractForm.policy}
-                    onValueChange={(v) => setContractForm({ ...contractForm, policy: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select policy" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {policies.map((p) => (
-                        <SelectItem key={p.id} value={p.name}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Policy</Label>
+                <Input
+                  placeholder="Policy name"
+                  value={contractForm.policy}
+                  onChange={(e) => setContractForm({ ...contractForm, policy: e.target.value })}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -899,42 +819,30 @@ const Contracts = () => {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={contractForm.status}
-                  onValueChange={(v) => setContractForm({ ...contractForm, status: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="expired">Expired</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsContractDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveContract} className="bg-accent hover:bg-accent/90">
-                {isEditMode ? "Save Changes" : "Create Contract"}
+              <Button
+                onClick={handleSaveContract}
+                className="bg-accent hover:bg-accent/90"
+                disabled={createContractMutation.isPending}
+              >
+                {createContractMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Create Contract
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* New/Edit Policy Dialog */}
+        {/* New Policy Dialog */}
         <Dialog open={isPolicyDialogOpen} onOpenChange={setIsPolicyDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>{isEditMode ? "Edit Policy" : "New Policy"}</DialogTitle>
+              <DialogTitle>New Policy</DialogTitle>
               <DialogDescription>
-                {isEditMode ? "Update policy details" : "Create a new data access policy"}
+                Create a new contract policy
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -958,27 +866,52 @@ const Contracts = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Status</Label>
+                <Label>Data Classification</Label>
                 <Select
-                  value={policyForm.active ? "active" : "inactive"}
-                  onValueChange={(v) => setPolicyForm({ ...policyForm, active: v === "active" })}
+                  value={policyForm.data_clasification}
+                  onValueChange={(v) => setPolicyForm({ ...policyForm, data_clasification: v })}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="PUBLIC">Public</SelectItem>
+                    <SelectItem value="INTERNAL">Internal</SelectItem>
+                    <SelectItem value="CONFIDENTIAL">Confidential</SelectItem>
+                    <SelectItem value="RESTRICTED">Restricted</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Effective From</Label>
+                  <Input
+                    type="date"
+                    value={policyForm.effective_from}
+                    onChange={(e) => setPolicyForm({ ...policyForm, effective_from: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Effective To</Label>
+                  <Input
+                    type="date"
+                    value={policyForm.effective_to}
+                    onChange={(e) => setPolicyForm({ ...policyForm, effective_to: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsPolicyDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSavePolicy} className="bg-accent hover:bg-accent/90">
-                {isEditMode ? "Save Changes" : "Create Policy"}
+              <Button
+                onClick={handleSavePolicy}
+                className="bg-accent hover:bg-accent/90"
+                disabled={createPolicyMutation.isPending}
+              >
+                {createPolicyMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Create Policy
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -997,9 +930,8 @@ const Contracts = () => {
                     <FileText className="w-8 h-8 text-accent" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold">{selectedContract.title}</h3>
+                    <h3 className="text-lg font-semibold">{selectedContract.title || selectedContract.name}</h3>
                     <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline">{selectedContract.domain}</Badge>
                       <Badge
                         className={
                           selectedContract.status === "active"
@@ -1030,13 +962,13 @@ const Contracts = () => {
                     <p className="text-sm text-muted-foreground">Policy</p>
                     <Badge variant="secondary" className="mt-1">
                       <Shield className="w-3 h-3 mr-1" />
-                      {selectedContract.policy}
+                      {selectedContract.policy || "N/A"}
                     </Badge>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Period</p>
                     <p className="font-medium">
-                      {selectedContract.startDate} → {selectedContract.endDate}
+                      {selectedContract.startDate || "-"} → {selectedContract.endDate || "-"}
                     </p>
                   </div>
                 </div>
@@ -1045,15 +977,6 @@ const Contracts = () => {
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
                 Close
-              </Button>
-              <Button
-                onClick={() => {
-                  setIsViewDialogOpen(false);
-                  if (selectedContract) handleEditContract(selectedContract);
-                }}
-                className="bg-accent hover:bg-accent/90"
-              >
-                Edit Contract
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1073,7 +996,9 @@ const Contracts = () => {
               <AlertDialogAction
                 onClick={handleDeleteContract}
                 className="bg-destructive hover:bg-destructive/90"
+                disabled={deleteContractMutation.isPending}
               >
+                {deleteContractMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>

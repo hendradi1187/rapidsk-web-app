@@ -5,14 +5,20 @@ import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { ParticipantsList } from "@/components/dashboard/ParticipantsList";
 import {
   Building2,
-  Database,
-  FileText,
+  Layers,
+  Users,
   ArrowRightLeft,
   Shield,
-  TrendingUp,
 } from "lucide-react";
+import { useOrganizations } from "@/api/hooks/useOrganizations";
+import { useAllDomains } from "@/api/hooks/useDomains";
+import { useParticipants } from "@/api/hooks/useParticipants";
 
 const Dashboard = () => {
+  const { data: orgsData } = useOrganizations({ limit: 1 });
+  const { data: domainsData } = useAllDomains({ limit: 1 });
+  const { data: participantsData } = useParticipants({ limit: 1 });
+
   return (
     <div className="min-h-screen">
       <Header
@@ -24,33 +30,33 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Organizations"
-            value="12"
-            change="+2 this month"
-            changeType="positive"
+            value={orgsData?.total ?? "—"}
+            change="Total registered"
+            changeType="neutral"
             icon={Building2}
             iconColor="bg-info/10 text-info"
           />
           <StatCard
-            title="Active Datasets"
-            value="156"
-            change="+24 this week"
-            changeType="positive"
-            icon={Database}
+            title="Domains"
+            value={domainsData?.total ?? "—"}
+            change="Total active"
+            changeType="neutral"
+            icon={Layers}
             iconColor="bg-accent/10 text-accent"
           />
           <StatCard
-            title="Active Contracts"
-            value="48"
-            change="3 pending approval"
+            title="Participants"
+            value={participantsData?.total ?? "—"}
+            change="Total onboarded"
             changeType="neutral"
-            icon={FileText}
+            icon={Users}
             iconColor="bg-success/10 text-success"
           />
           <StatCard
             title="Data Transfers"
-            value="2.4K"
-            change="+18% vs last month"
-            changeType="positive"
+            value="—"
+            change="No transfer API"
+            changeType="neutral"
             icon={ArrowRightLeft}
             iconColor="bg-purple-100 text-purple-600"
           />

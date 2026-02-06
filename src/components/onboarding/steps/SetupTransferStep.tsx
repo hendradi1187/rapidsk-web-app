@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRightLeft, Database, Clock, Globe } from "lucide-react";
+import { ArrowRightLeft, Database, Clock, Globe, Lock } from "lucide-react";
 import {
   Form,
   FormControl,
@@ -18,18 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useOnboarding } from "../OnboardingContext";
 import { WizardNavigation } from "../WizardNavigation";
 import { transferSchema, TransferFormValues } from "../schemas/onboarding.schemas";
 import { useEffect } from "react";
-
-const datasets = [
-  { value: "well-log-2024", label: "Well Log Data 2024" },
-  { value: "seismic-survey", label: "Seismic Survey Data" },
-  { value: "production-data", label: "Production Data Q1" },
-  { value: "reservoir-model", label: "Reservoir Model" },
-];
 
 export const SetupTransferStep = () => {
   const { formData, updateStepData, markStepComplete } = useOnboarding();
@@ -37,12 +31,15 @@ export const SetupTransferStep = () => {
   const form = useForm<TransferFormValues>({
     resolver: zodResolver(transferSchema),
     defaultValues: formData.transfer || {
-      transferName: "",
-      sourceDataset: "",
+      name: "",
+      from: "",
+      to: "",
+      type: undefined,
       targetEndpoint: "",
       protocol: undefined,
       scheduleType: undefined,
       cronExpression: "",
+      encrypted: true,
     },
   });
 
@@ -79,13 +76,34 @@ export const SetupTransferStep = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="transferName"
+                name="name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Nama Transfer *</FormLabel>
                     <FormControl>
                       <Input placeholder="Contoh: Daily Sync to SKK Migas" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipe Transfer *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih tipe transfer" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="streaming">Streaming (Real-time)</SelectItem>
+                        <SelectItem value="batch">Batch (Terjadwal)</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -106,42 +124,8 @@ export const SetupTransferStep = () => {
                         <SelectItem value="HTTPS">HTTPS</SelectItem>
                         <SelectItem value="HTTP">HTTP</SelectItem>
                         <SelectItem value="S3">Amazon S3</SelectItem>
-                        <SelectItem value="FTP">FTP/SFTP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </div>
-
-          {/* Source & Target Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Database className="w-4 h-4 text-accent" />
-              Source & Target
-            </div>
-            <Separator />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="sourceDataset"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Source Dataset *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih dataset" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {datasets.map((ds) => (
-                          <SelectItem key={ds.value} value={ds.value}>
-                            {ds.label}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="FTP">FTP</SelectItem>
+                        <SelectItem value="SFTP">SFTP</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -157,6 +141,45 @@ export const SetupTransferStep = () => {
                     <FormControl>
                       <Input placeholder="https://api.target.com/ingest" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          {/* Source & Target Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Database className="w-4 h-4 text-accent" />
+              Sumber & Tujuan
+            </div>
+            <Separator />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="from"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sumber (From) *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Contoh: PHE ONWJ" {...field} />
+                    </FormControl>
+                    <FormDescription>Nama organisasi atau sistem sumber data</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="to"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tujuan (To) *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Contoh: SKK Migas" {...field} />
+                    </FormControl>
+                    <FormDescription>Nama organisasi atau sistem tujuan data</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -215,14 +238,40 @@ export const SetupTransferStep = () => {
             </div>
           </div>
 
+          {/* Security Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Lock className="w-4 h-4 text-accent" />
+              Keamanan
+            </div>
+            <Separator />
+            <FormField
+              control={form.control}
+              name="encrypted"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Enkripsi Transfer</FormLabel>
+                    <FormDescription>
+                      Enkripsi data selama proses transfer menggunakan TLS 1.3
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+
           {/* Info Box */}
           <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg border border-border">
             <Globe className="w-5 h-5 text-accent mt-0.5" />
             <div>
               <p className="text-sm font-medium">Keamanan Transfer</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Semua transfer data akan dienkripsi menggunakan TLS 1.3. Pastikan target endpoint
-                mendukung HTTPS untuk keamanan optimal.
+                Pastikan target endpoint mendukung protokol yang dipilih.
+                Untuk keamanan optimal, gunakan HTTPS atau SFTP dengan enkripsi aktif.
               </p>
             </div>
           </div>

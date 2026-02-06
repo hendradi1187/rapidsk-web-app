@@ -63,19 +63,20 @@ export const organizationsApi = {
    * Delete an organization
    */
   delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`${BASE_PATH}/organizations/organizations/${id}`);
+    await apiClient.delete(`${BASE_PATH}/organizations/${id}`);
   },
 };
 
 // ============ DOMAINS ============
+// Backend path: /api/v1/governance/organizations/{organization_id}/domains
 
 export const domainsApi = {
   /**
-   * List all domains
+   * List domains for an organization
    */
-  list: async (params?: PaginationParams): Promise<DomainListResponse> => {
+  list: async (organizationId: string, params?: PaginationParams): Promise<DomainListResponse> => {
     const response = await apiClient.get<DomainListResponse>(
-      `${BASE_PATH}/domains/`,
+      `${BASE_PATH}/organizations/${organizationId}/domains`,
       { params }
     );
     return response.data;
@@ -84,17 +85,19 @@ export const domainsApi = {
   /**
    * Get domain by ID
    */
-  getById: async (id: string): Promise<Domain> => {
-    const response = await apiClient.get<Domain>(`${BASE_PATH}/domains/${id}`);
+  getById: async (organizationId: string, id: string): Promise<Domain> => {
+    const response = await apiClient.get<Domain>(
+      `${BASE_PATH}/organizations/${organizationId}/domains/${id}`
+    );
     return response.data;
   },
 
   /**
-   * Create a new domain
+   * Create a new domain under an organization
    */
-  create: async (data: DomainCreateRequest): Promise<Domain> => {
+  create: async (organizationId: string, data: Omit<DomainCreateRequest, 'organization_id'>): Promise<Domain> => {
     const response = await apiClient.post<Domain>(
-      `${BASE_PATH}/domains/`,
+      `${BASE_PATH}/organizations/${organizationId}/domains`,
       data
     );
     return response.data;
@@ -103,9 +106,9 @@ export const domainsApi = {
   /**
    * Update a domain
    */
-  update: async (id: string, data: DomainUpdateRequest): Promise<Domain> => {
+  update: async (organizationId: string, id: string, data: DomainUpdateRequest): Promise<Domain> => {
     const response = await apiClient.patch<Domain>(
-      `${BASE_PATH}/domains/${id}`,
+      `${BASE_PATH}/organizations/${organizationId}/domains/${id}`,
       data
     );
     return response.data;
@@ -114,7 +117,7 @@ export const domainsApi = {
   /**
    * Delete a domain
    */
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`${BASE_PATH}/domains/domains/${id}`);
+  delete: async (organizationId: string, id: string): Promise<void> => {
+    await apiClient.delete(`${BASE_PATH}/organizations/${organizationId}/domains/${id}`);
   },
 };

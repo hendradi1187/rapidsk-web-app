@@ -33,8 +33,9 @@ export const DefineVocabularyStep = () => {
     resolver: zodResolver(vocabularySchema),
     defaultValues: formData.vocabulary || {
       vocabularyName: "",
-      namespace: "",
-      terms: [{ name: "", definition: "", dataType: "string" }],
+      version: "1.0.0",
+      vocabularyDescription: "",
+      terms: [{ term: "", datatype: "string", unit: "", description: "" }],
     },
   });
 
@@ -87,18 +88,37 @@ export const DefineVocabularyStep = () => {
               />
               <FormField
                 control={form.control}
-                name="namespace"
+                name="version"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Namespace URI</FormLabel>
+                    <FormLabel>Version *</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://vocab.rapidsk.id/..." {...field} />
+                      <Input placeholder="1.0.0" {...field} />
                     </FormControl>
-                    <FormDescription>Opsional, URL namespace</FormDescription>
+                    <FormDescription>Versi vocabulary</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              <div className="md:col-span-2">
+                <FormField
+                  control={form.control}
+                  name="vocabularyDescription"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Deskripsi</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Deskripsi vocabulary (opsional)..."
+                          className="resize-none"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
           </div>
 
@@ -113,7 +133,7 @@ export const DefineVocabularyStep = () => {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => append({ name: "", definition: "", dataType: "string" })}
+                onClick={() => append({ term: "", datatype: "string", unit: "", description: "" })}
                 className="gap-1"
               >
                 <Plus className="w-4 h-4" />
@@ -145,7 +165,7 @@ export const DefineVocabularyStep = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <FormField
                       control={form.control}
-                      name={`terms.${index}.name`}
+                      name={`terms.${index}.term`}
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Nama Term *</FormLabel>
@@ -158,7 +178,7 @@ export const DefineVocabularyStep = () => {
                     />
                     <FormField
                       control={form.control}
-                      name={`terms.${index}.dataType`}
+                      name={`terms.${index}.datatype`}
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Tipe Data *</FormLabel>
@@ -180,16 +200,29 @@ export const DefineVocabularyStep = () => {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name={`terms.${index}.unit`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Unit</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Contoh: bbl, m3, psi" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <div className="md:col-span-3">
                       <FormField
                         control={form.control}
-                        name={`terms.${index}.definition`}
+                        name={`terms.${index}.description`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Definisi *</FormLabel>
+                            <FormLabel>Deskripsi</FormLabel>
                             <FormControl>
                               <Textarea
-                                placeholder="Penjelasan tentang term ini..."
+                                placeholder="Penjelasan tentang term ini (minimal 10 karakter)..."
                                 className="resize-none"
                                 {...field}
                               />

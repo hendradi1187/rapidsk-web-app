@@ -18,6 +18,7 @@ import { useOnboarding } from "../OnboardingContext";
 import { WizardNavigation } from "../WizardNavigation";
 import { monitoringSchema, MonitoringFormValues } from "../schemas/onboarding.schemas";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -30,6 +31,7 @@ const complianceFrameworks = [
 ];
 
 export const EnableMonitoringStep = () => {
+  const navigate = useNavigate();
   const {
     formData,
     updateStepData,
@@ -40,10 +42,12 @@ export const EnableMonitoringStep = () => {
     submissionResult,
     isOnboardingComplete,
     submitOnboarding,
+    resetWizard,
   } = useOnboarding();
 
   const [submissionProgress, setSubmissionProgress] = useState(0);
   const [currentSubmissionStep, setCurrentSubmissionStep] = useState("");
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   const form = useForm<MonitoringFormValues>({
     resolver: zodResolver(monitoringSchema),
@@ -89,6 +93,28 @@ export const EnableMonitoringStep = () => {
     }
   }, [isSubmitting]);
 
+  // Redirect to dashboard after successful onboarding
+  useEffect(() => {
+    if (isOnboardingComplete && submissionResult?.success && !isSubmitting) {
+      // Start countdown
+      setRedirectCountdown(3);
+      const countdownInterval = setInterval(() => {
+        setRedirectCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(countdownInterval);
+            // Reset wizard state and navigate
+            resetWizard();
+            navigate("/");
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(countdownInterval);
+    }
+  }, [isOnboardingComplete, submissionResult?.success, isSubmitting, navigate, resetWizard]);
+
   const handleNext = async (): Promise<boolean> => {
     const isValid = await form.trigger();
     if (isValid) {
@@ -103,26 +129,31 @@ export const EnableMonitoringStep = () => {
   const handleComplete = async () => {
     // Save current step data first
     const isValid = await form.trigger();
-    if (isValid) {
-      const values = form.getValues();
-      updateStepData("monitoring", values);
-      markStepComplete(5);
+    if (!isValid) {
+      toast.error("Validasi gagal", {
+        description: "Silakan periksa kembali formulir Anda.",
+      });
+      return;
     }
 
-    // Submit all data to backend
-    const result = await submitOnboarding();
+    const values = form.getValues();
+    updateStepData("monitoring", values);
+    markStepComplete(5);
 
-    if (result.success) {
-      toast.success("Setup selesai!", {
-        description: "Dataspace connector Anda telah dikonfigurasi dengan sukses.",
-        duration: 5000,
-      });
-    } else {
-      toast.error("Terjadi kesalahan", {
-        description: result.message || "Gagal menyelesaikan onboarding. Silakan coba lagi.",
-        duration: 5000,
-      });
-    }
+    // Submit all data to backend using toast.promise for better feedback
+    toast.promise(submitOnboarding(), {
+      loading: "Menyelesaikan orientasi...",
+      success: (result) => {
+        if (result.success) {
+          return "Setup selesai! Dataspace connector Anda telah dikonfigurasi.";
+        } else {
+          return `Onboarding selesai dengan peringatan: ${result.message}`;
+        }
+      },
+      error: (err) => {
+        return `Gagal menyelesaikan onboarding: ${err?.message || "Terjadi kesalahan tak terduga."}`;
+      },
+    });
   };
 
   const allPreviousStepsComplete = [0, 1, 2, 3, 4].every((step) => completedSteps.has(step));
@@ -311,13 +342,13 @@ export const EnableMonitoringStep = () => {
           {/* Success Result */}
           {isOnboardingComplete && submissionResult?.success && !isSubmitting && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-success">
+              <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
                 <PartyPopper className="w-4 h-4" />
                 Onboarding Berhasil!
               </div>
               <Separator />
-              <div className="p-4 bg-success/10 border border-success/20 rounded-lg space-y-3">
-                <p className="text-sm text-success">
+              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg space-y-3">
+                <p className="text-sm text-green-600 dark:text-green-400">
                   {submissionResult.message}
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-2">
@@ -346,12 +377,17 @@ export const EnableMonitoringStep = () => {
                     </div>
                   )}
                 </div>
+                {redirectCountdown !== null && (
+                  <div className="pt-2 text-xs text-muted-foreground">
+                    Mengarahkan ke Dashboard dalam {redirectCountdown} detik...
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {/* Summary Section - Only show if all previous steps complete and not yet submitted */}
-          {allPreviousStepsComplete && completedSteps.has(5) && !isOnboardingComplete && !isSubmitting && (
+          {allPreviousStepsComplete && !isOnboardingComplete && !isSubmitting && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <CheckCircle2 className="w-4 h-4 text-green-500" />

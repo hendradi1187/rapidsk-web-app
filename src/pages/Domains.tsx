@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
   TableBody,
@@ -15,13 +14,14 @@ import {
   Plus,
   Search,
   MoreHorizontal,
-  Building2,
+  Layers,
   Eye,
   Pencil,
   Trash2,
   Loader2,
   AlertCircle,
   RefreshCw,
+  Building2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -49,18 +49,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
-  useOrganizations,
-  useCreateOrganization,
-  useUpdateOrganization,
-  useDeleteOrganization,
-} from "@/api/hooks/useOrganizations";
-import { Organization } from "@/api/types";
+  useAllDomains,
+  useCreateDomain,
+  useUpdateDomain,
+  useDeleteDomain,
+} from "@/api/hooks/useDomains";
+import { useOrganizations } from "@/api/hooks/useOrganizations";
+import { Domain, DomainStatus } from "@/api/types";
 
-const Organizations = () => {
+const Domains = () => {
   // State management
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -71,46 +79,46 @@ const Organizations = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+  const [selectedDomain, setSelectedDomain] = useState<Domain | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
+    organization_id: "",
     name: "",
     code: "",
     description: "",
+    status: "ACTIVE" as DomainStatus,
   });
 
   // API hooks
   const {
-    data: organizationsData,
+    data: domainsData,
     isLoading,
     isError,
     error,
     refetch,
-  } = useOrganizations({ limit: pageSize, offset: page * pageSize });
+  } = useAllDomains({ limit: pageSize, offset: page * pageSize });
 
-  const createMutation = useCreateOrganization();
-  const updateMutation = useUpdateOrganization();
-  const deleteMutation = useDeleteOrganization();
+  const { data: organizationsData } = useOrganizations({ limit: 100 });
 
-  // Filter organizations based on search
-  const filteredOrganizations = useMemo(() => {
-    if (!organizationsData?.data) return [];
-    return organizationsData.data.filter((org) =>
-      org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const createMutation = useCreateDomain();
+  const updateMutation = useUpdateDomain();
+  const deleteMutation = useDeleteDomain();
+
+  // Filter domains based on search
+  const filteredDomains = useMemo(() => {
+    if (!domainsData?.data) return [];
+    return domainsData.data.filter((domain) =>
+      domain.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      domain.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      domain.description.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [organizationsData?.data, searchQuery]);
+  }, [domainsData?.data, searchQuery]);
 
-  // Generate avatar from name
-  const getAvatar = (name: string) => {
-    return name
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
+  // Get organization name by ID
+  const getOrganizationName = (orgId: string) => {
+    const org = organizationsData?.data?.find((o) => o.id === orgId);
+    return org?.name || "Unknown";
   };
 
   // Format date for display
@@ -125,20 +133,26 @@ const Organizations = () => {
   // Reset form
   const resetForm = () => {
     setFormData({
+      organization_id: "",
       name: "",
       code: "",
       description: "",
+      status: "ACTIVE",
     });
   };
 
-  // Handle add organization
-  const handleAddOrganization = async () => {
+  // Handle add domain
+  const handleAddDomain = async () => {
+    if (!formData.organization_id) {
+      toast.error("Organization is required");
+      return;
+    }
     if (!formData.name.trim()) {
-      toast.error("Organization name is required");
+      toast.error("Domain name is required");
       return;
     }
     if (!formData.code.trim()) {
-      toast.error("Organization code is required");
+      toast.error("Domain code is required");
       return;
     }
     if (formData.code.length < 2 || formData.code.length > 20) {
@@ -152,24 +166,28 @@ const Organizations = () => {
 
     try {
       await createMutation.mutateAsync({
-        name: formData.name,
-        code: formData.code.toUpperCase(),
-        description: formData.description,
+        organizationId: formData.organization_id,
+        data: {
+          name: formData.name,
+          code: formData.code.toUpperCase(),
+          description: formData.description,
+          status: formData.status,
+        },
       });
       setIsAddDialogOpen(false);
       resetForm();
-      toast.success("Organization created successfully");
+      toast.success("Domain created successfully");
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to create organization");
+      toast.error(err?.response?.data?.detail || "Failed to create domain");
     }
   };
 
-  // Handle edit organization
-  const handleEditOrganization = async () => {
-    if (!selectedOrganization) return;
+  // Handle edit domain
+  const handleEditDomain = async () => {
+    if (!selectedDomain) return;
 
     if (!formData.name.trim()) {
-      toast.error("Organization name is required");
+      toast.error("Domain name is required");
       return;
     }
     if (!formData.description.trim() || formData.description.length < 10) {
@@ -179,55 +197,61 @@ const Organizations = () => {
 
     try {
       await updateMutation.mutateAsync({
-        id: selectedOrganization.id,
+        organizationId: selectedDomain.organization_id,
+        id: selectedDomain.id,
         data: {
           name: formData.name,
           description: formData.description,
         },
       });
       setIsEditDialogOpen(false);
-      setSelectedOrganization(null);
+      setSelectedDomain(null);
       resetForm();
-      toast.success("Organization updated successfully");
+      toast.success("Domain updated successfully");
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to update organization");
+      toast.error(err?.response?.data?.detail || "Failed to update domain");
     }
   };
 
-  // Handle delete organization
-  const handleDeleteOrganization = async () => {
-    if (!selectedOrganization) return;
+  // Handle delete domain
+  const handleDeleteDomain = async () => {
+    if (!selectedDomain) return;
 
     try {
-      await deleteMutation.mutateAsync(selectedOrganization.id);
+      await deleteMutation.mutateAsync({
+        organizationId: selectedDomain.organization_id,
+        id: selectedDomain.id,
+      });
       setIsDeleteDialogOpen(false);
-      setSelectedOrganization(null);
-      toast.success("Organization deleted successfully");
+      setSelectedDomain(null);
+      toast.success("Domain deleted successfully");
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to delete organization");
+      toast.error(err?.response?.data?.detail || "Failed to delete domain");
     }
   };
 
   // Open edit dialog
-  const openEditDialog = (org: Organization) => {
-    setSelectedOrganization(org);
+  const openEditDialog = (domain: Domain) => {
+    setSelectedDomain(domain);
     setFormData({
-      name: org.name,
-      code: org.code,
-      description: org.description,
+      organization_id: domain.organization_id,
+      name: domain.name,
+      code: domain.code,
+      description: domain.description,
+      status: domain.status,
     });
     setIsEditDialogOpen(true);
   };
 
   // Open view dialog
-  const openViewDialog = (org: Organization) => {
-    setSelectedOrganization(org);
+  const openViewDialog = (domain: Domain) => {
+    setSelectedDomain(domain);
     setIsViewDialogOpen(true);
   };
 
   // Open delete dialog
-  const openDeleteDialog = (org: Organization) => {
-    setSelectedOrganization(org);
+  const openDeleteDialog = (domain: Domain) => {
+    setSelectedDomain(domain);
     setIsDeleteDialogOpen(true);
   };
 
@@ -236,13 +260,13 @@ const Organizations = () => {
     return (
       <div className="min-h-screen">
         <Header
-          title="Organizations"
-          subtitle="Manage governance organizations"
+          title="Domains"
+          subtitle="Manage data domains within organizations"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
-            <p className="mt-2 text-muted-foreground">Loading organizations...</p>
+            <p className="mt-2 text-muted-foreground">Loading domains...</p>
           </div>
         </div>
       </div>
@@ -254,13 +278,13 @@ const Organizations = () => {
     return (
       <div className="min-h-screen">
         <Header
-          title="Organizations"
-          subtitle="Manage governance organizations"
+          title="Domains"
+          subtitle="Manage data domains within organizations"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
-            <p className="mt-2 text-lg font-medium">Failed to load organizations</p>
+            <p className="mt-2 text-lg font-medium">Failed to load domains</p>
             <p className="text-sm text-muted-foreground mb-4">
               {(error as any)?.message || "An error occurred"}
             </p>
@@ -277,8 +301,8 @@ const Organizations = () => {
   return (
     <div className="min-h-screen">
       <Header
-        title="Organizations"
-        subtitle="Manage governance organizations"
+        title="Domains"
+        subtitle="Manage data domains within organizations"
       />
       <div className="p-6 space-y-6">
         {/* Stats */}
@@ -286,33 +310,37 @@ const Organizations = () => {
           <div className="stat-card">
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-xl bg-info/10">
-                <Building2 className="w-6 h-6 text-info" />
+                <Layers className="w-6 h-6 text-info" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{organizationsData?.total || 0}</p>
-                <p className="text-sm text-muted-foreground">Total Organizations</p>
-              </div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-accent/10">
-                <Building2 className="w-6 h-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{filteredOrganizations.length}</p>
-                <p className="text-sm text-muted-foreground">Showing Results</p>
+                <p className="text-2xl font-bold">{domainsData?.total || 0}</p>
+                <p className="text-sm text-muted-foreground">Total Domains</p>
               </div>
             </div>
           </div>
           <div className="stat-card">
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-xl bg-success/10">
-                <Building2 className="w-6 h-6 text-success" />
+                <Layers className="w-6 h-6 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{pageSize}</p>
-                <p className="text-sm text-muted-foreground">Per Page</p>
+                <p className="text-2xl font-bold">
+                  {domainsData?.data?.filter((d) => d.status === "ACTIVE").length || 0}
+                </p>
+                <p className="text-sm text-muted-foreground">Active Domains</p>
+              </div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-warning/10">
+                <Layers className="w-6 h-6 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {domainsData?.data?.filter((d) => d.status === "INACTIVE").length || 0}
+                </p>
+                <p className="text-sm text-muted-foreground">Inactive Domains</p>
               </div>
             </div>
           </div>
@@ -323,7 +351,7 @@ const Organizations = () => {
           <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search organizations..."
+              placeholder="Search domains..."
               className="pl-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -348,7 +376,7 @@ const Organizations = () => {
               }}
             >
               <Plus className="w-4 h-4 mr-2" />
-              Add Organization
+              Add Domain
             </Button>
           </div>
         </div>
@@ -358,56 +386,66 @@ const Organizations = () => {
           <Table>
             <TableHeader>
               <TableRow className="table-header">
-                <TableHead>Organization</TableHead>
+                <TableHead>Domain</TableHead>
                 <TableHead>Code</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead>Organization</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead>Updated</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredOrganizations.length === 0 ? (
+              {filteredDomains.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    <Building2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No organizations found</p>
+                    <Layers className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">No domains found</p>
                     <p className="text-sm">
-                      {searchQuery ? "Try adjusting your search" : "Create your first organization"}
+                      {searchQuery ? "Try adjusting your search" : "Create your first domain"}
                     </p>
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredOrganizations.map((org) => (
-                  <TableRow key={org.id} className="hover:bg-muted/50">
+                filteredDomains.map((domain) => (
+                  <TableRow key={domain.id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar className="w-9 h-9">
-                          <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                            {getAvatar(org.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">{org.name}</span>
+                        <div className="p-2 rounded-lg bg-accent/10">
+                          <Layers className="w-4 h-4 text-accent" />
+                        </div>
+                        <div>
+                          <span className="font-medium">{domain.name}</span>
+                          <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">
+                            {domain.description}
+                          </p>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-mono">
-                        {org.code}
+                        {domain.code}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <span className="text-muted-foreground line-clamp-1 max-w-[300px]">
-                        {org.description}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm">{getOrganizationName(domain.organization_id)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={
+                          domain.status === "ACTIVE"
+                            ? "badge-active"
+                            : "badge-inactive"
+                        }
+                      >
+                        {domain.status}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-muted-foreground">
-                        {formatDate(org.created_at)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {formatDate(org.updated_at)}
+                        {formatDate(domain.created_at)}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -418,21 +456,21 @@ const Organizations = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openViewDialog(org)}>
+                          <DropdownMenuItem onClick={() => openViewDialog(domain)}>
                             <Eye className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditDialog(org)}>
+                          <DropdownMenuItem onClick={() => openEditDialog(domain)}>
                             <Pencil className="w-4 h-4 mr-2" />
-                            Edit Organization
+                            Edit Domain
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onClick={() => openDeleteDialog(org)}
+                            onClick={() => openDeleteDialog(domain)}
                             className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Organization
+                            Delete Domain
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -445,12 +483,12 @@ const Organizations = () => {
         </div>
 
         {/* Pagination Info */}
-        {organizationsData && organizationsData.total > 0 && (
+        {domainsData && domainsData.total > 0 && (
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
               Showing {page * pageSize + 1} to{" "}
-              {Math.min((page + 1) * pageSize, organizationsData.total)} of{" "}
-              {organizationsData.total} organizations
+              {Math.min((page + 1) * pageSize, domainsData.total)} of{" "}
+              {domainsData.total} domains
             </span>
             <div className="flex gap-2">
               <Button
@@ -465,7 +503,7 @@ const Organizations = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => setPage((p) => p + 1)}
-                disabled={(page + 1) * pageSize >= organizationsData.total}
+                disabled={(page + 1) * pageSize >= domainsData.total}
               >
                 Next
               </Button>
@@ -474,36 +512,56 @@ const Organizations = () => {
         )}
       </div>
 
-      {/* Add Organization Dialog */}
+      {/* Add Domain Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Add New Organization</DialogTitle>
+            <DialogTitle>Add New Domain</DialogTitle>
             <DialogDescription>
-              Create a new governance organization.
+              Create a new data domain within an organization.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Organization Name *</Label>
+              <Label htmlFor="organization">Organization *</Label>
+              <Select
+                value={formData.organization_id}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, organization_id: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select organization" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizationsData?.data?.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Domain Name *</Label>
               <Input
                 id="name"
-                placeholder="Enter organization name (min 3 characters)"
+                placeholder="Enter domain name (min 3 characters)"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="code">Organization Code *</Label>
+              <Label htmlFor="code">Domain Code *</Label>
               <Input
                 id="code"
-                placeholder="Unique code (2-20 characters, e.g., SKK)"
+                placeholder="Unique code (2-20 characters)"
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                 maxLength={20}
               />
               <p className="text-xs text-muted-foreground">
-                This code must be unique and will be used as identifier
+                This code must be unique within the organization
               </p>
             </div>
             <div className="space-y-2">
@@ -516,44 +574,70 @@ const Organizations = () => {
                 rows={3}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value: DomainStatus) =>
+                  setFormData({ ...formData, status: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Active</SelectItem>
+                  <SelectItem value="INACTIVE">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
               Cancel
             </Button>
             <Button
-              onClick={handleAddOrganization}
+              onClick={handleAddDomain}
               className="bg-accent hover:bg-accent/90"
               disabled={createMutation.isPending}
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Add Organization
+              Add Domain
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Organization Dialog */}
+      {/* Edit Domain Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Edit Organization</DialogTitle>
+            <DialogTitle>Edit Domain</DialogTitle>
             <DialogDescription>
-              Update organization details. Code cannot be changed.
+              Update domain details. Organization and code cannot be changed.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">Organization Name *</Label>
+              <Label htmlFor="edit-org">Organization</Label>
+              <Input
+                id="edit-org"
+                value={getOrganizationName(formData.organization_id)}
+                disabled
+                className="bg-muted"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Domain Name *</Label>
               <Input
                 id="edit-name"
-                placeholder="Enter organization name"
+                placeholder="Enter domain name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-code">Organization Code</Label>
+              <Label htmlFor="edit-code">Domain Code</Label>
               <Input
                 id="edit-code"
                 value={formData.code}
@@ -580,7 +664,7 @@ const Organizations = () => {
               Cancel
             </Button>
             <Button
-              onClick={handleEditOrganization}
+              onClick={handleEditDomain}
               className="bg-accent hover:bg-accent/90"
               disabled={updateMutation.isPending}
             >
@@ -591,49 +675,66 @@ const Organizations = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Organization Dialog */}
+      {/* View Domain Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Organization Details</DialogTitle>
+            <DialogTitle>Domain Details</DialogTitle>
           </DialogHeader>
-          {selectedOrganization && (
+          {selectedDomain && (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-4">
-                <Avatar className="w-16 h-16">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xl font-semibold">
-                    {getAvatar(selectedOrganization.name)}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="p-3 rounded-xl bg-accent/10">
+                  <Layers className="w-8 h-8 text-accent" />
+                </div>
                 <div>
-                  <h3 className="text-lg font-semibold">{selectedOrganization.name}</h3>
-                  <Badge variant="outline" className="font-mono mt-1">
-                    {selectedOrganization.code}
-                  </Badge>
+                  <h3 className="text-lg font-semibold">{selectedDomain.name}</h3>
+                  <div className="flex gap-2 mt-1">
+                    <Badge variant="outline" className="font-mono">
+                      {selectedDomain.code}
+                    </Badge>
+                    <Badge
+                      className={
+                        selectedDomain.status === "ACTIVE"
+                          ? "badge-active"
+                          : "badge-inactive"
+                      }
+                    >
+                      {selectedDomain.status}
+                    </Badge>
+                  </div>
                 </div>
               </div>
 
               <div className="pt-4 border-t">
                 <p className="text-sm text-muted-foreground mb-1">Description</p>
-                <p className="text-sm">{selectedOrganization.description}</p>
+                <p className="text-sm">{selectedDomain.description}</p>
+              </div>
+
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground mb-1">Organization</p>
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-muted-foreground" />
+                  <p className="font-medium">{getOrganizationName(selectedDomain.organization_id)}</p>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                 <div>
                   <p className="text-sm text-muted-foreground">Created At</p>
-                  <p className="font-medium">{formatDate(selectedOrganization.created_at)}</p>
+                  <p className="font-medium">{formatDate(selectedDomain.created_at)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Updated At</p>
-                  <p className="font-medium">{formatDate(selectedOrganization.updated_at)}</p>
+                  <p className="font-medium">{formatDate(selectedDomain.updated_at)}</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm text-muted-foreground">Created By</p>
-                  <p className="font-medium">{selectedOrganization.created_by || "System"}</p>
+                  <p className="font-medium">{selectedDomain.created_by || "System"}</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm text-muted-foreground">ID</p>
-                  <p className="font-mono text-xs text-muted-foreground">{selectedOrganization.id}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{selectedDomain.id}</p>
                 </div>
               </div>
             </div>
@@ -645,11 +746,11 @@ const Organizations = () => {
             <Button
               onClick={() => {
                 setIsViewDialogOpen(false);
-                if (selectedOrganization) openEditDialog(selectedOrganization);
+                if (selectedDomain) openEditDialog(selectedDomain);
               }}
               className="bg-accent hover:bg-accent/90"
             >
-              Edit Organization
+              Edit Domain
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -659,15 +760,16 @@ const Organizations = () => {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+            <AlertDialogTitle>Delete Domain</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{selectedOrganization?.name}"? This action cannot be undone.
+              Are you sure you want to delete "{selectedDomain?.name}"? This action cannot be undone.
+              All datasets, vocabularies, and schemas within this domain will also be affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteOrganization}
+              onClick={handleDeleteDomain}
               className="bg-destructive hover:bg-destructive/90"
               disabled={deleteMutation.isPending}
             >
@@ -681,4 +783,4 @@ const Organizations = () => {
   );
 };
 
-export default Organizations;
+export default Domains;

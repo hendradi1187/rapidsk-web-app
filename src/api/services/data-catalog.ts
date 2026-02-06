@@ -329,7 +329,7 @@ export const datasetMetadataApi = {
    */
   list: async (domainId: string, params?: PaginationParams): Promise<DatasetMetadataListResponse> => {
     const response = await apiClient.get<DatasetMetadataListResponse>(
-      `${BASE_PATH}/${domainId}/dataset-metadata`,
+      `${BASE_PATH}/${domainId}/dataset-metadatas`,
       { params }
     );
     return response.data;
@@ -340,7 +340,7 @@ export const datasetMetadataApi = {
    */
   getById: async (domainId: string, id: string): Promise<DatasetMetadata> => {
     const response = await apiClient.get<DatasetMetadata>(
-      `${BASE_PATH}/${domainId}/dataset-metadata/${id}`
+      `${BASE_PATH}/${domainId}/dataset-metadatas/${id}`
     );
     return response.data;
   },
@@ -350,7 +350,7 @@ export const datasetMetadataApi = {
    */
   create: async (domainId: string, data: DatasetMetadataCreateRequest): Promise<DatasetMetadata> => {
     const response = await apiClient.post<DatasetMetadata>(
-      `${BASE_PATH}/${domainId}/dataset-metadata`,
+      `${BASE_PATH}/${domainId}/dataset-metadatas`,
       data
     );
     return response.data;
@@ -365,7 +365,7 @@ export const datasetMetadataApi = {
     data: DatasetMetadataUpdateRequest
   ): Promise<DatasetMetadata> => {
     const response = await apiClient.patch<DatasetMetadata>(
-      `${BASE_PATH}/${domainId}/dataset-metadata/${id}`,
+      `${BASE_PATH}/${domainId}/dataset-metadatas/${id}`,
       data
     );
     return response.data;
@@ -375,6 +375,6 @@ export const datasetMetadataApi = {
    * Delete dataset metadata
    */
   delete: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`${BASE_PATH}/${domainId}/dataset-metadata/${id}`);
+    await apiClient.delete(`${BASE_PATH}/${domainId}/dataset-metadatas/${id}`);
   },
 };

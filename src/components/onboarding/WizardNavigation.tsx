@@ -17,6 +17,7 @@ export const WizardNavigation = ({
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === totalSteps - 1;
   const allStepsCompleted = completedSteps.size === totalSteps;
+  const canComplete = completedSteps.size >= totalSteps - 1;
 
   const handleNext = async () => {
     if (onNext) {
@@ -72,7 +73,7 @@ export const WizardNavigation = ({
           <Button
             type="button"
             onClick={handleComplete}
-            disabled={isSubmitting || !allStepsCompleted}
+            disabled={isSubmitting || !canComplete}
             className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground"
           >
             {isSubmitting ? (
