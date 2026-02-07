@@ -14,9 +14,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 interface HeaderProps {
   title: string;
   subtitle?: string;
+  children?: React.ReactNode;
 }
 
-export const Header = ({ title, subtitle }: HeaderProps) => {
+export const Header = ({ title, subtitle, children }: HeaderProps) => {
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
       <div className="flex items-center justify-between h-16 px-6">
@@ -26,6 +27,7 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
         </div>
 
         <div className="flex items-center gap-4">
+          {children}
           {/* Search */}
           <div className="relative hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

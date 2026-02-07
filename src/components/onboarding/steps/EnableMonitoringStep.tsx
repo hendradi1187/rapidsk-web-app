@@ -119,12 +119,14 @@ export const EnableMonitoringStep = () => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("monitoring", values);
+      updateStepData("monitoring", values as MonitoringStepData);
       markStepComplete(5);
       return true;
     }
     return false;
   };
+  
+  type MonitoringStepData = import("../OnboardingContext").MonitoringStepData;
 
   const handleComplete = async () => {
     // Save current step data first
@@ -137,7 +139,7 @@ export const EnableMonitoringStep = () => {
     }
 
     const values = form.getValues();
-    updateStepData("monitoring", values);
+    updateStepData("monitoring", values as MonitoringStepData);
     markStepComplete(5);
 
     // Submit all data to backend using toast.promise for better feedback

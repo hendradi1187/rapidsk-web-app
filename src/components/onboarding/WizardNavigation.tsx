@@ -6,6 +6,7 @@ interface WizardNavigationProps {
   onNext?: () => boolean | Promise<boolean>;
   onComplete?: () => void;
   isSubmitting?: boolean;
+  isComplete?: boolean;
 }
 
 export const WizardNavigation = ({

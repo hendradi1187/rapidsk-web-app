@@ -183,8 +183,8 @@ export const ParticipantsPage = () => {
                     <TableCell>{participant.contact_person.name}</TableCell>
                     <TableCell>{participant.contact_person.email}</TableCell>
                     <TableCell>
-                      <Badge variant={participant.status === "ACTIVE" ? "success" : "destructive"}>
-                        {participant.status}
+                      <Badge variant="outline">
+                        Active
                       </Badge>
                     </TableCell>
                     <TableCell>

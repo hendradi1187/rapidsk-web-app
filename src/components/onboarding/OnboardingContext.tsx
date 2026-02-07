@@ -9,13 +9,13 @@ import type { ParticipantOrganizationType } from "@/api/types/onboarding";
 export interface OrganizationStepData {
   orgName: string;
   orgCode: string;
-  orgType: string;
+  orgType: "KKKS" | "Regulator" | "ServiceProvider";
   description: string;
   participantName: string;
   participantEmail: string;
   participantPhone: string;
   participantAddress: string;
-  participantRole: string;
+  participantRole: "Admin" | "DataSteward" | "Viewer";
   domainName: string;
   domainCode: string;
   domainDescription: string;
