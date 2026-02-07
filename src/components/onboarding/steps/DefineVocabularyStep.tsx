@@ -54,12 +54,14 @@ export const DefineVocabularyStep = () => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("vocabulary", values);
+      updateStepData("vocabulary", values as VocabularyStepData);
       markStepComplete(1);
       return true;
     }
     return false;
   };
+  
+  type VocabularyStepData = import("../OnboardingContext").VocabularyStepData;
 
   return (
     <div className="space-y-6">

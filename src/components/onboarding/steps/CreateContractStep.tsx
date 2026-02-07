@@ -50,12 +50,14 @@ export const CreateContractStep = () => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("contract", values);
+      updateStepData("contract", values as ContractStepData);
       markStepComplete(3);
       return true;
     }
     return false;
   };
+  
+  type ContractStepData = import("../OnboardingContext").ContractStepData;
 
   return (
     <div className="space-y-6">

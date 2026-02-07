@@ -52,12 +52,14 @@ export const RegisterDatasetStep = () => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("dataset", values);
+      updateStepData("dataset", values as DatasetStepData);
       markStepComplete(2);
       return true;
     }
     return false;
   };
+  
+  type DatasetStepData = import("../OnboardingContext").DatasetStepData;
 
   return (
     <div className="space-y-6">

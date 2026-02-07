@@ -55,12 +55,14 @@ export const SetupTransferStep = () => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("transfer", values);
+      updateStepData("transfer", values as TransferStepData);
       markStepComplete(4);
       return true;
     }
     return false;
   };
+  
+  type TransferStepData = import("../OnboardingContext").TransferStepData;
 
   return (
     <div className="space-y-6">

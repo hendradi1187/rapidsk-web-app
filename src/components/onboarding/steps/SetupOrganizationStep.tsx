@@ -56,12 +56,14 @@ export const SetupOrganizationStep = () => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("organization", values);
+      updateStepData("organization", values as OrganizationStepData);
       markStepComplete(0);
       return true;
     }
     return false;
   };
+  
+  type OrganizationStepData = import("../OnboardingContext").OrganizationStepData;
 
   return (
     <div className="space-y-6">
