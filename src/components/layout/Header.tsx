@@ -1,6 +1,7 @@
 import { Bell, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import * as authService from "@/api/services/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,7 +64,9 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
               <DropdownMenuItem>Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive">
-                Log out
+               <button onClick={authService.logout}>
+                Logout
+                </button>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

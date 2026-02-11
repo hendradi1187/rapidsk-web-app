@@ -1,16 +1,12 @@
-import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
+import { Outlet } from "react-router-dom";
 
-interface MainLayoutProps {
-  children: ReactNode;
-}
-
-export const MainLayout = ({ children }: MainLayoutProps) => {
+export const MainLayout = () => {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
       <main className="ml-64 transition-all duration-300">
-        {children}
+        <Outlet />
       </main>
     </div>
   );

@@ -21,3 +21,5 @@ export {
 } from "./policy-contract";
 export { consumerApi, providerApi } from "./connector";
 export { dataTransfersApi } from "./data-transfer";
+// login
+export * as authService from "./auth";

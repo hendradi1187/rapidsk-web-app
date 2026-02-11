@@ -4,7 +4,7 @@ import {
   Rocket,
   Building2,
   Layers,
-  Users2, // Added icon
+  Users2, // Added
   Database,
   FileText,
   ArrowRightLeft,
