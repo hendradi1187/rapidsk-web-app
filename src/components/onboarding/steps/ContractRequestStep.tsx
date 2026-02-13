@@ -16,15 +16,15 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useOnboarding } from "../OnboardingContext";
 import { WizardNavigation } from "../WizardNavigation";
-import { contractSchema, ContractFormValues } from "../schemas/onboarding.schemas";
+import { contractRequestSchema, ContractRequestFormValues } from "../schemas/onboarding.schemas";
 import { useEffect } from "react";
 
-export const CreateContractStep = () => {
+export const ContractRequestStep = () => {
   const { formData, updateStepData, markStepComplete } = useOnboarding();
 
-  const form = useForm<ContractFormValues>({
-    resolver: zodResolver(contractSchema),
-    defaultValues: formData.contract || {
+  const form = useForm<ContractRequestFormValues>({
+    resolver: zodResolver(contractRequestSchema),
+    defaultValues: formData.contractRequest || {
       title: "",
       provider: "",
       consumer: "",
@@ -41,17 +41,17 @@ export const CreateContractStep = () => {
   });
 
   useEffect(() => {
-    if (formData.contract) {
-      form.reset(formData.contract);
+    if (formData.contractRequest) {
+      form.reset(formData.contractRequest);
     }
-  }, [formData.contract, form]);
+  }, [formData.contractRequest, form]);
 
   const handleNext = async (): Promise<boolean> => {
     const isValid = await form.trigger();
     if (isValid) {
       const values = form.getValues();
-      updateStepData("contract", values);
-      markStepComplete(3);
+      updateStepData("contractRequest", values);
+      markStepComplete(6); // Step 7
       return true;
     }
     return false;

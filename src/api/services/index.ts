@@ -21,3 +21,4 @@ export {
 } from "./policy-contract";
 export { consumerApi, providerApi } from "./connector";
 export { dataTransfersApi } from "./data-transfer";
+export { authService, usersService } from "./identity-provider";

@@ -1,6 +1,6 @@
 # rapiDSK Web App - Backend & UI Sync Todolist
 
-> Terakhir diperbarui: 5 Februari 2026
+> Terakhir diperbarui: 8 February 2026
 
 ---
 
@@ -35,7 +35,7 @@
 | Stat Card - Participants | `useParticipants` → `total` | OK |
 | Stat Card - Data Transfers | Hardcoded "—" | Belum ada API |
 | ParticipantsList | `useParticipants({limit:5})` | OK |
-| OnboardingFlow progress | Real count dari orgs + domains | OK |
+| OnboardingFlow progress | Real count dari `OnboardingContext` | OK (Updated) |
 | RecentActivity | Hardcoded | Belum ada API |
 | Compliance Status | Hardcoded | Belum ada API |
 
@@ -47,50 +47,50 @@
 | Endpoint listing | Dynamic dari spec | OK |
 | Connection check | `HEAD /openapi.json` | OK |
 
-### 5. Onboarding Wizard - Step 1 (Organization)
+### 5. Onboarding Wizard - Step 1 (Organization, Participant, Domain)
 
-| Form Field | Backend API | Endpoint |
-|-----------|------------|----------|
-| `orgName` → `name` | Organization API | `POST /api/v1/governance/organizations/` |
-| `orgCode` → `code` | Organization API | sama |
-| `description` → `description` | Organization API | sama |
-| `participantName` → `contact_person.name` | Participant API | `POST /api/v1/onboarding/participants` |
-| `participantEmail` → `contact_person.email` | Participant API | sama |
-| `participantPhone` → `contact_person.phone` | Participant API | sama |
-| `participantAddress` → `address` | Participant API | sama |
-| `orgType` → `organization_type` | Participant API | KKKS→ENTERPRISE, Regulator→GOV_CENTRAL |
-| `domainName` → `name` | Domain API | `POST /api/v1/governance/domains/` |
-| `domainCode` → `code` | Domain API | sama |
-| `domainDescription` → `description` | Domain API | sama |
+| Form Field | Backend API | Endpoint | Status |
+|-----------|------------|----------|--------|
+| `orgName`, `orgCode`, `description` | Organization API | `POST /api/v1/governance/organizations/` | OK |
+| `participantName`, `participantEmail`, `participantPhone`, `participantAddress`, `orgType` | Participant API | `POST /api/v1/onboarding/participants` | OK |
+| `domainName`, `domainCode`, `domainDescription` | Domain API | `POST /api/v1/governance/domains/` | OK |
 
 ### 6. Onboarding Wizard - Step 2 (Vocabulary)
 
-| Form Field | Backend API | Endpoint |
-|-----------|------------|----------|
-| `vocabularyName` → `name` | Vocabulary API | `POST /api/v1/data-catalog/{domain_id}/vocabularies` |
-| `version` → `version` | Vocabulary API | sama |
-| `vocabularyDescription` → `description` | Vocabulary API | sama |
-| `terms[].term` → `term` | Vocabulary API (nested) | sama |
-| `terms[].datatype` → `datatype` | Vocabulary API (nested) | sama |
-| `terms[].unit` → `unit` | Vocabulary API (nested) | sama |
-| `terms[].description` → `description` | Vocabulary API (nested) | sama |
+| Form Field | Backend API | Endpoint | Status |
+|-----------|------------|----------|--------|
+| `vocabularyName`, `version`, `vocabularyDescription`, `terms[]` | Vocabulary API | `POST /api/v1/data-catalog/{domain_id}/vocabularies` | OK |
+
+### 7. Onboarding Wizard - Step 3 (Dataset)
+
+| Form Field | Backend API | Endpoint | Status |
+|-----------|------------|----------|--------|
+| `name`, `description`, `provider`, `format`, `endpoint`, `period`, `wells`, `accessLevel` | Dataset API | `POST /api/v1/data-catalog/{domain_id}/datasets` | OK |
+
+### 8. Onboarding Wizard - Step 4 (Contract Request)
+
+| Form Field | Backend API | Endpoint | Status |
+|-----------|------------|----------|--------|
+| `policies[]` | Contract Policy API | `POST /api/v1/policy-contract/{domain_id}/contract-policies` | OK |
+| `title`, `provider`, `consumer`, `startDate`, `endDate`, `description` | Contract API | `POST /api/v1/policy-contract/{domain_id}/contracts` | OK |
 
 ---
 
 ## Belum Terhubung / Perlu Sync Nanti
 
-| # | Komponen | Alasan |
-|---|----------|--------|
-| 1 | Onboarding Step 3 (Dataset) | Form fields belum match dengan `POST /data-catalog/{domain_id}/datasets` |
-| 2 | Onboarding Step 4 (Contract) | Form fields belum match dengan `POST /{domain_id}/contracts` |
-| 3 | Onboarding Step 5 (Transfer) | Belum ada backend API |
-| 4 | Onboarding Step 6 (Monitoring) | Belum ada backend API |
-| 5 | Datasets Page | Sudah ada service tapi data masih mix hardcoded |
-| 6 | Contracts Page | Sudah ada service tapi data masih mix hardcoded |
-| 7 | Data Transfer Page | Belum ada backend API |
-| 8 | Audit Page | Belum ada backend API |
-| 9 | Compliance Page | Belum ada backend API |
-| 10 | Settings Page | Belum ada backend API |
+| # | Komponen | Alasan | Status |
+|---|----------|--------|--------|
+| 1 | Onboarding Step 2 (Security & Identity) | Belum ada backend API atau implementasi frontend | Placeholder |
+| 2 | Onboarding Step 4 (Metadata Schema) | Belum ada backend API atau implementasi frontend | Placeholder |
+| 3 | Onboarding Step 6 (Policy Definition) | Belum ada backend API atau implementasi frontend | Placeholder |
+| 4 | Onboarding Step 8 (Agreement & Approval) | Belum ada backend API atau implementasi frontend | Placeholder |
+| 5 | Onboarding Step 9 (Monitoring) | Belum ada backend API | No API Yet |
+| 6 | Datasets Page | Sudah ada service tapi data masih mix hardcoded | Needs Review |
+| 7 | Contracts Page | Sudah ada service tapi data masih mix hardcoded | Needs Review |
+| 8 | Data Transfer Page | Belum ada backend API | |
+| 9 | Audit Page | Belum ada backend API | |
+| 10 | Compliance Page | Belum ada backend API | |
+| 11 | Settings Page | Belum ada backend API | |
 
 ---
 

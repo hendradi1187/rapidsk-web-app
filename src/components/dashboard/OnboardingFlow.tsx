@@ -2,63 +2,45 @@ import { Check, Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useOrganizations } from "@/api/hooks/useOrganizations";
-import { useAllDomains } from "@/api/hooks/useDomains";
-import { useParticipants } from "@/api/hooks/useParticipants";
 import { useMemo } from "react";
+import { useOnboarding } from "@/components/onboarding/OnboardingContext";
 
 const stepDefinitions = [
-  { id: 1, title: "Setup Organization", description: "Create org & participants" },
-  { id: 2, title: "Define Domain", description: "Create governance domain" },
-  { id: 3, title: "Register Dataset", description: "Add GeoServer endpoints" },
-  { id: 4, title: "Create Contract", description: "Define policies" },
-  { id: 5, title: "Setup Transfer", description: "Configure data channels" },
-  { id: 6, title: "Enable Monitoring", description: "Audit & compliance" },
+  { id: 1, key: "organization", title: "Setup Organization", description: "Create org, participants & domain" },
+  { id: 2, key: "security", title: "Setup Security", description: "Configure identity & access" },
+  { id: 3, key: "vocabulary", title: "Define Vocabulary", description: "Standardize data terms" },
+  { id: 4, key: "metadataSchema", title: "Define Metadata Schema", description: "Structure data descriptions" },
+  { id: 5, key: "dataset", title: "Register Dataset", description: "Add GeoServer endpoints" },
+  { id: 6, key: "policy", title: "Define Policy", description: "Set data usage rules" },
+  { id: 7, key: "contractRequest", title: "Create Contract", description: "Formalize data agreements" },
+  { id: 8, key: "agreement", title: "Agreement & Approval", description: "Sign off on terms" },
+  { id: 9, key: "monitoring", title: "Enable Monitoring", description: "Audit & compliance setup" },
 ];
 
 export const OnboardingFlow = () => {
-  const { data: orgsData } = useOrganizations({ limit: 1 });
-  const { data: domainsData } = useAllDomains({ limit: 1 });
-  const { data: participantsData } = useParticipants({ limit: 1 });
+  const { completedSteps, totalSteps } = useOnboarding();
 
   const { steps, completedCount } = useMemo(() => {
-    const hasOrgs = (orgsData?.total ?? 0) > 0;
-    const hasDomains = (domainsData?.total ?? 0) > 0;
-    const hasParticipants = (participantsData?.total ?? 0) > 0;
+    const currentProgressSteps = stepDefinitions.map((stepDef) => {
+      const isCompleted = completedSteps.has(stepDef.id - 1); // Adjust for 0-indexed completedSteps
+      return {
+        ...stepDef,
+        status: isCompleted ? "completed" : "upcoming",
+      };
+    });
 
-    // Determine step statuses based on real data
-    const statuses: Array<"completed" | "current" | "upcoming"> = [];
+    const actualCompletedCount = completedSteps.size;
 
-    // Step 1: Organization - completed if org + participant exist
-    statuses.push(hasOrgs && hasParticipants ? "completed" : hasOrgs ? "completed" : "current");
-
-    // Step 2: Domain - completed if domains exist
-    if (statuses[0] === "completed") {
-      statuses.push(hasDomains ? "completed" : "current");
-    } else {
-      statuses.push("upcoming");
-    }
-
-    // Steps 3-6: can't be determined without domain-scoped queries
-    for (let i = 2; i < 6; i++) {
-      if (statuses[i - 1] === "completed") {
-        statuses.push("current");
-      } else {
-        statuses.push("upcoming");
-      }
-    }
-
-    const completed = statuses.filter((s) => s === "completed").length;
     return {
-      steps: stepDefinitions.map((def, i) => ({ ...def, status: statuses[i] })),
-      completedCount: completed,
+      steps: currentProgressSteps,
+      completedCount: actualCompletedCount,
     };
-  }, [orgsData, domainsData, participantsData]);
+  }, [completedSteps, totalSteps]);
 
   const progressPercent =
     completedCount === 0
       ? 0
-      : Math.round((completedCount / stepDefinitions.length) * 100);
+      : Math.round((completedCount / totalSteps) * 100);
 
   return (
     <div className="bg-card rounded-xl border border-border p-6">

@@ -45,7 +45,10 @@ apiClient.interceptors.response.use(
         case 401:
           // Handle unauthorized - clear token and redirect to login
           localStorage.removeItem("auth_token");
-          // window.location.href = "/login";
+          // Only redirect if not already on login page
+          if (window.location.pathname !== "/login") {
+            window.location.href = "/login";
+          }
           break;
         case 403:
           console.error("Access forbidden");

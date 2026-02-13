@@ -7,3 +7,4 @@ export * from "./policy-contract";
 export * from "./audit";
 export * from "./data-transfer";
 export * from "./compliance";
+export * from "./identity-provider";

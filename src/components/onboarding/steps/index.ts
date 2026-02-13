@@ -1,6 +1,9 @@
 export { SetupOrganizationStep } from "./SetupOrganizationStep";
+export { SecurityIdentityStep } from "./SecurityIdentityStep";
 export { DefineVocabularyStep } from "./DefineVocabularyStep";
+export { MetadataSchemaStep } from "./MetadataSchemaStep";
 export { RegisterDatasetStep } from "./RegisterDatasetStep";
-export { CreateContractStep } from "./CreateContractStep";
-export { SetupTransferStep } from "./SetupTransferStep";
-export { EnableMonitoringStep } from "./EnableMonitoringStep";
+export { PolicyDefinitionStep } from "./PolicyDefinitionStep";
+export { ContractRequestStep } from "./ContractRequestStep";
+export { AgreementApprovalStep } from "./AgreementApprovalStep";
+export { MonitoringGoLiveStep } from "./MonitoringGoLiveStep";

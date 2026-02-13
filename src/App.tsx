@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { ProtectedRoute, PublicRoute } from "@/components/auth/ProtectedRoute";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
 import Organizations from "./pages/Organizations";
@@ -26,23 +28,43 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <MainLayout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/organizations" element={<Organizations />} />
-            <Route path="/domains" element={<Domains />} />
-            <Route path="/participants" element={<ParticipantsPage />} />
-            <Route path="/datasets" element={<Datasets />} />
-            <Route path="/contracts" element={<Contracts />} />
-            <Route path="/transfer" element={<DataTransfer />} />
-            <Route path="/audit" element={<Audit />} />
-            <Route path="/compliance" element={<Compliance />} />
-            <Route path="/api-docs" element={<ApiDocs />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </MainLayout>
+        <Routes>
+          {/* Public Route - Login Page */}
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
+
+          {/* Protected Routes - Require Authentication */}
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/onboarding" element={<Onboarding />} />
+                    <Route path="/organizations" element={<Organizations />} />
+                    <Route path="/domains" element={<Domains />} />
+                    <Route path="/participants" element={<ParticipantsPage />} />
+                    <Route path="/datasets" element={<Datasets />} />
+                    <Route path="/contracts" element={<Contracts />} />
+                    <Route path="/transfer" element={<DataTransfer />} />
+                    <Route path="/audit" element={<Audit />} />
+                    <Route path="/compliance" element={<Compliance />} />
+                    <Route path="/api-docs" element={<ApiDocs />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

@@ -3,76 +3,61 @@ import {
   BookOpen,
   Database,
   FileText,
-  ArrowRightLeft,
   Activity,
+  Shield,
+  Code2,
+  Gavel,
+  Handshake,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { OnboardingStepper, StepDefinition } from "./OnboardingStepper";
 import { useOnboarding } from "./OnboardingContext";
 import {
   SetupOrganizationStep,
+  SecurityIdentityStep,
   DefineVocabularyStep,
+  MetadataSchemaStep,
   RegisterDatasetStep,
-  CreateContractStep,
-  SetupTransferStep,
-  EnableMonitoringStep,
+  PolicyDefinitionStep,
+  ContractRequestStep,
+  AgreementApprovalStep,
+  MonitoringGoLiveStep,
 } from "./steps";
 
 const stepDefinitions: StepDefinition[] = [
-  {
-    id: 1,
-    title: "Organization",
-    description: "Setup organisasi",
-    icon: Building2,
-  },
-  {
-    id: 2,
-    title: "Vocabulary",
-    description: "Definisi metadata",
-    icon: BookOpen,
-  },
-  {
-    id: 3,
-    title: "Dataset",
-    description: "Register dataset",
-    icon: Database,
-  },
-  {
-    id: 4,
-    title: "Contract",
-    description: "Buat kontrak",
-    icon: FileText,
-  },
-  {
-    id: 5,
-    title: "Transfer",
-    description: "Setup transfer",
-    icon: ArrowRightLeft,
-  },
-  {
-    id: 6,
-    title: "Monitoring",
-    description: "Aktifkan monitoring",
-    icon: Activity,
-  },
+  { id: 1, title: "Organization", description: "Setup organisasi", icon: Building2 },
+  { id: 2, title: "Security", description: "Keamanan & SSO", icon: Shield },
+  { id: 3, title: "Vocabulary", description: "Definisi metadata", icon: BookOpen },
+  { id: 4, title: "Schema", description: "Struktur metadata", icon: Code2 },
+  { id: 5, title: "Dataset", description: "Register dataset", icon: Database },
+  { id: 6, title: "Policy", description: "Definisi kebijakan", icon: Gavel },
+  { id: 7, title: "Contract", description: "Permintaan kontrak", icon: FileText },
+  { id: 8, title: "Agreement", description: "Persetujuan", icon: Handshake },
+  { id: 9, title: "Go-Live", description: "Monitoring & Live", icon: Activity },
 ];
 
 const stepComponents = [
   SetupOrganizationStep,
+  SecurityIdentityStep,
   DefineVocabularyStep,
+  MetadataSchemaStep,
   RegisterDatasetStep,
-  CreateContractStep,
-  SetupTransferStep,
-  EnableMonitoringStep,
+  PolicyDefinitionStep,
+  ContractRequestStep,
+  AgreementApprovalStep,
+  MonitoringGoLiveStep,
 ];
 
 const stepTitles = [
   { title: "Setup Organisasi", description: "Buat organisasi dan tambahkan participant utama" },
+  { title: "Keamanan & Identitas", description: "Konfigurasi integrasi SSO (OIDC/SAML) dan keamanan" },
   { title: "Definisikan Vocabulary", description: "Tentukan metadata schema dan terms untuk data Anda" },
+  { title: "Buat Metadata Schema", description: "Gunakan schema builder untuk mendefinisikan struktur data" },
   { title: "Register Dataset", description: "Tambahkan endpoint GeoServer dan konfigurasi dataset" },
-  { title: "Buat Kontrak", description: "Definisikan kebijakan akses dan perjanjian data sharing" },
-  { title: "Setup Transfer", description: "Konfigurasi channel transfer data dan jadwal" },
-  { title: "Aktifkan Monitoring", description: "Setup audit trail dan compliance monitoring" },
+  { title: "Definisi Kebijakan", description: "Gunakan template untuk membuat kebijakan akses data" },
+  { title: "Permintaan Kontrak", description: "Ajukan permintaan kontrak berdasarkan data dan kebijakan" },
+  { title: "Persetujuan & Tanda Tangan", description: "Proses persetujuan dan simulasi tanda tangan digital" },
+  { title: "Monitoring & Go-Live", description: "Aktifkan audit trail, monitoring, dan live" },
 ];
 
 export const OnboardingWizard = () => {

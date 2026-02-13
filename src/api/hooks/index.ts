@@ -4,3 +4,5 @@ export * from "./useDomains";
 export * from "./useDatasets";
 export * from "./useContracts";
 export * from "./useParticipants";
+export * from "./useUsers";
+export * from "./useDataTransfers";

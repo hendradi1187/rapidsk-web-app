@@ -1,89 +1,54 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { organizationsApi, domainsApi } from "@/api/services/governance";
 import { participantsApi } from "@/api/services/onboarding";
-import { vocabulariesApi, datasetsApi } from "@/api/services/data-catalog";
-import { contractsApi, contractPoliciesApi } from "@/api/services/policy-contract";
-import { dataTransfersApi } from "@/api/services/data-transfer";
+import {
+  vocabulariesApi,
+  datasetsApi,
+  schemasApi,
+  metadataSchemasApi
+} from "@/api/services/data-catalog";
+import {
+  contractsApi,
+  contractPoliciesApi,
+  datasetPoliciesApi,
+  agreementsApi
+} from "@/api/services/policy-contract";
+import { usersService } from "@/api/services/identity-provider";
+
 import type { ParticipantOrganizationType } from "@/api/types/onboarding";
+import {
+  OrganizationFormValues,
+  SecurityFormValues,
+  VocabularyFormValues,
+  MetadataSchemaFormValues,
+  DatasetFormValues,
+  PolicyDefinitionFormValues,
+  ContractRequestFormValues,
+  AgreementFormValues,
+  MonitoringFormValues,
+} from "./schemas/onboarding.schemas";
 
-export interface OrganizationStepData {
-  orgName: string;
-  orgCode: string;
-  orgType: string;
-  description: string;
-  participantName: string;
-  participantEmail: string;
-  participantPhone: string;
-  participantAddress: string;
-  participantRole: string;
-  domainName: string;
-  domainCode: string;
-  domainDescription: string;
-}
 
-export interface VocabularyStepData {
-  vocabularyName: string;
-  version: string;
-  vocabularyDescription?: string;
-  terms: Array<{
-    term: string;
-    datatype: string;
-    unit?: string;
-    description?: string;
-  }>;
-}
-
-export interface DatasetStepData {
-  name: string;
-  description?: string;
-  provider: string;
-  format: "WMS" | "WFS" | "WCS";
-  endpoint: string;
-  period: string;
-  wells?: number;
-  accessLevel: "public" | "restricted" | "confidential";
-}
-
-export interface ContractStepData {
-  title: string;
-  provider: string;
-  consumer: string;
-  startDate: string;
-  endDate?: string;
-  description?: string;
-  policies: Array<{
-    name: string;
-    dataClassification: string;
-    description?: string;
-  }>;
-}
-
-export interface TransferStepData {
-  name: string;
-  from: string;
-  to: string;
-  type: "streaming" | "batch";
-  targetEndpoint: string;
-  protocol: "HTTP" | "HTTPS" | "S3" | "FTP" | "SFTP";
-  scheduleType: "realtime" | "scheduled" | "manual";
-  cronExpression?: string;
-  encrypted: boolean;
-}
-
-export interface MonitoringStepData {
-  enableAuditLog: boolean;
-  retentionPeriod: number;
-  alertEmail: string;
-  complianceFrameworks: string[];
-  enableRealTimeAlerts: boolean;
-}
+// Renaming for clarity and consistency
+export type OrganizationStepData = OrganizationFormValues;
+export type SecurityStepData = SecurityFormValues;
+export type VocabularyStepData = VocabularyFormValues;
+export type MetadataSchemaStepData = MetadataSchemaFormValues;
+export type DatasetStepData = DatasetFormValues;
+export type PolicyDefinitionStepData = PolicyDefinitionFormValues;
+export type ContractRequestStepData = ContractRequestFormValues;
+export type AgreementStepData = AgreementFormValues;
+export type MonitoringStepData = MonitoringFormValues;
 
 export interface OnboardingFormData {
   organization: OrganizationStepData | null;
+  security: SecurityStepData | null;
   vocabulary: VocabularyStepData | null;
+  metadataSchema: MetadataSchemaStepData | null;
   dataset: DatasetStepData | null;
-  contract: ContractStepData | null;
-  transfer: TransferStepData | null;
+  policy: PolicyDefinitionStepData | null;
+  contractRequest: ContractRequestStepData | null;
+  agreement: AgreementStepData | null;
   monitoring: MonitoringStepData | null;
 }
 
@@ -92,10 +57,13 @@ interface CreatedIds {
   organizationId?: string;
   participantId?: string;
   domainId?: string;
+  userId?: string; // User created for security/identity
   vocabularyId?: string;
+  schemaId?: string; // Metadata schema
   datasetId?: string;
+  datasetPolicyId?: string; // Dataset policy
   contractId?: string;
-  transferId?: string;
+  agreementId?: string; // Agreement
   contractPolicyIds?: string[];
 }
 
@@ -104,7 +72,6 @@ interface SubmissionResult {
   organizationId?: string;
   datasetId?: string;
   contractId?: string;
-  transferId?: string;
   message?: string;
   errors?: string[];
 }
@@ -134,15 +101,18 @@ interface OnboardingContextType {
   saveStepToBackend: (step: keyof OnboardingFormData) => Promise<boolean>;
 }
 
-const STORAGE_KEY = "rapidsk-onboarding-state";
-const TOTAL_STEPS = 6;
+const STORAGE_KEY = "rapidsk-onboarding-state-v2"; // Version up
+const TOTAL_STEPS = 9;
 
 const initialFormData: OnboardingFormData = {
   organization: null,
+  security: null,
   vocabulary: null,
+  metadataSchema: null,
   dataset: null,
-  contract: null,
-  transfer: null,
+  policy: null,
+  contractRequest: null,
+  agreement: null,
   monitoring: null,
 };
 
@@ -274,202 +244,10 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  // Save individual step to backend
+  // This function is a placeholder for a potential "save as draft" feature per step
   const saveStepToBackend = async (step: keyof OnboardingFormData): Promise<boolean> => {
-    const stepData = formData[step];
-    if (!stepData) return false;
-
-    try {
-      switch (step) {
-        case "organization": {
-          const orgData = stepData as OrganizationStepData;
-
-          // 1. Create Organization
-          const org = await organizationsApi.create({
-            name: orgData.orgName,
-            code: orgData.orgCode,
-            description: orgData.description,
-          });
-          console.log("[Onboarding] Organization created:", org.id);
-
-          // 2. Create Participant
-          const participant = await participantsApi.create({
-            organization_name: orgData.orgName,
-            organization_type: mapOrgType(orgData.orgType),
-            address: orgData.participantAddress,
-            contact_person: {
-              name: orgData.participantName,
-              email: orgData.participantEmail,
-              phone: orgData.participantPhone,
-            },
-          });
-          console.log("[Onboarding] Participant created:", participant.id);
-
-          // 3. Create Domain under organization
-          const domain = await domainsApi.create(org.id, {
-            name: orgData.domainName,
-            code: orgData.domainCode,
-            description: orgData.domainDescription,
-            status: "ACTIVE",
-          });
-          console.log("[Onboarding] Domain created:", domain.id);
-
-          setCreatedIds((prev) => ({
-            ...prev,
-            organizationId: org.id,
-            participantId: participant.id,
-            domainId: domain.id,
-          }));
-
-          return true;
-        }
-
-        case "vocabulary": {
-          const vocabData = stepData as VocabularyStepData;
-          const domainId = createdIds.domainId;
-          if (!domainId) {
-            console.error("[Onboarding] No domainId available for vocabulary creation");
-            return false;
-          }
-
-          const vocab = await vocabulariesApi.create(domainId, {
-            name: vocabData.vocabularyName,
-            version: vocabData.version || "1.0.0",
-            description: vocabData.vocabularyDescription || null,
-            terms: vocabData.terms.map((t) => ({
-              term: t.term,
-              datatype: t.datatype,
-              unit: t.unit || null,
-              description: t.description || null,
-            })),
-          });
-          console.log("[Onboarding] Vocabulary created:", vocab.id);
-
-          setCreatedIds((prev) => ({
-            ...prev,
-            vocabularyId: vocab.id,
-          }));
-
-          return true;
-        }
-
-        case "dataset": {
-          const dsData = stepData as DatasetStepData;
-          const domainId = createdIds.domainId;
-          if (!domainId) {
-            console.error("[Onboarding] No domainId available for dataset creation");
-            return false;
-          }
-
-          const dataset = await datasetsApi.create(domainId, {
-            name: dsData.name,
-            description: dsData.description || null,
-            provider: dsData.provider,
-            domain: formData.organization?.domainName || "",
-            format: dsData.format,
-            endpoint: dsData.endpoint,
-            period: dsData.period,
-            wells: dsData.wells,
-            accessLevel: dsData.accessLevel,
-          });
-          console.log("[Onboarding] Dataset created:", dataset.id);
-
-          setCreatedIds((prev) => ({
-            ...prev,
-            datasetId: String(dataset.id),
-          }));
-
-          return true;
-        }
-
-        case "contract": {
-          const contractData = stepData as ContractStepData;
-          const domainId = createdIds.domainId;
-          if (!domainId) {
-            console.error("[Onboarding] No domainId available for contract creation");
-            return false;
-          }
-
-          // 1. Create contract policies first
-          const policyIds: string[] = [];
-          for (const policy of contractData.policies) {
-            const cp = await contractPoliciesApi.create(domainId, {
-              name: policy.name,
-              data_clasification: policy.dataClassification,
-              effective_from: contractData.startDate,
-              effective_to: contractData.endDate || "",
-              description: policy.description || null,
-            });
-            policyIds.push(cp.id);
-            console.log("[Onboarding] Contract policy created:", cp.id);
-          }
-
-          // 2. Create contract with policy references
-          const contract = await contractsApi.create(domainId, {
-            title: contractData.title,
-            provider: contractData.provider,
-            consumer: contractData.consumer,
-            domain: formData.organization?.domainName || "",
-            policy: policyIds[0] || "",
-            startDate: contractData.startDate,
-            endDate: contractData.endDate,
-            description: contractData.description || null,
-            contract_policies: policyIds,
-          });
-          console.log("[Onboarding] Contract created:", contract.id);
-
-          setCreatedIds((prev) => ({
-            ...prev,
-            contractId: String(contract.id),
-            contractPolicyIds: policyIds,
-          }));
-
-          return true;
-        }
-
-        case "transfer": {
-          const transferData = stepData as TransferStepData;
-          const domainId = createdIds.domainId;
-          if (!domainId) {
-            console.error("[Onboarding] No domainId available for transfer creation");
-            return false;
-          }
-
-          const transfer = await dataTransfersApi.create(domainId, {
-            name: transferData.name,
-            from: transferData.from,
-            to: transferData.to,
-            type: transferData.type,
-            targetEndpoint: transferData.targetEndpoint,
-            protocol: transferData.protocol,
-            scheduleType: transferData.scheduleType,
-            cronExpression: transferData.cronExpression,
-            encrypted: transferData.encrypted,
-          });
-          console.log("[Onboarding] Data transfer created:", transfer.id);
-
-          setCreatedIds((prev) => ({
-            ...prev,
-            transferId: String(transfer.id),
-          }));
-
-          return true;
-        }
-
-        case "monitoring": {
-          // Monitoring config - no direct backend API endpoint yet.
-          // Store locally and log for future integration.
-          console.log("[Onboarding] Monitoring config saved (local only):", stepData);
-          return true;
-        }
-
-        default:
-          return false;
-      }
-    } catch (error) {
-      console.error(`[Onboarding] Error saving step "${step}":`, error);
-      return false;
-    }
+    console.log(`Pretending to save step ${step} to backend. Not implemented.`);
+    return true;
   };
 
   // Submit all onboarding data to backend
@@ -478,104 +256,160 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     setSubmissionError(null);
 
     const errors: string[] = [];
-    let organizationId: string | undefined = createdIds.organizationId;
-    let domainId: string | undefined = createdIds.domainId;
-    let datasetId: string | undefined = createdIds.datasetId;
-    let contractId: string | undefined = createdIds.contractId;
-    let transferId: string | undefined = createdIds.transferId;
+    let { organizationId, domainId, datasetId, contractId } = createdIds;
 
     try {
-      // Step 1: Create Organization + Participant + Domain (if not already created)
+      // Step 1: Organization, Participant, Domain
       if (formData.organization && !organizationId) {
-        const orgData = formData.organization;
         try {
           const org = await organizationsApi.create({
-            name: orgData.orgName,
-            code: orgData.orgCode,
-            description: orgData.description,
+            name: formData.organization.orgName,
+            code: formData.organization.orgCode,
+            description: formData.organization.description,
           });
           organizationId = org.id;
 
           await participantsApi.create({
-            organization_name: orgData.orgName,
-            organization_type: mapOrgType(orgData.orgType),
-            address: orgData.participantAddress,
+            organization_name: formData.organization.orgName,
+            organization_type: mapOrgType(formData.organization.orgType),
+            address: formData.organization.participantAddress,
             contact_person: {
-              name: orgData.participantName,
-              email: orgData.participantEmail,
-              phone: orgData.participantPhone,
+              name: formData.organization.participantName,
+              email: formData.organization.participantEmail,
+              phone: formData.organization.participantPhone,
             },
           });
 
           const domain = await domainsApi.create(org.id, {
-            name: orgData.domainName,
-            code: orgData.domainCode,
-            description: orgData.domainDescription,
+            name: formData.organization.domainName,
+            code: formData.organization.domainCode,
+            description: formData.organization.domainDescription,
             status: "ACTIVE",
           });
           domainId = domain.id;
 
-          setCreatedIds((prev) => ({
-            ...prev,
-            organizationId: org.id,
-            domainId: domain.id,
-          }));
+          setCreatedIds((prev) => ({ ...prev, organizationId, domainId }));
         } catch (error) {
-          const msg = error instanceof Error ? error.message : "Failed to create organization";
-          errors.push(`Organization: ${msg}`);
+          errors.push(`Organization: ${error instanceof Error ? error.message : "Failed"}`);
         }
       }
 
-      // Step 2: Create Vocabulary
+      // Step 2: Security & Identity
+      if (formData.security && formData.organization && !createdIds.userId) {
+        try {
+          // Create a user for the organization with security settings
+          // Note: This is a simplified approach. In a real scenario, SSO config
+          // would be handled by a dedicated identity provider configuration endpoint
+          const user = await usersService.create({
+            email: formData.organization.participantEmail,
+            name: formData.organization.participantName,
+            role: formData.organization.participantRole.toLowerCase() as any,
+            organization_id: organizationId,
+            is_active: true,
+            two_factor_enabled: formData.security.twoFactorAuth,
+          });
+          setCreatedIds((prev) => ({ ...prev, userId: user.id }));
+          console.log("Security configured:", {
+            userId: user.id,
+            ssoType: formData.security.ssoType,
+            tlsEnabled: formData.security.tlsEnabled,
+            twoFactorAuth: formData.security.twoFactorAuth,
+          });
+        } catch (error) {
+          errors.push(`Security: ${error instanceof Error ? error.message : "Failed"}`);
+        }
+      }
+      
+      // Step 3: Vocabulary
       if (formData.vocabulary && domainId && !createdIds.vocabularyId) {
         try {
           const vocabData = formData.vocabulary;
-          await vocabulariesApi.create(domainId, {
+          const vocabulary = await vocabulariesApi.create(domainId, {
             name: vocabData.vocabularyName,
-            version: vocabData.version || "1.0.0",
+            version: vocabData.version,
             description: vocabData.vocabularyDescription || null,
-            terms: vocabData.terms.map((t) => ({
-              term: t.term,
-              datatype: t.datatype,
-              unit: t.unit || null,
-              description: t.description || null,
-            })),
+            terms: vocabData.terms,
+          });
+          setCreatedIds((prev) => ({ ...prev, vocabularyId: vocabulary.id }));
+        } catch (error) {
+          errors.push(`Vocabulary: ${error instanceof Error ? error.message : "Failed"}`);
+        }
+      }
+      
+      // Step 4: Metadata Schema
+      if (formData.metadataSchema && domainId && createdIds.vocabularyId && !createdIds.schemaId) {
+        try {
+          // Create metadata schema using the vocabulary created in step 3
+          const schema = await schemasApi.create(domainId, {
+            vocabulary_id: createdIds.vocabularyId,
+            version: "1.0.0",
+            status: "ACTIVE",
+            metadata_schemas: [], // Empty for now, can be populated based on schemaType
+          });
+          setCreatedIds((prev) => ({ ...prev, schemaId: schema.id }));
+          console.log("Metadata Schema created:", {
+            schemaId: schema.id,
+            schemaName: formData.metadataSchema.schemaName,
+            schemaType: formData.metadataSchema.schemaType,
           });
         } catch (error) {
-          const msg = error instanceof Error ? error.message : "Failed to create vocabulary";
-          errors.push(`Vocabulary: ${msg}`);
+          errors.push(`Metadata Schema: ${error instanceof Error ? error.message : "Failed"}`);
         }
       }
 
-      // Step 3: Create Dataset
+      // Step 5: Dataset
       if (formData.dataset && domainId && !datasetId) {
         try {
           const dsData = formData.dataset;
-          const ds = await datasetsApi.create(domainId, {
-            name: dsData.name,
-            description: dsData.description || null,
-            provider: dsData.provider,
-            domain: formData.organization?.domainName || "",
-            format: dsData.format,
-            endpoint: dsData.endpoint,
-            period: dsData.period,
-            wells: dsData.wells,
-            accessLevel: dsData.accessLevel,
-          });
+          const ds = await datasetsApi.create(domainId, { ...dsData, domain: formData.organization?.domainName || ""});
           datasetId = String(ds.id);
-          setCreatedIds((prev) => ({ ...prev, datasetId: String(ds.id) }));
+          setCreatedIds((prev) => ({ ...prev, datasetId }));
         } catch (error) {
-          const msg = error instanceof Error ? error.message : "Failed to create dataset";
-          errors.push(`Dataset: ${msg}`);
+          errors.push(`Dataset: ${error instanceof Error ? error.message : "Failed"}`);
         }
       }
 
-      // Step 4: Create Contract (with contract policies)
-      if (formData.contract && domainId && !contractId) {
+      // Step 6: Policy Definition
+      if (formData.policy && domainId && !createdIds.datasetPolicyId) {
         try {
-          const contractData = formData.contract;
+          // Map policy template to rules
+          const getRules = (template: string) => {
+            switch (template) {
+              case "AllowAll":
+                return [{ action: "READ", effect: "ALLOW", condition: "*" }];
+              case "DenyAll":
+                return [{ action: "*", effect: "DENY", condition: "*" }];
+              case "Restricted":
+              default:
+                return [
+                  { action: "READ", effect: "ALLOW", condition: "authenticated" },
+                  { action: "WRITE", effect: "DENY", condition: "*" }
+                ];
+            }
+          };
 
-          // Create contract policies first
+          const policy = await datasetPoliciesApi.create(domainId, {
+            name: formData.policy.policyName,
+            version: "1.0.0",
+            type: formData.policy.policyTemplate,
+            rules: getRules(formData.policy.policyTemplate),
+            description: `Policy template: ${formData.policy.policyTemplate}`,
+          });
+          setCreatedIds((prev) => ({ ...prev, datasetPolicyId: policy.id }));
+          console.log("Dataset Policy created:", {
+            policyId: policy.id,
+            policyName: formData.policy.policyName,
+            template: formData.policy.policyTemplate,
+          });
+        } catch (error) {
+          errors.push(`Policy Definition: ${error instanceof Error ? error.message : "Failed"}`);
+        }
+      }
+
+      // Step 7: Contract Request
+      if (formData.contractRequest && domainId && !contractId) {
+        try {
+          const contractData = formData.contractRequest;
           const policyIds: string[] = [];
           for (const policy of contractData.policies) {
             const cp = await contractPoliciesApi.create(domainId, {
@@ -600,43 +434,63 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
             contract_policies: policyIds,
           });
           contractId = String(contract.id);
-          setCreatedIds((prev) => ({
-            ...prev,
-            contractId: String(contract.id),
-            contractPolicyIds: policyIds,
-          }));
+          setCreatedIds((prev) => ({ ...prev, contractId, contractPolicyIds: policyIds }));
         } catch (error) {
-          const msg = error instanceof Error ? error.message : "Failed to create contract";
-          errors.push(`Contract: ${msg}`);
+          errors.push(`Contract Request: ${error instanceof Error ? error.message : "Failed"}`);
         }
       }
 
-      // Step 5: Create Data Transfer
-      if (formData.transfer && domainId && !transferId) {
+      // Step 8: Agreement & Approval
+      if (formData.agreement && domainId && contractId && !createdIds.agreementId) {
         try {
-          const transferData = formData.transfer;
-          const transfer = await dataTransfersApi.create(domainId, {
-            name: transferData.name,
-            from: transferData.from,
-            to: transferData.to,
-            type: transferData.type,
-            targetEndpoint: transferData.targetEndpoint,
-            protocol: transferData.protocol,
-            scheduleType: transferData.scheduleType,
-            cronExpression: transferData.cronExpression,
-            encrypted: transferData.encrypted,
+          // Create agreement based on the contract from step 7
+          const contractData = formData.contractRequest;
+          if (!contractData) {
+            throw new Error("Contract data not found");
+          }
+
+          const agreement = await agreementsApi.create(domainId, {
+            contract_id: contractId,
+            effective_from: contractData.startDate,
+            effective_to: contractData.endDate || new Date(new Date(contractData.startDate).getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 1 year if no end date
           });
-          transferId = String(transfer.id);
-          setCreatedIds((prev) => ({ ...prev, transferId: String(transfer.id) }));
+          setCreatedIds((prev) => ({ ...prev, agreementId: agreement.id }));
+          console.log("Agreement created:", {
+            agreementId: agreement.id,
+            contractId,
+            digitalSignature: formData.agreement.digitalSignature,
+            approved: formData.agreement.approved,
+          });
         } catch (error) {
-          const msg = error instanceof Error ? error.message : "Failed to create data transfer";
-          errors.push(`Transfer: ${msg}`);
+          errors.push(`Agreement: ${error instanceof Error ? error.message : "Failed"}`);
         }
       }
+      
+      // Step 9: Monitoring & Go-Live
+      if (formData.monitoring && domainId) {
+        try {
+          // Store monitoring configuration in localStorage for now
+          // In a real scenario, this would be sent to a monitoring/settings endpoint
+          const monitoringConfig = {
+            domainId,
+            enableAuditLog: formData.monitoring.enableAuditLog,
+            retentionPeriod: formData.monitoring.retentionPeriod,
+            alertEmail: formData.monitoring.alertEmail,
+            complianceFrameworks: formData.monitoring.complianceFrameworks,
+            enableRealTimeAlerts: formData.monitoring.enableRealTimeAlerts,
+            configuredAt: new Date().toISOString(),
+          };
 
-      // Step 6: Monitoring (no backend API yet)
-      if (formData.monitoring) {
-        console.log("[Onboarding] Monitoring config:", formData.monitoring);
+          // Store in localStorage with domain-specific key
+          localStorage.setItem(`rapidsk-monitoring-${domainId}`, JSON.stringify(monitoringConfig));
+
+          console.log("Monitoring configuration saved:", monitoringConfig);
+
+          // Note: When backend provides a monitoring config endpoint, replace this with:
+          // await monitoringApi.configure(domainId, monitoringConfig);
+        } catch (error) {
+          errors.push(`Monitoring: ${error instanceof Error ? error.message : "Failed to save configuration"}`);
+        }
       }
 
       const result: SubmissionResult = {
@@ -644,10 +498,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
         organizationId,
         datasetId,
         contractId,
-        transferId,
-        message: errors.length === 0
-          ? "Onboarding completed successfully! Your dataspace connector is now configured."
-          : "Onboarding completed with some warnings.",
+        message: errors.length === 0 ? "Onboarding completed successfully!" : "Onboarding completed with some warnings.",
         errors: errors.length > 0 ? errors : undefined,
       };
 
@@ -660,11 +511,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       setSubmissionError(errorMessage);
-      return {
-        success: false,
-        message: errorMessage,
-        errors: [errorMessage],
-      };
+      return { success: false, message: errorMessage, errors: [errorMessage] };
     } finally {
       setIsSubmitting(false);
     }

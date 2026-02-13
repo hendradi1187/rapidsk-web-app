@@ -1,3 +1,4 @@
+import { OnboardingProvider } from "@/components/onboarding/OnboardingContext";
 import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
@@ -63,7 +64,9 @@ const Dashboard = () => {
         </div>
 
         {/* Onboarding Flow */}
-        <OnboardingFlow />
+        <OnboardingProvider>
+          <OnboardingFlow />
+        </OnboardingProvider>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

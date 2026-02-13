@@ -30,7 +30,7 @@ const complianceFrameworks = [
   { id: "ITIL4", label: "ITIL 4", description: "IT Service Management" },
 ];
 
-export const EnableMonitoringStep = () => {
+export const MonitoringGoLiveStep = () => {
   const navigate = useNavigate();
   const {
     formData,
@@ -70,12 +70,15 @@ export const EnableMonitoringStep = () => {
   useEffect(() => {
     if (isSubmitting) {
       const steps = [
-        "Creating organization...",
-        "Defining vocabulary...",
-        "Registering dataset...",
-        "Setting up contract...",
-        "Configuring transfer...",
-        "Enabling monitoring...",
+        "1/9: Creating organization...",
+        "2/9: Setting up security...",
+        "3/9: Defining vocabulary...",
+        "4/9: Building metadata schema...",
+        "5/9: Registering dataset...",
+        "6/9: Defining policies...",
+        "7/9: Creating contract...",
+        "8/9: Finalizing agreement...",
+        "9/9: Enabling monitoring...",
       ];
       let stepIndex = 0;
       const progressInterval = setInterval(() => {
@@ -84,7 +87,7 @@ export const EnableMonitoringStep = () => {
           setSubmissionProgress(((stepIndex + 1) / steps.length) * 100);
           stepIndex++;
         }
-      }, 1000);
+      }, 800);
 
       return () => clearInterval(progressInterval);
     } else {
@@ -120,7 +123,7 @@ export const EnableMonitoringStep = () => {
     if (isValid) {
       const values = form.getValues();
       updateStepData("monitoring", values);
-      markStepComplete(5);
+      markStepComplete(8); // Step 9
       return true;
     }
     return false;
@@ -138,7 +141,7 @@ export const EnableMonitoringStep = () => {
 
     const values = form.getValues();
     updateStepData("monitoring", values);
-    markStepComplete(5);
+    markStepComplete(8); // Step 9
 
     // Submit all data to backend using toast.promise for better feedback
     toast.promise(submitOnboarding(), {
@@ -156,7 +159,7 @@ export const EnableMonitoringStep = () => {
     });
   };
 
-  const allPreviousStepsComplete = [0, 1, 2, 3, 4].every((step) => completedSteps.has(step));
+  const allPreviousStepsComplete = [0, 1, 2, 3, 4, 5, 6, 7].every((step) => completedSteps.has(step));
 
   return (
     <div className="space-y-6">

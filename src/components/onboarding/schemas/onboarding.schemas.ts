@@ -22,28 +22,39 @@ export const organizationSchema = z.object({
   domainCode: z.string().trim().min(2, "Kode domain minimal 2 karakter").max(20, "Kode domain maksimal 20 karakter"),
   domainDescription: z.string().trim().min(10, "Deskripsi domain minimal 10 karakter").max(500),
 });
-
 export type OrganizationFormValues = z.infer<typeof organizationSchema>;
 
-// Step 2: Vocabulary Schema
+// Step 2: Security & Identity Schema (Placeholder)
+export const securitySchema = z.object({
+  ssoType: z.enum(["OIDC", "SAML", "None"]).default("None"),
+  tlsEnabled: z.boolean().default(true),
+  twoFactorAuth: z.boolean().default(false),
+});
+export type SecurityFormValues = z.infer<typeof securitySchema>;
+
+// Step 3: Vocabulary Schema
 export const vocabularyTermSchema = z.object({
   term: z.string().trim().min(1, "Nama term wajib diisi"),
   datatype: z.string().trim().min(1, "Datatype wajib diisi"),
   unit: z.string().trim().optional(),
   description: z.string().trim().min(10, "Definisi minimal 10 karakter").optional(),
 });
-
 export const vocabularySchema = z.object({
   vocabularyName: z.string().trim().min(3, "Nama vocabulary minimal 3 karakter"),
   version: z.string().trim().min(1, "Version wajib diisi").default("1.0.0"),
   vocabularyDescription: z.string().trim().optional(),
   terms: z.array(vocabularyTermSchema).min(1, "Minimal satu term harus ditambahkan"),
 });
-
 export type VocabularyFormValues = z.infer<typeof vocabularySchema>;
 
-// Step 3: Dataset Schema
-// Backend DatasetCreateRequest: name, provider, domain, format (WMS|WFS|WCS), endpoint, period, wells?, description?, accessLevel?
+// Step 4: Metadata Schema (Placeholder)
+export const metadataSchemaSchema = z.object({
+  schemaName: z.string().min(3, "Schema name is required."),
+  schemaType: z.enum(["DCAT", "JSON-LD", "Custom"]).default("DCAT"),
+});
+export type MetadataSchemaFormValues = z.infer<typeof metadataSchemaSchema>;
+
+// Step 5: Dataset Schema
 export const datasetSchema = z.object({
   name: z.string().trim().min(3, "Nama dataset minimal 3 karakter").max(100),
   description: z.string().trim().max(500).optional(),
@@ -61,20 +72,22 @@ export const datasetSchema = z.object({
     required_error: "Pilih level akses",
   }),
 });
-
 export type DatasetFormValues = z.infer<typeof datasetSchema>;
 
-// Step 4: Contract Schema
-// Backend ContractCreateRequest: title, provider, consumer, domain, policy, startDate, endDate?, description?, contract_policies?, datasets?
-// Contract policies are created separately, then referenced by ID in the contract.
-// For onboarding, we create contract policies inline and then attach them.
+// Step 6: Policy Definition Schema (Placeholder)
+export const policyDefinitionSchema = z.object({
+  policyName: z.string().min(3, "Policy name is required."),
+  policyTemplate: z.enum(["AllowAll", "DenyAll", "Restricted"]).default("Restricted"),
+});
+export type PolicyDefinitionFormValues = z.infer<typeof policyDefinitionSchema>;
+
+// Step 7: Contract Request Schema
 export const contractPolicyInlineSchema = z.object({
   name: z.string().trim().min(1, "Nama policy wajib diisi"),
   dataClassification: z.string().trim().min(1, "Klasifikasi data wajib diisi"),
   description: z.string().trim().optional(),
 });
-
-export const contractSchema = z.object({
+export const contractRequestSchema = z.object({
   title: z.string().trim().min(3, "Nama kontrak minimal 3 karakter"),
   provider: z.string().min(1, "Provider wajib diisi"),
   consumer: z.string().min(1, "Consumer wajib diisi"),
@@ -83,32 +96,20 @@ export const contractSchema = z.object({
   description: z.string().trim().max(500).optional(),
   policies: z.array(contractPolicyInlineSchema).min(1, "Minimal satu policy harus ditambahkan"),
 });
+export type ContractRequestFormValues = z.infer<typeof contractRequestSchema>;
 
-export type ContractFormValues = z.infer<typeof contractSchema>;
 
-// Step 5: Transfer Schema
-// Backend DataTransferCreateRequest: name, from, to, type (streaming|batch), sourceDataset?, targetEndpoint?, protocol?, scheduleType?, cronExpression?, encrypted?
-export const transferSchema = z.object({
-  name: z.string().trim().min(3, "Nama transfer minimal 3 karakter"),
-  from: z.string().trim().min(1, "Sumber (from) wajib diisi"),
-  to: z.string().trim().min(1, "Tujuan (to) wajib diisi"),
-  type: z.enum(["streaming", "batch"], {
-    required_error: "Pilih tipe transfer",
+// Step 8: Agreement & Approval Schema (Placeholder)
+export const agreementSchema = z.object({
+  digitalSignature: z.string().min(1, "Digital signature is required."),
+  approved: z.boolean().refine(val => val === true, {
+    message: "You must approve the agreement to continue.",
   }),
-  targetEndpoint: z.string().url("Target endpoint harus URL valid"),
-  protocol: z.enum(["HTTP", "HTTPS", "S3", "FTP", "SFTP"], {
-    required_error: "Pilih protokol",
-  }),
-  scheduleType: z.enum(["realtime", "scheduled", "manual"], {
-    required_error: "Pilih tipe jadwal",
-  }),
-  cronExpression: z.string().optional(),
-  encrypted: z.boolean().default(true),
 });
+export type AgreementFormValues = z.infer<typeof agreementSchema>;
 
-export type TransferFormValues = z.infer<typeof transferSchema>;
 
-// Step 6: Monitoring Schema
+// Step 9: Monitoring & Go-Live Schema
 export const monitoringSchema = z.object({
   enableAuditLog: z.boolean().default(true),
   retentionPeriod: z.coerce.number().min(30, "Minimal 30 hari").max(365, "Maksimal 365 hari"),
@@ -116,5 +117,5 @@ export const monitoringSchema = z.object({
   complianceFrameworks: z.array(z.string()).min(1, "Pilih minimal satu framework"),
   enableRealTimeAlerts: z.boolean().default(false),
 });
-
 export type MonitoringFormValues = z.infer<typeof monitoringSchema>;
+
