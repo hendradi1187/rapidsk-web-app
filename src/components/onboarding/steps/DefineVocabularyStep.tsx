@@ -55,7 +55,7 @@ export const DefineVocabularyStep = () => {
     if (isValid) {
       const values = form.getValues();
       updateStepData("vocabulary", values);
-      markStepComplete(1);
+      markStepComplete(2);
       return true;
     }
     return false;

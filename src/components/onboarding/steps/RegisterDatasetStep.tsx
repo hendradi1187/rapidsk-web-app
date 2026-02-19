@@ -53,7 +53,7 @@ export const RegisterDatasetStep = () => {
     if (isValid) {
       const values = form.getValues();
       updateStepData("dataset", values);
-      markStepComplete(2);
+      markStepComplete(4);
       return true;
     }
     return false;

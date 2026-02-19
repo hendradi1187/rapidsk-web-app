@@ -24,11 +24,16 @@ export const organizationSchema = z.object({
 });
 export type OrganizationFormValues = z.infer<typeof organizationSchema>;
 
-// Step 2: Security & Identity Schema (Placeholder)
+// Step 2: Security & Identity Schema
 export const securitySchema = z.object({
   ssoType: z.enum(["OIDC", "SAML", "None"]).default("None"),
   tlsEnabled: z.boolean().default(true),
   twoFactorAuth: z.boolean().default(false),
+  password: z
+    .string()
+    .min(8, "Password minimal 8 karakter")
+    .optional()
+    .or(z.literal("")),
 });
 export type SecurityFormValues = z.infer<typeof securitySchema>;
 
@@ -47,11 +52,23 @@ export const vocabularySchema = z.object({
 });
 export type VocabularyFormValues = z.infer<typeof vocabularySchema>;
 
-// Step 4: Metadata Schema (Placeholder)
-export const metadataSchemaSchema = z.object({
-  schemaName: z.string().min(3, "Schema name is required."),
-  schemaType: z.enum(["DCAT", "JSON-LD", "Custom"]).default("DCAT"),
+// Step 4: Metadata Schema
+export const metadataSchemaFieldSchema = z.object({
+  termIndex: z.number(),
+  required: z.boolean().default(false),
+  cardinality: z.enum(["SINGLE", "MULTIPLE"]).default("SINGLE"),
 });
+
+export const metadataSchemaSchema = z
+  .object({
+    version: z.string().min(1, "Version wajib diisi").default("1.0.0"),
+    fields: z.array(metadataSchemaFieldSchema),
+  })
+  .refine((data) => data.fields.length > 0, {
+    message: "Minimal satu field vocabulary harus dikonfigurasi",
+    path: ["fields"],
+  });
+export type MetadataSchemaFieldValues = z.infer<typeof metadataSchemaFieldSchema>;
 export type MetadataSchemaFormValues = z.infer<typeof metadataSchemaSchema>;
 
 // Step 5: Dataset Schema
@@ -74,11 +91,29 @@ export const datasetSchema = z.object({
 });
 export type DatasetFormValues = z.infer<typeof datasetSchema>;
 
-// Step 6: Policy Definition Schema (Placeholder)
-export const policyDefinitionSchema = z.object({
-  policyName: z.string().min(3, "Policy name is required."),
-  policyTemplate: z.enum(["AllowAll", "DenyAll", "Restricted"]).default("Restricted"),
+// Step 6: Policy Definition Schema
+export const policyRuleSchema = z.object({
+  left_operand: z.string().trim().min(1, "Left operand wajib diisi"),
+  operator: z.enum([
+    "EQUALS",
+    "NOT_EQUALS",
+    "GREATER_THAN",
+    "LESS_THAN",
+    "CONTAINS",
+    "STARTS_WITH",
+    "ENDS_WITH",
+  ]),
+  right_operand: z.string().trim().min(1, "Right operand wajib diisi"),
 });
+
+export const policyDefinitionSchema = z.object({
+  policyName: z.string().trim().min(3, "Nama policy minimal 3 karakter"),
+  description: z.string().trim().optional(),
+  version: z.string().trim().min(1, "Version wajib diisi").default("1.0.0"),
+  type: z.enum(["ACCESS", "USAGE", "RETENTION", "SECURITY"]).default("ACCESS"),
+  rules: z.array(policyRuleSchema).min(1, "Minimal satu rule harus ditambahkan"),
+});
+export type PolicyRuleValues = z.infer<typeof policyRuleSchema>;
 export type PolicyDefinitionFormValues = z.infer<typeof policyDefinitionSchema>;
 
 // Step 7: Contract Request Schema
@@ -99,7 +134,7 @@ export const contractRequestSchema = z.object({
 export type ContractRequestFormValues = z.infer<typeof contractRequestSchema>;
 
 
-// Step 8: Agreement & Approval Schema (Placeholder)
+// Step 8: Agreement & Approval Schema
 export const agreementSchema = z.object({
   digitalSignature: z.string().min(1, "Digital signature is required."),
   approved: z.boolean().refine(val => val === true, {

@@ -59,6 +59,7 @@ interface CreatedIds {
   domainId?: string;
   userId?: string; // User created for security/identity
   vocabularyId?: string;
+  vocabularyTermIds?: string[]; // IDs of terms created with vocabulary
   schemaId?: string; // Metadata schema
   datasetId?: string;
   datasetPolicyId?: string; // Dataset policy
@@ -300,13 +301,18 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
           // Create a user for the organization with security settings
           // Note: This is a simplified approach. In a real scenario, SSO config
           // would be handled by a dedicated identity provider configuration endpoint
+          const mapRole = (role: string): "admin" | "user" | "viewer" => {
+            if (role === "Admin") return "admin";
+            if (role === "Viewer") return "viewer";
+            return "user"; // DataSteward → user
+          };
+
           const user = await usersService.create({
             email: formData.organization.participantEmail,
             name: formData.organization.participantName,
-            role: formData.organization.participantRole.toLowerCase() as any,
-            organization_id: organizationId,
-            is_active: true,
-            two_factor_enabled: formData.security.twoFactorAuth,
+            role: mapRole(formData.organization.participantRole),
+            ...(formData.security.password ? { password: formData.security.password } : {}),
+            status: "active",
           });
           setCreatedIds((prev) => ({ ...prev, userId: user.id }));
           console.log("Security configured:", {
@@ -330,7 +336,11 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
             description: vocabData.vocabularyDescription || null,
             terms: vocabData.terms,
           });
-          setCreatedIds((prev) => ({ ...prev, vocabularyId: vocabulary.id }));
+          setCreatedIds((prev) => ({
+            ...prev,
+            vocabularyId: vocabulary.id,
+            vocabularyTermIds: vocabulary.terms.map((t) => t.id),
+          }));
         } catch (error) {
           errors.push(`Vocabulary: ${error instanceof Error ? error.message : "Failed"}`);
         }
@@ -339,19 +349,22 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
       // Step 4: Metadata Schema
       if (formData.metadataSchema && domainId && createdIds.vocabularyId && !createdIds.schemaId) {
         try {
-          // Create metadata schema using the vocabulary created in step 3
+          const termIds = createdIds.vocabularyTermIds || [];
+          const metadataSchemas = formData.metadataSchema.fields
+            .map((f) => ({
+              vocabulary_term_id: termIds[f.termIndex],
+              required: f.required,
+              cardinality: f.cardinality as "SINGLE" | "MULTIPLE",
+            }))
+            .filter((f) => !!f.vocabulary_term_id);
+
           const schema = await schemasApi.create(domainId, {
             vocabulary_id: createdIds.vocabularyId,
-            version: "1.0.0",
-            status: "ACTIVE",
-            metadata_schemas: [], // Empty for now, can be populated based on schemaType
+            version: formData.metadataSchema.version,
+            status: "DRAFT",
+            metadata_schemas: metadataSchemas,
           });
           setCreatedIds((prev) => ({ ...prev, schemaId: schema.id }));
-          console.log("Metadata Schema created:", {
-            schemaId: schema.id,
-            schemaName: formData.metadataSchema.schemaName,
-            schemaType: formData.metadataSchema.schemaType,
-          });
         } catch (error) {
           errors.push(`Metadata Schema: ${error instanceof Error ? error.message : "Failed"}`);
         }
@@ -372,35 +385,14 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
       // Step 6: Policy Definition
       if (formData.policy && domainId && !createdIds.datasetPolicyId) {
         try {
-          // Map policy template to rules
-          const getRules = (template: string) => {
-            switch (template) {
-              case "AllowAll":
-                return [{ action: "READ", effect: "ALLOW", condition: "*" }];
-              case "DenyAll":
-                return [{ action: "*", effect: "DENY", condition: "*" }];
-              case "Restricted":
-              default:
-                return [
-                  { action: "READ", effect: "ALLOW", condition: "authenticated" },
-                  { action: "WRITE", effect: "DENY", condition: "*" }
-                ];
-            }
-          };
-
           const policy = await datasetPoliciesApi.create(domainId, {
             name: formData.policy.policyName,
-            version: "1.0.0",
-            type: formData.policy.policyTemplate,
-            rules: getRules(formData.policy.policyTemplate),
-            description: `Policy template: ${formData.policy.policyTemplate}`,
+            version: formData.policy.version,
+            type: formData.policy.type,
+            rules: formData.policy.rules,
+            description: formData.policy.description || null,
           });
           setCreatedIds((prev) => ({ ...prev, datasetPolicyId: policy.id }));
-          console.log("Dataset Policy created:", {
-            policyId: policy.id,
-            policyName: formData.policy.policyName,
-            template: formData.policy.policyTemplate,
-          });
         } catch (error) {
           errors.push(`Policy Definition: ${error instanceof Error ? error.message : "Failed"}`);
         }
