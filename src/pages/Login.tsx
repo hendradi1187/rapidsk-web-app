@@ -82,7 +82,7 @@ const Login = () => {
         style={{ backgroundColor: "#0f1624" }}
       >
         {/* Scrollable inner area, vertically centered */}
-        <div className="flex-1 flex flex-col items-center justify-center px-10 py-12 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-center px-10 py-12">
           <div className="w-full max-w-[340px] flex flex-col gap-5">
 
             {/* Logo — identik dengan Sidebar */}
