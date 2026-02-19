@@ -3,8 +3,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/context/AuthContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute, PublicRoute } from "@/components/auth/ProtectedRoute";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
@@ -28,43 +30,47 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          {/* Public Route - Login Page */}
-          <Route
-            path="/login"
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            }
-          />
+        <AuthProvider>
+          <Routes>
+            {/* Public Route - Login Page */}
+            <Route
+              path="/login"
+              element={
+                <PublicRoute>
+                  <Login />
+                </PublicRoute>
+              }
+            />
 
-          {/* Protected Routes - Require Authentication */}
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/onboarding" element={<Onboarding />} />
-                    <Route path="/organizations" element={<Organizations />} />
-                    <Route path="/domains" element={<Domains />} />
-                    <Route path="/participants" element={<ParticipantsPage />} />
-                    <Route path="/datasets" element={<Datasets />} />
-                    <Route path="/contracts" element={<Contracts />} />
-                    <Route path="/transfer" element={<DataTransfer />} />
-                    <Route path="/audit" element={<Audit />} />
-                    <Route path="/compliance" element={<Compliance />} />
-                    <Route path="/api-docs" element={<ApiDocs />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+            {/* Protected Routes - Require Authentication + Role Check */}
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <RoleGuard>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/onboarding" element={<Onboarding />} />
+                        <Route path="/organizations" element={<Organizations />} />
+                        <Route path="/domains" element={<Domains />} />
+                        <Route path="/participants" element={<ParticipantsPage />} />
+                        <Route path="/datasets" element={<Datasets />} />
+                        <Route path="/contracts" element={<Contracts />} />
+                        <Route path="/transfer" element={<DataTransfer />} />
+                        <Route path="/audit" element={<Audit />} />
+                        <Route path="/compliance" element={<Compliance />} />
+                        <Route path="/api-docs" element={<ApiDocs />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </RoleGuard>
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

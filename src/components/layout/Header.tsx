@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Bell, Search, User, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,20 +13,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useLogout } from "@/api/hooks/useUsers";
+import { useAuth, type AppRole } from "@/context/AuthContext";
+import { ROLE_LABELS } from "@/config/rbac";
+import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
 }
 
+const ROLE_BADGE_CLASS: Record<AppRole, string> = {
+  SUPER_ADMIN: "border-primary text-primary",
+  PROVIDER: "border-accent text-accent",
+  CONSUMER: "border-blue-500 text-blue-500",
+  VIEWER: "border-muted-foreground text-muted-foreground",
+};
+
 export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
+  const { user, role } = useAuth();
 
-  // Get user info from localStorage
-  const userInfoStr = localStorage.getItem("user_info");
-  const userInfo = userInfoStr ? JSON.parse(userInfoStr) : null;
-  const userName = userInfo?.full_name || "Super Admin";
+  const userName = user?.full_name || "User";
   const userInitials = userName
     .split(" ")
     .map((n: string) => n[0])
@@ -79,7 +88,22 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-semibold">{userName}</span>
+                  {user?.email && (
+                    <span className="text-xs text-muted-foreground font-normal truncate">
+                      {user.email}
+                    </span>
+                  )}
+                  <Badge
+                    variant="outline"
+                    className={cn("text-xs w-fit font-medium", ROLE_BADGE_CLASS[role])}
+                  >
+                    {ROLE_LABELS[role]}
+                  </Badge>
+                </div>
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <User className="w-4 h-4 mr-2" />

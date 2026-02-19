@@ -114,7 +114,7 @@ const Login = () => {
 
         {/* Login Card */}
         <Card className="shadow-xl border-border/50 backdrop-blur">
-          <CardHeader className="space-y-1">
+          <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
             <CardDescription>
               Enter your credentials to access the platform

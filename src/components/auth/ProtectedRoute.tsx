@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -11,20 +12,12 @@ interface ProtectedRouteProps {
  */
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const location = useLocation();
-  const token = localStorage.getItem("auth_token");
-
-  // Check if user is authenticated
-  const isAuthenticated = !!token;
-
-  // Show loading state while checking auth (optional, for future auth validation)
-  // You can add a useEffect here to validate token with backend if needed
+  const { isAuthenticated } = useAuth();
 
   if (!isAuthenticated) {
-    // Redirect to login page but save the location they were trying to access
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // User is authenticated, render the children
   return <>{children}</>;
 };
 
@@ -33,15 +26,12 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
  * Redirects to dashboard if user is already authenticated
  */
 export const PublicRoute = ({ children }: ProtectedRouteProps) => {
-  const token = localStorage.getItem("auth_token");
-  const isAuthenticated = !!token;
+  const { isAuthenticated } = useAuth();
 
   if (isAuthenticated) {
-    // User is already logged in, redirect to dashboard
     return <Navigate to="/" replace />;
   }
 
-  // User is not authenticated, show the public route (login page)
   return <>{children}</>;
 };
 

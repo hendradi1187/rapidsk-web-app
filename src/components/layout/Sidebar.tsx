@@ -1,40 +1,17 @@
 import { Link, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Rocket,
-  Building2,
-  Layers,
-  Users2, // Added icon
-  Database,
-  FileText,
-  ArrowRightLeft,
-  ClipboardCheck,
-  Shield,
-  Code2,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Rocket, label: "Onboarding", path: "/onboarding" },
-  { icon: Building2, label: "Organizations", path: "/organizations" },
-  { icon: Layers, label: "Domains", path: "/domains" },
-  { icon: Users2, label: "Participants", path: "/participants" }, // Added item
-  { icon: Database, label: "Dataset Catalog", path: "/datasets" },
-  { icon: FileText, label: "Contracts", path: "/contracts" },
-  { icon: ArrowRightLeft, label: "Data Transfer", path: "/transfer" },
-  { icon: ClipboardCheck, label: "Audit Trail", path: "/audit" },
-  { icon: Shield, label: "Compliance", path: "/compliance" },
-  { icon: Code2, label: "API Docs", path: "/api-docs" },
-];
+import { useAuth } from "@/context/AuthContext";
+import { MENU_ITEMS } from "@/config/rbac";
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { role } = useAuth();
+
+  // Only show menu items allowed for the current role
+  const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(role));
 
   return (
     <aside
@@ -62,16 +39,13 @@ export const Sidebar = () => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={cn(
-                "nav-item",
-                isActive && "nav-item-active"
-              )}
+              className={cn("nav-item", isActive && "nav-item-active")}
             >
               <item.icon className="w-5 h-5 flex-shrink-0" />
               {!collapsed && <span className="font-medium">{item.label}</span>}

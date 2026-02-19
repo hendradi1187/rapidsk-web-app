@@ -9,22 +9,37 @@ import type {
   UserUpdateRequest,
 } from "../types/identity-provider";
 import { toast } from "sonner";
+import { useAuth, deriveRole } from "@/context/AuthContext";
 
 const USER_QUERY_KEY = "users";
 
 /**
  * Hook for user login.
- * @returns A mutation object for the login operation.
+ * On success, stores token + user_info in localStorage and syncs AuthContext.
  */
 export const useLogin = () => {
   const queryClient = useQueryClient();
+  const { setAuthUser } = useAuth();
+
   return useMutation({
     mutationFn: (credentials: LoginRequest) => authService.login(credentials),
     onSuccess: (data) => {
-      // Save token and user info to localStorage
       localStorage.setItem("auth_token", data.access_token);
       if (data.user) {
         localStorage.setItem("user_info", JSON.stringify(data.user));
+        // Derive role from backend category/group and sync to AuthContext
+        const role = deriveRole(
+          data.user.category?.code || "",
+          data.user.group?.code || ""
+        );
+        setAuthUser({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: data.user.full_name,
+          role,
+          category: data.user.category || { name: "", code: "", description: "" },
+          group: data.user.group || { name: "", code: "", description: "", priority: 0 },
+        });
       }
       queryClient.invalidateQueries({ queryKey: ["user", "validate"] });
       toast.success(`Welcome back, ${data.user?.full_name || "User"}!`);
@@ -45,23 +60,25 @@ export const useLogin = () => {
 
 /**
  * Hook for user logout.
+ * Clears localStorage and AuthContext state.
  */
 export const useLogout = () => {
-    const queryClient = useQueryClient();
-    const logout = () => {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("user_info");
-        queryClient.invalidateQueries(); // Invalidate all queries
-        toast.info("You have been logged out");
-    };
-    return logout;
+  const queryClient = useQueryClient();
+  const { clearAuth } = useAuth();
+
+  const logout = () => {
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("user_info");
+    clearAuth();
+    queryClient.invalidateQueries();
+    toast.info("You have been logged out");
+  };
+  return logout;
 };
 
 
 /**
  * Hook to fetch a paginated list of users.
- * @param params - Pagination parameters (limit, offset).
- * @returns A query object for the users list.
  */
 export const useUsers = (params: PaginationParams = {}) => {
   return useQuery({
@@ -73,27 +90,23 @@ export const useUsers = (params: PaginationParams = {}) => {
 
 /**
  * Hook to fetch a single user by ID.
- * @param id - The ID of the user.
- * @returns A query object for the user.
  */
 export const useUser = (id: string | null) => {
   return useQuery({
     queryKey: [USER_QUERY_KEY, id],
     queryFn: () => usersService.getById(id!),
-    enabled: !!id, // Only run the query if the id is not null
+    enabled: !!id,
   });
 };
 
 /**
  * Hook to create a new user.
- * @returns A mutation object for the create user operation.
  */
 export const useCreateUser = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UserCreateRequest) => usersService.create(data),
     onSuccess: () => {
-      // Invalidate the users list to refetch
       queryClient.invalidateQueries({ queryKey: [USER_QUERY_KEY] });
       toast.success("User created successfully");
     },
@@ -107,7 +120,6 @@ export const useCreateUser = () => {
 
 /**
  * Hook to update an existing user.
- * @returns A mutation object for the update user operation.
  */
 export const useUpdateUser = () => {
   const queryClient = useQueryClient();
@@ -115,7 +127,6 @@ export const useUpdateUser = () => {
     mutationFn: ({ id, data }: { id: string; data: UserUpdateRequest }) =>
       usersService.update(id, data),
     onSuccess: (_, variables) => {
-      // Invalidate the specific user and the users list
       queryClient.invalidateQueries({ queryKey: [USER_QUERY_KEY, variables.id] });
       queryClient.invalidateQueries({ queryKey: [USER_QUERY_KEY] });
       toast.success("User updated successfully");
@@ -130,14 +141,12 @@ export const useUpdateUser = () => {
 
 /**
  * Hook to delete a user.
- * @returns A mutation object for the delete user operation.
  */
 export const useDeleteUser = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => usersService.delete(id),
     onSuccess: () => {
-      // Invalidate the users list
       queryClient.invalidateQueries({ queryKey: [USER_QUERY_KEY] });
       toast.success("User deleted successfully");
     },
