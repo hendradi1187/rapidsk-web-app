@@ -69,7 +69,7 @@ const Login = () => {
       }
 
       // Redirect to the page they tried to visit or dashboard
-      toast.success("Welcome back!");
+      // Note: toast is already shown by useLogin onSuccess
       setTimeout(() => {
         navigate(from, { replace: true });
       }, 500);

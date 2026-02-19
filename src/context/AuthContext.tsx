@@ -83,10 +83,25 @@ const STORAGE_KEY_TOKEN = "auth_token";
 
 const loadUserFromStorage = (): AuthUser | null => {
   try {
+    const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+    if (!token) return null; // No token at all → definitely not authenticated
+
     const raw = localStorage.getItem(STORAGE_KEY_USER);
-    if (!raw) return null;
+    if (!raw) {
+      // Token exists but no user_info (e.g. old session before RBAC, or backend
+      // that returns token only). Default to SUPER_ADMIN for backward compatibility.
+      return {
+        id: "",
+        email: "",
+        full_name: "Super Admin",
+        role: "SUPER_ADMIN",
+        category: { name: "Platform", code: "PLATFORM", description: "" },
+        group: { name: "Admin", code: "ADMIN", description: "", priority: 0 },
+      };
+    }
+
     const parsed = JSON.parse(raw);
-    // Derive role from stored category/group
+    // Derive role from stored category/group codes
     const role = deriveRole(
       parsed.category?.code || "",
       parsed.group?.code || ""
@@ -107,15 +122,9 @@ const loadUserFromStorage = (): AuthUser | null => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(loadUserFromStorage);
 
-  // Re-derive role from storage on mount (handles page refresh)
+  // Re-sync from storage on mount (handles page refresh)
   useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEY_TOKEN);
-    if (!token) {
-      setUser(null);
-      return;
-    }
-    const loaded = loadUserFromStorage();
-    setUser(loaded);
+    setUser(loadUserFromStorage());
   }, []);
 
   const setAuthUser = useCallback((userInfo: AuthUser) => {

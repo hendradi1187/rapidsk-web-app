@@ -25,9 +25,10 @@ export const useLogin = () => {
     mutationFn: (credentials: LoginRequest) => authService.login(credentials),
     onSuccess: (data) => {
       localStorage.setItem("auth_token", data.access_token);
+
       if (data.user) {
+        // Backend returned full user info — derive role from category/group
         localStorage.setItem("user_info", JSON.stringify(data.user));
-        // Derive role from backend category/group and sync to AuthContext
         const role = deriveRole(
           data.user.category?.code || "",
           data.user.group?.code || ""
@@ -40,9 +41,24 @@ export const useLogin = () => {
           category: data.user.category || { name: "", code: "", description: "" },
           group: data.user.group || { name: "", code: "", description: "", priority: 0 },
         });
+        toast.success(`Welcome back, ${data.user.full_name}!`);
+      } else {
+        // Backend returned token only (no user object) — backward compatible fallback.
+        // Default to SUPER_ADMIN so the initial superadmin setup still works.
+        const fallback = {
+          id: "",
+          email: "",
+          full_name: "Super Admin",
+          role: "SUPER_ADMIN" as const,
+          category: { name: "Platform", code: "PLATFORM", description: "" },
+          group: { name: "Admin", code: "ADMIN", description: "", priority: 0 },
+        };
+        localStorage.setItem("user_info", JSON.stringify(fallback));
+        setAuthUser(fallback);
+        toast.success("Welcome back!");
       }
+
       queryClient.invalidateQueries({ queryKey: ["user", "validate"] });
-      toast.success(`Welcome back, ${data.user?.full_name || "User"}!`);
     },
     onError: (error: any) => {
       console.error("Login error details:", error.response?.data);
