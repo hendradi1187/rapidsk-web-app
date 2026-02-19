@@ -373,12 +373,6 @@ export const MonitoringGoLiveStep = () => {
                       <code className="ml-1 px-1 bg-muted rounded">{submissionResult.contractId}</code>
                     </div>
                   )}
-                  {submissionResult.transferId && (
-                    <div className="text-xs">
-                      <span className="text-muted-foreground">Transfer ID:</span>
-                      <code className="ml-1 px-1 bg-muted rounded">{submissionResult.transferId}</code>
-                    </div>
-                  )}
                 </div>
                 {redirectCountdown !== null && (
                   <div className="pt-2 text-xs text-muted-foreground">

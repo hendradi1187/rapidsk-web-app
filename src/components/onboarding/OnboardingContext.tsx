@@ -5,7 +5,6 @@ import {
   vocabulariesApi,
   datasetsApi,
   schemasApi,
-  metadataSchemasApi
 } from "@/api/services/data-catalog";
 import {
   contractsApi,
