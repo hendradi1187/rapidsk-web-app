@@ -278,7 +278,7 @@ const Login = () => {
               ].map(({ icon: Icon, label }) => (
                 <div
                   key={label}
-                  className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium flex-1"
+                  className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium flex-1 min-w-0"
                   style={{ border: "1px solid #1e2d44", color: "#4a5a72" }}
                 >
                   <Icon className="w-3 h-3 flex-shrink-0" />
