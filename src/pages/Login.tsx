@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLogin } from "@/api/hooks/useUsers";
-import { Loader2, Eye, EyeOff, AlertCircle, Key, Lock, FileText, Shield } from "lucide-react";
+import { Loader2, Eye, EyeOff, AlertCircle, Key, Lock, FileText, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 const Login = () => {
@@ -79,20 +79,17 @@ const Login = () => {
       >
         <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full space-y-6">
 
-          {/* Logo */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "#f59e0b" }}
-              >
-                <Shield className="w-5 h-5 text-black" />
-              </div>
-              <span className="text-white font-bold text-xl tracking-tight">RapiDSK</span>
+          {/* Logo — identik dengan Sidebar */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber to-amber-glow flex items-center justify-center amber-glow">
+              <span className="text-xl font-bold text-sidebar">R</span>
             </div>
-            <p style={{ color: "#6b7a99" }} className="text-sm">
-              Trusted Data Governance Platform
-            </p>
+            <div>
+              <h1 className="text-xl font-bold text-white leading-tight">
+                rapi<span className="text-gradient-amber">DSK</span>
+              </h1>
+              <p className="text-xs" style={{ color: "#6b7a99" }}>Dataspace Connector</p>
+            </div>
           </div>
 
           {/* SSO Button */}
@@ -270,7 +267,7 @@ const Login = () => {
             {[
               { icon: Lock, label: "SECURE ACCESS" },
               { icon: FileText, label: "AUDIT READY" },
-              { icon: Shield, label: "COMPLIANCE READY" },
+              { icon: ShieldCheck, label: "COMPLIANCE READY" },
             ].map(({ icon: Icon, label }) => (
               <div
                 key={label}
