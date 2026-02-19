@@ -14,6 +14,8 @@ import {
   agreementsApi
 } from "@/api/services/policy-contract";
 import { usersService } from "@/api/services/identity-provider";
+import { monitoringApi } from "@/api/services/monitoring";
+import type { MonitoringConfigCreateRequest } from "@/api/types/monitoring";
 
 import type { ParticipantOrganizationType } from "@/api/types/onboarding";
 import {
@@ -461,25 +463,15 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
       // Step 9: Monitoring & Go-Live
       if (formData.monitoring && domainId) {
         try {
-          // Store monitoring configuration in localStorage for now
-          // In a real scenario, this would be sent to a monitoring/settings endpoint
-          const monitoringConfig = {
-            domainId,
+          const monitoringConfig: MonitoringConfigCreateRequest = {
             enableAuditLog: formData.monitoring.enableAuditLog,
             retentionPeriod: formData.monitoring.retentionPeriod,
-            alertEmail: formData.monitoring.alertEmail,
+            alertEmail: formData.monitoring.alertEmail || "",
             complianceFrameworks: formData.monitoring.complianceFrameworks,
             enableRealTimeAlerts: formData.monitoring.enableRealTimeAlerts,
-            configuredAt: new Date().toISOString(),
           };
-
-          // Store in localStorage with domain-specific key
-          localStorage.setItem(`rapidsk-monitoring-${domainId}`, JSON.stringify(monitoringConfig));
-
-          console.log("Monitoring configuration saved:", monitoringConfig);
-
-          // Note: When backend provides a monitoring config endpoint, replace this with:
-          // await monitoringApi.configure(domainId, monitoringConfig);
+          // Tries backend; falls back to localStorage automatically if endpoint unavailable
+          await monitoringApi.configure(domainId, monitoringConfig);
         } catch (error) {
           errors.push(`Monitoring: ${error instanceof Error ? error.message : "Failed to save configuration"}`);
         }

@@ -22,3 +22,4 @@ export {
 export { consumerApi, providerApi } from "./connector";
 export { dataTransfersApi } from "./data-transfer";
 export { authService, usersService } from "./identity-provider";
+export { monitoringApi } from "./monitoring";
