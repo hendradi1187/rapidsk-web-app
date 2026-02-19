@@ -2,12 +2,10 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLogin } from "@/api/hooks/useUsers";
-import { Loader2, Eye, EyeOff, AlertCircle, Shield, Globe } from "lucide-react";
+import { Loader2, Eye, EyeOff, AlertCircle, Key, Lock, FileText, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 const Login = () => {
@@ -15,45 +13,32 @@ const Login = () => {
   const location = useLocation();
   const loginMutation = useLogin();
 
-  // Get the redirect path from location state, default to dashboard
   const from = (location.state as any)?.from?.pathname || "/";
 
-  // Form state
-  const [formData, setFormData] = useState({
-    username: "",
-    password: "",
-  });
+  const [formData, setFormData] = useState({ username: "", password: "" });
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
 
-  // Validate form
   const validateForm = () => {
     const newErrors: { username?: string; password?: string } = {};
-
     if (!formData.username.trim()) {
       newErrors.username = "Username is required";
     } else if (formData.username.length < 3) {
       newErrors.username = "Username must be at least 3 characters";
     }
-
     if (!formData.password) {
       newErrors.password = "Password is required";
     } else if (formData.password.length < 6) {
       newErrors.password = "Password must be at least 6 characters";
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     try {
       await loginMutation.mutateAsync({
@@ -61,224 +46,287 @@ const Login = () => {
         password: formData.password,
       });
 
-      // Save remember me preference
       if (rememberMe) {
         localStorage.setItem("remember_username", formData.username);
       } else {
         localStorage.removeItem("remember_username");
       }
 
-      // Redirect to the page they tried to visit or dashboard
-      // Note: toast is already shown by useLogin onSuccess
       setTimeout(() => {
         navigate(from, { replace: true });
       }, 500);
     } catch (error: any) {
       console.error("Login failed:", error);
-      // Error is handled by the useLogin hook with toast
     }
   };
 
   // Load remembered username on mount
   useState(() => {
-    const rememberedUsername = localStorage.getItem("remember_username");
-    if (rememberedUsername) {
-      setFormData((prev) => ({ ...prev, username: rememberedUsername }));
+    const remembered = localStorage.getItem("remember_username");
+    if (remembered) {
+      setFormData((prev) => ({ ...prev, username: remembered }));
       setRememberMe(true);
     }
   });
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-4">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-accent/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-info/10 rounded-full blur-3xl"></div>
-      </div>
+    <div className="min-h-screen flex" style={{ backgroundColor: "#0d1117" }}>
 
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo and Title */}
-        <div className="text-center mb-8 space-y-2">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg">
-              <span className="text-3xl font-bold text-white">R</span>
+      {/* ── Left Panel: Form ── */}
+      <div
+        className="w-full lg:w-[460px] flex-shrink-0 flex flex-col justify-between p-8 lg:p-10"
+        style={{ backgroundColor: "#0d1523" }}
+      >
+        <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full space-y-6">
+
+          {/* Logo */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: "#f59e0b" }}
+              >
+                <Shield className="w-5 h-5 text-black" />
+              </div>
+              <span className="text-white font-bold text-xl tracking-tight">RapiDSK</span>
             </div>
+            <p style={{ color: "#6b7a99" }} className="text-sm">
+              Trusted Data Governance Platform
+            </p>
           </div>
-          <h1 className="text-3xl font-bold text-foreground">
-            rapi<span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">DSK</span>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Dataspace Connector
-          </p>
-        </div>
 
-        {/* Login Card */}
-        <Card className="shadow-xl border-border/50 backdrop-blur">
-          <CardHeader className="space-y-1 text-center">
-            <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-            <CardDescription>
-              Enter your credentials to access the platform
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              {/* Username Field */}
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+          {/* SSO Button */}
+          <Button
+            type="button"
+            className="w-full h-11 font-medium"
+            style={{
+              backgroundColor: "#1a2236",
+              borderColor: "#2a3a54",
+              color: "#c9d1e0",
+            }}
+            variant="outline"
+            onClick={() => toast.info("SSO integration coming soon")}
+            disabled={loginMutation.isPending}
+          >
+            <Key className="w-4 h-4 mr-2" />
+            Sign in with Enterprise SSO (Keycloak)
+          </Button>
+
+          {/* Divider: OR CREDENTIALS */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px" style={{ backgroundColor: "#2a3a54" }} />
+            <span
+              className="text-xs uppercase tracking-widest font-medium"
+              style={{ color: "#6b7a99" }}
+            >
+              OR CREDENTIALS
+            </span>
+            <div className="flex-1 h-px" style={{ backgroundColor: "#2a3a54" }} />
+          </div>
+
+          {/* Credentials Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+
+            {/* Email / Username */}
+            <div className="space-y-1.5">
+              <label
+                className="text-xs uppercase tracking-wider font-semibold"
+                style={{ color: "#6b7a99" }}
+              >
+                Email Address
+              </label>
+              <Input
+                type="text"
+                placeholder="user@organization.com"
+                value={formData.username}
+                onChange={(e) => {
+                  setFormData({ ...formData, username: e.target.value });
+                  setErrors({ ...errors, username: undefined });
+                }}
+                className="h-11"
+                style={{
+                  backgroundColor: "#1a2236",
+                  borderColor: errors.username ? "#ef4444" : "#2a3a54",
+                  color: "#e2e8f0",
+                }}
+                disabled={loginMutation.isPending}
+                autoComplete="username"
+                autoFocus
+              />
+              {errors.username && (
+                <p className="text-xs text-red-400">{errors.username}</p>
+              )}
+            </div>
+
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label
+                className="text-xs uppercase tracking-wider font-semibold"
+                style={{ color: "#6b7a99" }}
+              >
+                Password
+              </label>
+              <div className="relative">
                 <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter your username"
-                  value={formData.username}
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter password"
+                  value={formData.password}
                   onChange={(e) => {
-                    setFormData({ ...formData, username: e.target.value });
-                    setErrors({ ...errors, username: undefined });
+                    setFormData({ ...formData, password: e.target.value });
+                    setErrors({ ...errors, password: undefined });
                   }}
-                  className={errors.username ? "border-destructive" : ""}
+                  className="h-11 pr-10"
+                  style={{
+                    backgroundColor: "#1a2236",
+                    borderColor: errors.password ? "#ef4444" : "#2a3a54",
+                    color: "#e2e8f0",
+                  }}
                   disabled={loginMutation.isPending}
-                  autoComplete="username"
-                  autoFocus
+                  autoComplete="current-password"
                 />
-                {errors.username && (
-                  <p className="text-sm text-destructive">{errors.username}</p>
-                )}
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: "#4a5568" }}
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
+                  {showPassword
+                    ? <EyeOff className="w-4 h-4" />
+                    : <Eye className="w-4 h-4" />
+                  }
+                </button>
               </div>
+              {errors.password && (
+                <p className="text-xs text-red-400">{errors.password}</p>
+              )}
+            </div>
 
-              {/* Password Field */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="px-0 text-xs text-muted-foreground hover:text-accent"
-                    onClick={() => toast.info("Contact your administrator to reset password")}
-                  >
-                    Forgot password?
-                  </Button>
-                </div>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
-                    value={formData.password}
-                    onChange={(e) => {
-                      setFormData({ ...formData, password: e.target.value });
-                      setErrors({ ...errors, password: undefined });
-                    }}
-                    className={errors.password ? "border-destructive pr-10" : "pr-10"}
-                    disabled={loginMutation.isPending}
-                    autoComplete="current-password"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
-                    onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="w-4 h-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-                {errors.password && (
-                  <p className="text-sm text-destructive">{errors.password}</p>
-                )}
-              </div>
-
-              {/* Remember Me */}
-              <div className="flex items-center space-x-2">
+            {/* Remember me + Forgot password */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Checkbox
                   id="remember"
                   checked={rememberMe}
                   onCheckedChange={(checked) => setRememberMe(checked as boolean)}
                   disabled={loginMutation.isPending}
+                  className="border-[#2a3a54] data-[state=checked]:bg-amber-400 data-[state=checked]:border-amber-400"
                 />
                 <label
                   htmlFor="remember"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  className="text-sm cursor-pointer"
+                  style={{ color: "#6b7a99" }}
                 >
-                  Remember me
+                  Remember this device
                 </label>
               </div>
-
-              {/* Error Alert */}
-              {loginMutation.isError && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {(loginMutation.error as any)?.response?.data?.detail ||
-                      "Invalid email or password. Please try again."}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Login Button */}
-              <Button
-                type="submit"
-                className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
-                disabled={loginMutation.isPending}
-              >
-                {loginMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  "Sign in"
-                )}
-              </Button>
-            </form>
-          </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            <div className="relative w-full">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
-                  Or continue with
-                </span>
-              </div>
-            </div>
-
-            {/* SSO Buttons */}
-            <div className="grid grid-cols-1 gap-2 w-full">
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => toast.info("SSO integration coming soon")}
-                disabled={loginMutation.isPending}
+                className="text-sm hover:opacity-80 transition-opacity"
+                style={{ color: "#f59e0b" }}
+                onClick={() => toast.info("Contact your administrator to reset password")}
               >
-                <Shield className="mr-2 h-4 w-4" />
-                Keycloak SSO
-              </Button>
+                Forgot password?
+              </button>
             </div>
-          </CardFooter>
-        </Card>
 
-        {/* Footer */}
-        <div className="mt-8 text-center space-y-2">
-          <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Shield className="w-3 h-3" />
-              Secure
-            </span>
-            <span className="flex items-center gap-1">
-              <Globe className="w-3 h-3" />
-              Gaia-X Compliant
-            </span>
+            {/* Error */}
+            {loginMutation.isError && (
+              <Alert
+                className="border"
+                style={{
+                  backgroundColor: "rgba(239,68,68,0.1)",
+                  borderColor: "rgba(239,68,68,0.3)",
+                }}
+              >
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <AlertDescription className="text-red-400">
+                  {(loginMutation.error as any)?.response?.data?.detail ||
+                    "Invalid credentials. Please try again."}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Sign In Button */}
+            <Button
+              type="submit"
+              className="w-full h-12 font-bold text-base text-black"
+              style={{ backgroundColor: "#f59e0b" }}
+              disabled={loginMutation.isPending}
+            >
+              {loginMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+          </form>
+
+          {/* Bottom Trust Badges */}
+          <div className="flex items-center gap-2 pt-2">
+            {[
+              { icon: Lock, label: "SECURE ACCESS" },
+              { icon: FileText, label: "AUDIT READY" },
+              { icon: Shield, label: "COMPLIANCE READY" },
+            ].map(({ icon: Icon, label }) => (
+              <div
+                key={label}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium flex-1 justify-center"
+                style={{
+                  border: "1px solid #2a3a54",
+                  color: "#6b7a99",
+                  backgroundColor: "transparent",
+                }}
+              >
+                <Icon className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate">{label}</span>
+              </div>
+            ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            &copy; 2025 rapiDSK. All rights reserved.
-          </p>
         </div>
+      </div>
+
+      {/* ── Right Panel: Marketing ── */}
+      <div className="hidden lg:flex flex-1 flex-col justify-center px-16 xl:px-24 relative">
+        <div className="max-w-xl">
+          {/* Hero Headline */}
+          <h1 className="font-bold text-white leading-tight mb-6" style={{ fontSize: "clamp(2.5rem, 4vw, 3.5rem)" }}>
+            Enterprise Data<br />
+            <span style={{ color: "#f59e0b" }}>Governance</span><br />
+            You Can Trust.
+          </h1>
+
+          {/* Description */}
+          <p className="text-lg leading-relaxed mb-10" style={{ color: "#6b7a99" }}>
+            RapiDSK provides end-to-end data governance, access control,
+            and compliance management for organizations that demand the
+            highest standards of security and regulatory readiness.
+          </p>
+
+          {/* Stats */}
+          <div className="flex items-start gap-12">
+            {[
+              { value: "99.99%", label: "Uptime SLA" },
+              { value: "SOC 2", label: "Certified" },
+              { value: "GDPR", label: "Compliant" },
+            ].map(({ value, label }) => (
+              <div key={label}>
+                <div className="text-3xl font-bold" style={{ color: "#f59e0b" }}>{value}</div>
+                <div className="text-sm mt-1" style={{ color: "#6b7a99" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
+        <p className="text-xs" style={{ color: "#3a4a64" }}>
+          © 2026 RapiDSK Enterprise Platform. All rights reserved.
+        </p>
       </div>
     </div>
   );
