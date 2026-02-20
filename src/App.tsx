@@ -1,12 +1,16 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import GuardedLayout from "@/components/auth/GuardedLayout";
 import { AuthProvider } from "@/context/AuthContext";
-import { MainLayout } from "@/components/layout/MainLayout";
-import { ProtectedRoute, PublicRoute } from "@/components/auth/ProtectedRoute";
-import { RoleGuard } from "@/components/auth/RoleGuard";
+import { PublicRoute } from "@/components/auth/ProtectedRoute";
+
+// kalau lo pake shadcn / komponen UI ini, import sesuai path project lo:
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+
+
+// pages
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
@@ -28,11 +32,9 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <Sonner />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            {/* Public Route - Login Page */}
             <Route
               path="/login"
               element={
@@ -42,33 +44,22 @@ const App = () => (
               }
             />
 
-            {/* Protected Routes - Require Authentication + Role Check */}
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <RoleGuard>
-                      <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/onboarding" element={<Onboarding />} />
-                        <Route path="/organizations" element={<Organizations />} />
-                        <Route path="/domains" element={<Domains />} />
-                        <Route path="/participants" element={<ParticipantsPage />} />
-                        <Route path="/datasets" element={<Datasets />} />
-                        <Route path="/contracts" element={<Contracts />} />
-                        <Route path="/transfer" element={<DataTransfer />} />
-                        <Route path="/audit" element={<Audit />} />
-                        <Route path="/compliance" element={<Compliance />} />
-                        <Route path="/api-docs" element={<ApiDocs />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="*" element={<NotFound />} />
-                      </Routes>
-                    </RoleGuard>
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
+            {/* guarded area */}
+            <Route element={<GuardedLayout />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/organizations" element={<Organizations />} />
+              <Route path="/domains" element={<Domains />} />
+              <Route path="/participants" element={<ParticipantsPage />} />
+              <Route path="/datasets" element={<Datasets />} />
+              <Route path="/contracts" element={<Contracts />} />
+              <Route path="/transfer" element={<DataTransfer />} />
+              <Route path="/audit" element={<Audit />} />
+              <Route path="/compliance" element={<Compliance />} />
+              <Route path="/api-docs" element={<ApiDocs />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
           </Routes>
         </AuthProvider>
       </BrowserRouter>

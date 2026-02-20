@@ -32,7 +32,7 @@ const ROLE_BADGE_CLASS: Record<AppRole, string> = {
 export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
-  const { user, role } = useAuth();
+const { user, role, effectiveRole, roleOverride, setRoleOverride } = useAuth();
 
   const userName = user?.full_name || "User";
   const userInitials = userName
@@ -98,10 +98,34 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
                   )}
                   <Badge
                     variant="outline"
-                    className={cn("text-xs w-fit font-medium", ROLE_BADGE_CLASS[role])}
+                    className={cn("text-xs w-fit font-medium", ROLE_BADGE_CLASS[effectiveRole])}
                   >
-                    {ROLE_LABELS[role]}
+                    {ROLE_LABELS[effectiveRole]}
                   </Badge>
+                  {/* Role switcher (testing) */}
+                {(role === "SUPER_ADMIN" || import.meta.env.DEV) && (
+                  <div className="mt-2">
+                    <div className="text-[11px] text-muted-foreground mb-1">Switch role</div>
+
+                    <select
+                      className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+                      value={roleOverride ?? ""}
+                      onChange={(e) =>
+                        setRoleOverride(e.target.value ? (e.target.value as AppRole) : null)
+                      }
+                    >
+                      <option value="">(real) {ROLE_LABELS[role]}</option>
+                      <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                      <option value="PROVIDER">PROVIDER</option>
+                      <option value="CONSUMER">CONSUMER</option>
+                      <option value="VIEWER">VIEWER</option>
+                    </select>
+
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      effective: <span className="font-medium">{effectiveRole}</span>
+                    </div>
+                  </div>
+                )}
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

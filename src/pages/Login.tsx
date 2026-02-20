@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const loginMutation = useLogin();
+
 
   const from = (location.state as any)?.from?.pathname || "/";
 
@@ -59,13 +60,13 @@ const Login = () => {
   };
 
   // Load remembered username on mount
-  useState(() => {
-    const remembered = localStorage.getItem("remember_username");
-    if (remembered) {
-      setFormData((prev) => ({ ...prev, username: remembered }));
-      setRememberMe(true);
-    }
-  });
+ useEffect(() => {
+  const remembered = localStorage.getItem("remember_username");
+  if (remembered) {
+    setFormData((prev) => ({ ...prev, username: remembered }));
+    setRememberMe(true);
+  }
+}, []);
 
   return (
     // ── Root: full viewport, side-by-side panels ──

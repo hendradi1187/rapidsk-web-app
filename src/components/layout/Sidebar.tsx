@@ -1,17 +1,18 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { MENU_ITEMS } from "@/config/rbac";
+import { NavLink } from "@/components/NavLink"; // <-- pake wrapper NavLink lo
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const { role } = useAuth();
+  const { effectiveRole } = useAuth();
 
-  // Only show menu items allowed for the current role
-  const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(role));
+  // Only show menu items allowed for the current *effective* role
+  const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(effectiveRole));
 
   return (
     <aside
@@ -39,36 +40,31 @@ export const Sidebar = () => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {visibleItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn("nav-item", isActive && "nav-item-active")}
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              {!collapsed && <span className="font-medium">{item.label}</span>}
-            </Link>
-          );
-        })}
+        {visibleItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className="nav-item"
+            activeClassName="nav-item-active"
+          >
+            <item.icon className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="font-medium">{item.label}</span>}
+          </NavLink>
+        ))}
       </nav>
 
       {/* Settings & Collapse */}
       <div className="p-4 border-t border-sidebar-border space-y-1">
-        <Link to="/settings" className="nav-item">
+        <NavLink to="/settings" className="nav-item" activeClassName="nav-item-active">
           <Settings className="w-5 h-5 flex-shrink-0" />
           {!collapsed && <span className="font-medium">Settings</span>}
-        </Link>
+        </NavLink>
+
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="nav-item w-full justify-center"
         >
-          {collapsed ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <ChevronLeft className="w-5 h-5" />
-          )}
+          {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
         </button>
       </div>
     </aside>

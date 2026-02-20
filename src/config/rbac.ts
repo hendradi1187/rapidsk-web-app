@@ -40,13 +40,13 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Rocket,
     label: "Onboarding",
     path: "/onboarding",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER"],
   },
   {
     icon: Building2,
     label: "Organizations",
     path: "/organizations",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER"],
   },
   {
     icon: Layers,
@@ -58,7 +58,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Users2,
     label: "Participants",
     path: "/participants",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER"],
   },
   {
     icon: Database,
@@ -76,7 +76,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: ArrowRightLeft,
     label: "Data Transfer",
     path: "/transfer",
-    roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER"],
+    roles: ["SUPER_ADMIN", "CONSUMER"], // ❌ provider gak boleh
   },
   {
     icon: ClipboardCheck,
@@ -88,13 +88,13 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Shield,
     label: "Compliance",
     path: "/compliance",
-    roles: ["SUPER_ADMIN", "CONSUMER"],
+    roles: ["SUPER_ADMIN"], // ❌ provider & consumer gak perlu
   },
   {
     icon: Code2,
     label: "API Docs",
     path: "/api-docs",
-    roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER", "VIEWER"],
+    roles: ["SUPER_ADMIN"],
   },
 ];
 
@@ -115,7 +115,14 @@ const ROLE_ROUTES = buildRoleRoutes();
 
 /** Returns true if the given role may access the given path. */
 export const canAccess = (role: AppRole, path: string): boolean => {
-  return ROLE_ROUTES[role]?.includes(path) ?? false;
+  const allowed = ROLE_ROUTES[role] ?? [];
+
+  const p = path !== "/" ? path.replace(/\/+$/, "") : "/";
+
+  return allowed.some((route) => {
+    if (route === "/") return p === "/";
+    return p === route || p.startsWith(route + "/");
+  });
 };
 
 /** Human-readable label for each role (used in UI badges). */

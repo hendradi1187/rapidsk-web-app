@@ -1,13 +1,14 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-
-// ─── Role Types ───────────────────────────────────────────────────────────────
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useCallback,
+} from "react";
 
 /**
  * Internal application roles derived from backend category + group.
- * SUPER_ADMIN : Platform administrator — full access
- * PROVIDER    : Data owner (KKKS) — registers datasets, manages contracts as provider
- * CONSUMER    : Data requester (Regulator) — requests access, approves agreements
- * VIEWER      : Read-only access
  */
 export type AppRole = "SUPER_ADMIN" | "PROVIDER" | "CONSUMER" | "VIEWER";
 
@@ -22,74 +23,65 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
+
+  /** role asli dari user_info */
   role: AppRole;
+
+  /** role yang dipakai UI (override kalau diset) */
+  effectiveRole: AppRole;
+
+  /** current override (null = pake role asli) */
+  roleOverride: AppRole | null;
+
+  /** set/clear override */
+  setRoleOverride: (role: AppRole | null) => void;
+
   isAuthenticated: boolean;
-  /** Check if current user has at least one of the given roles */
   hasRole: (roles: AppRole[]) => boolean;
-  /** Sync user into context (called after login) */
   setAuthUser: (userInfo: AuthUser) => void;
-  /** Clear auth state (called after logout) */
   clearAuth: () => void;
 }
 
-// ─── Role Derivation ──────────────────────────────────────────────────────────
-
 /**
  * Map backend category.code + group.code → AppRole.
- * Adjust codes here when backend returns actual values.
  */
-export const deriveRole = (
-  categoryCode: string,
-  groupCode: string
-): AppRole => {
-  const cat = categoryCode.toUpperCase();
-  const grp = groupCode.toUpperCase();
+export const deriveRole = (categoryCode: string, groupCode: string): AppRole => {
+  const cat = (categoryCode || "").toUpperCase();
+  const grp = (groupCode || "").toUpperCase();
 
-  // Super admin: group code contains ADMIN / SUPER / PLATFORM
-  if (
-    grp.includes("ADMIN") ||
-    grp.includes("SUPER") ||
-    grp.includes("PLATFORM") ||
-    cat.includes("PLATFORM") ||
-    cat.includes("SYSTEM")
-  ) {
-    return "SUPER_ADMIN";
+  // INTERNAL SUPERADMIN
+  if (cat === "INTERNAL" && grp === "SUPERADMIN") return "SUPER_ADMIN";
+
+  // PROVIDER side
+  if (cat === "PROVIDER") {
+    if (grp === "VIEWER") return "VIEWER";
+    return "PROVIDER"; // ADMIN / STEWARD treated as PROVIDER
   }
 
-  // Provider: KKKS or ENTERPRISE org type
-  if (cat.includes("KKKS") || cat.includes("ENTERPRISE")) {
-    return "PROVIDER";
-  }
-
-  // Consumer: Regulator / Government
-  if (
-    cat.includes("REGULATOR") ||
-    cat.includes("GOV") ||
-    cat.includes("GOVERNMENT") ||
-    cat.includes("SKK")
-  ) {
-    return "CONSUMER";
+  // CONSUMER side
+  if (cat === "CONSUMER") {
+    if (grp === "VIEWER") return "VIEWER";
+    return "CONSUMER"; // ADMIN / STEWARD treated as CONSUMER
   }
 
   return "VIEWER";
 };
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const STORAGE_KEY_USER = "user_info";
 const STORAGE_KEY_TOKEN = "auth_token";
+const ROLE_OVERRIDE_KEY = "role_override";
 
 const loadUserFromStorage = (): AuthUser | null => {
   try {
     const token = localStorage.getItem(STORAGE_KEY_TOKEN);
-    if (!token) return null; // No token at all → definitely not authenticated
+    if (!token) return null;
 
     const raw = localStorage.getItem(STORAGE_KEY_USER);
     if (!raw) {
-      // Token exists but no user_info (e.g. old session before RBAC, or backend
-      // that returns token only). Default to SUPER_ADMIN for backward compatibility.
+      // NOTE: ini insecure kalau dipakai beneran.
+      // Kalau mau aman, ganti default role ke VIEWER.
       return {
         id: "",
         email: "",
@@ -101,11 +93,8 @@ const loadUserFromStorage = (): AuthUser | null => {
     }
 
     const parsed = JSON.parse(raw);
-    // Derive role from stored category/group codes
-    const role = deriveRole(
-      parsed.category?.code || "",
-      parsed.group?.code || ""
-    );
+    const role = deriveRole(parsed.category?.code || "", parsed.group?.code || "");
+
     return {
       id: parsed.id || "",
       email: parsed.email || "",
@@ -122,7 +111,25 @@ const loadUserFromStorage = (): AuthUser | null => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(loadUserFromStorage);
 
-  // Re-sync from storage on mount (handles page refresh)
+  // role asli dari user
+  const role: AppRole = user?.role ?? "VIEWER";
+
+  // override role (buat switch testing)
+  const [roleOverride, setRoleOverrideState] = useState<AppRole | null>(() => {
+    const raw = localStorage.getItem(ROLE_OVERRIDE_KEY);
+    return raw ? (raw as AppRole) : null;
+  });
+
+  const setRoleOverride = useCallback((r: AppRole | null) => {
+    setRoleOverrideState(r);
+    if (r) localStorage.setItem(ROLE_OVERRIDE_KEY, r);
+    else localStorage.removeItem(ROLE_OVERRIDE_KEY);
+  }, []);
+
+  // role yang dipakai UI guard/menu
+  const effectiveRole: AppRole = roleOverride ?? role;
+
+  // Re-sync from storage on mount
   useEffect(() => {
     setUser(loadUserFromStorage());
   }, []);
@@ -133,21 +140,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAuth = useCallback(() => {
     setUser(null);
+    setRoleOverrideState(null);
+    localStorage.removeItem(ROLE_OVERRIDE_KEY);
   }, []);
 
+  // hasRole ikut effectiveRole biar switch kerasa
   const hasRole = useCallback(
-    (roles: AppRole[]): boolean => {
-      if (!user) return false;
-      return roles.includes(user.role);
-    },
-    [user]
+    (roles: AppRole[]): boolean => roles.includes(effectiveRole),
+    [effectiveRole]
   );
-
-  const role: AppRole = user?.role ?? "VIEWER";
 
   return (
     <AuthContext.Provider
-      value={{ user, role, isAuthenticated: !!user, hasRole, setAuthUser, clearAuth }}
+      value={{
+        user,
+        role,
+        effectiveRole,
+        roleOverride,
+        setRoleOverride,
+        isAuthenticated: !!user,
+        hasRole,
+        setAuthUser,
+        clearAuth,
+      }}
     >
       {children}
     </AuthContext.Provider>
