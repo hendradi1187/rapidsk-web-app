@@ -161,6 +161,54 @@
   .amber-glow {
     box-shadow: 0 0 20px hsl(38 92% 50% / 0.3);
   }
+
+  .modal-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--accent) / 0.55) hsl(var(--muted) / 0.45);
+  }
+
+  .modal-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .modal-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.35);
+    border-radius: 9999px;
+  }
+
+  .modal-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(var(--accent) / 0.85), hsl(var(--accent) / 0.55));
+    border: 2px solid hsl(var(--background));
+    border-radius: 9999px;
+  }
+
+  .modal-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(var(--accent)), hsl(var(--accent) / 0.72));
+  }
+
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--sidebar-primary) / 0.65) hsl(var(--sidebar-accent) / 0.55);
+  }
+
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--sidebar-accent) / 0.45);
+    border-radius: 9999px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(var(--sidebar-primary) / 0.95), hsl(var(--sidebar-primary) / 0.6));
+    border: 2px solid hsl(var(--sidebar-background));
+    border-radius: 9999px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(var(--sidebar-primary)), hsl(var(--sidebar-primary) / 0.78));
+  }
 }
 
 @layer utilities {

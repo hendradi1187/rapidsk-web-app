@@ -21,6 +21,12 @@ import Compliance from "./pages/Compliance";
 import ApiDocs from "./pages/ApiDocs";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import ParticipantGateway from "./pages/ParticipantGateway";
+import UsersPage from "./pages/Users";
+import AccessManagementPage from "./pages/AccessManagement";
+import VocabulariesPage from "./pages/Vocabularies";
+import ConnectionPoolsPage from "./pages/ConnectionPools";
+import AgreementsPage from "./pages/Agreements";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +48,12 @@ const App = () => (
               }
             />
 
+            {/* POC Participant Gateway */}
+            <Route
+              path="/gateway"
+              element={<ParticipantGateway />}
+            />
+
             {/* Protected Routes - Require Authentication + Role Check */}
             <Route
               path="/*"
@@ -61,6 +73,11 @@ const App = () => (
                         <Route path="/audit" element={<Audit />} />
                         <Route path="/compliance" element={<Compliance />} />
                         <Route path="/api-docs" element={<ApiDocs />} />
+                        <Route path="/access" element={<AccessManagementPage />} />
+                        <Route path="/users" element={<UsersPage />} />
+                        <Route path="/vocabularies" element={<VocabulariesPage />} />
+                        <Route path="/pools" element={<ConnectionPoolsPage />} />
+                        <Route path="/agreements" element={<AgreementsPage />} />
                         <Route path="/settings" element={<Settings />} />
                         <Route path="*" element={<NotFound />} />
                       </Routes>

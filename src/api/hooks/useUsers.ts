@@ -13,6 +13,26 @@ import { useAuth, deriveRole } from "@/context/AuthContext";
 
 const USER_QUERY_KEY = "users";
 
+const getErrorDescription = (error: any) => {
+  const data = error?.response?.data;
+
+  if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.errors?.detail === "string") return data.errors.detail;
+  if (Array.isArray(data?.errors)) {
+    return data.errors
+      .map((item: any) => `${item.field || "field"}: ${item.message || "Invalid value"}`)
+      .join(" | ");
+  }
+
+  if (data?.errors && typeof data.errors === "object") {
+    return Object.entries(data.errors)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+      .join(" | ");
+  }
+
+  return data?.message || "An error occurred";
+};
+
 /**
  * Hook for user login.
  * On success, stores token + user_info in localStorage and syncs AuthContext.
@@ -38,8 +58,8 @@ export const useLogin = () => {
           email: data.user.email,
           full_name: data.user.full_name,
           role,
-          category: data.user.category || { name: "", code: "", description: "" },
-          group: data.user.group || { name: "", code: "", description: "", priority: 0 },
+          category: data.user.category || { id: "", name: "", code: "", description: "" },
+          group: data.user.group || { id: "", category_id: "", name: "", code: "", description: "", priority: 0 },
         });
         toast.success(`Welcome back, ${data.user.full_name}!`);
       } else {
@@ -50,8 +70,8 @@ export const useLogin = () => {
           email: "",
           full_name: "Super Admin",
           role: "SUPER_ADMIN" as const,
-          category: { name: "Platform", code: "PLATFORM", description: "" },
-          group: { name: "Admin", code: "ADMIN", description: "", priority: 0 },
+          category: { id: "", name: "Platform", code: "PLATFORM", description: "" },
+          group: { id: "", category_id: "", name: "Admin", code: "ADMIN", description: "", priority: 0 },
         };
         localStorage.setItem("user_info", JSON.stringify(fallback));
         setAuthUser(fallback);
@@ -128,7 +148,7 @@ export const useCreateUser = () => {
     },
     onError: (error: any) => {
       toast.error("Failed to create user", {
-        description: error?.response?.data?.detail || "An error occurred",
+        description: getErrorDescription(error),
       });
     },
   });
@@ -149,7 +169,7 @@ export const useUpdateUser = () => {
     },
     onError: (error: any) => {
       toast.error("Failed to update user", {
-        description: error?.response?.data?.detail || "An error occurred",
+        description: getErrorDescription(error),
       });
     },
   });
@@ -168,7 +188,7 @@ export const useDeleteUser = () => {
     },
     onError: (error: any) => {
       toast.error("Failed to delete user", {
-        description: error?.response?.data?.detail || "An error occurred",
+        description: getErrorDescription(error),
       });
     },
   });

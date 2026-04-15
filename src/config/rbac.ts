@@ -10,7 +10,12 @@ import {
   ArrowRightLeft,
   ClipboardCheck,
   Shield,
+  LockKeyhole,
   Code2,
+  UserCog,
+  BookOpen,
+  Network,
+  Handshake,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
@@ -25,8 +30,8 @@ export interface MenuItem {
  * All sidebar menu items with per-role visibility.
  *
  * SUPER_ADMIN : sees everything
- * PROVIDER    : data owner (KKKS) – manages datasets, contracts, transfers
- * CONSUMER    : data requester (Regulator) – browses, requests, audits
+ * PROVIDER    : data owner (KKKS) - manages datasets, contracts, transfers
+ * CONSUMER    : data requester (Regulator) - browses, requests, audits
  * VIEWER      : read-only access to dataset catalog and API docs
  */
 export const MENU_ITEMS: MenuItem[] = [
@@ -95,6 +100,36 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "API Docs",
     path: "/api-docs",
     roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER", "VIEWER"],
+  },
+  {
+    icon: LockKeyhole,
+    label: "Access Management",
+    path: "/access",
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    icon: UserCog,
+    label: "User Management",
+    path: "/users",
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    icon: BookOpen,
+    label: "Vocabularies",
+    path: "/vocabularies",
+    roles: ["SUPER_ADMIN", "PROVIDER"],
+  },
+  {
+    icon: Network,
+    label: "Connection Pools",
+    path: "/pools",
+    roles: ["SUPER_ADMIN", "PROVIDER"],
+  },
+  {
+    icon: Handshake,
+    label: "Agreements",
+    path: "/agreements",
+    roles: ["SUPER_ADMIN", "PROVIDER", "CONSUMER"],
   },
 ];
 

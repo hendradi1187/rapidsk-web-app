@@ -16,8 +16,8 @@ export interface AuthUser {
   email: string;
   full_name: string;
   role: AppRole;
-  category: { name: string; code: string; description: string };
-  group: { name: string; code: string; description: string; priority: number };
+  category: { id?: string; name: string; code: string; description: string | null };
+  group: { id?: string; category_id?: string; name: string; code: string; description: string | null; priority: number };
 }
 
 interface AuthContextType {
@@ -95,8 +95,8 @@ const loadUserFromStorage = (): AuthUser | null => {
         email: "",
         full_name: "Super Admin",
         role: "SUPER_ADMIN",
-        category: { name: "Platform", code: "PLATFORM", description: "" },
-        group: { name: "Admin", code: "ADMIN", description: "", priority: 0 },
+        category: { id: "", name: "Platform", code: "PLATFORM", description: "" },
+        group: { id: "", category_id: "", name: "Admin", code: "ADMIN", description: "", priority: 0 },
       };
     }
 
@@ -111,8 +111,8 @@ const loadUserFromStorage = (): AuthUser | null => {
       email: parsed.email || "",
       full_name: parsed.full_name || "",
       role,
-      category: parsed.category || { name: "", code: "", description: "" },
-      group: parsed.group || { name: "", code: "", description: "", priority: 0 },
+      category: parsed.category || { id: "", name: "", code: "", description: "" },
+      group: parsed.group || { id: "", category_id: "", name: "", code: "", description: "", priority: 0 },
     };
   } catch {
     return null;

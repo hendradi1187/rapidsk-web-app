@@ -6,3 +6,6 @@ export * from "./useContracts";
 export * from "./useParticipants";
 export * from "./useUsers";
 export * from "./useDataTransfers";
+export * from "./useVocabularies";
+export * from "./useConnectionPools";
+export * from "./useAgreements";

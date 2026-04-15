@@ -203,7 +203,7 @@ export interface Agreement {
   id: string;
   domain_id: string;
   contract_id: string;
-  status: string;
+  status: AgreementStatus;
   effective_from: string;
   effective_to: string;
   created_at: string;
@@ -217,7 +217,7 @@ export interface AgreementCreateRequest {
 }
 
 export interface AgreementUpdateRequest {
-  contract_id: string;
+  contract_id?: string | null;
   status?: AgreementStatus | null;
   effective_from?: string | null;
   effective_to?: string | null;
