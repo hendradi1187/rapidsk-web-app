@@ -4,7 +4,7 @@ DOCKER SETUP GUIDE (SIMPLE + DEV MODE + MULTI ENV)
 OVERVIEW
 =====================================
 
-Panduan ini buat run aplikasi pakai Docker.
+Panduan ini buat langsung run pake docker.
 
 Flow:
 1. Setup environment (.env)
@@ -13,7 +13,7 @@ Flow:
 4. Update kalau ada perubahan
 
 Tambahan:
-- Mode dev (for development purpose only)
+- Dev mode (opsional)
 - Multi environment (dev / staging / prod)
 
 
@@ -25,6 +25,7 @@ Pastikan:
 - Docker sudah terinstall
 - docker compose bisa dipakai
 - Repo project sudah ada
+- Kalo belum ada, pull dari repo https://github.com/hendradi1187/rapidsk-web-app branch       dev-major  , sesuaikan dengan folder manajemen yang ada dalam server
 
 
 =====================================
@@ -60,7 +61,7 @@ Kalau beda server / environment → ubah VITE_API_BASE_URL
 JALANKAN APLIKASI
 =====================================
 
-docker compose up -d
+docker compose up -d --build
 
 
 Cek container:
@@ -82,9 +83,11 @@ http://localhost:8183
 UPDATE REPO
 =====================================
 
+checkout branch dev-major
+
 git pull
 
-docker compose up -d
+docker compose up -d --build
 
 
 =====================================
@@ -113,32 +116,27 @@ DEV MODE (OPTIONAL)
 
 Tujuan:
 - Buat development
-- Gak perlu build ulang
+
 
 Cara:
 
-Tambahkan service khusus di docker-compose.dev.yml
+Gunakan docker-compose.dev.yml (override config)
 
-Contoh konsep:
+Jalankan:
 
-- mount volume source code ke container
-- jalankan dev server (vite / npm run dev)
-
-Contoh command:
-
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 
-Kondisi dev:
-- VITE_API_BASE_URL tetap dari env
-- frontend jalan mode development
+Konsep:
+- Source code di-mount ke container (volume)
+- Frontend jalan pakai dev server (vite / npm run dev)
 
 
 =====================================
 MULTI ENVIRONMENT
 =====================================
 
-Gunakan file env berbeda:
+Gunakan file env terpisah:
 
 .env.dev
 .env.staging
@@ -164,11 +162,11 @@ VITE_API_BASE_URL=https://api.production.com
 
 Cara pakai:
 
-docker compose --env-file .env.dev up -d
+docker compose --env-file .env.dev up -d --build
 
 atau
 
-docker compose --env-file .env.prod up -d
+docker compose --env-file .env.prod up -d --build
 
 
 =====================================
@@ -182,8 +180,8 @@ docker run ...
 
 
 Catatan:
-Image biasanya mengikuti config saat build
-Kalau API beda → biasanya perlu build ulang image
+Image mengikuti config saat build
+Kalau API beda → perlu build ulang image
 
 
 =====================================
@@ -192,12 +190,12 @@ RINGKASAN
 
 - Copy .env
 - Set port & API
-- docker compose up -d
+- docker compose up -d --build
 - Akses di browser
 
 Optional:
-- pakai dev mode untuk development
-- pakai multi env untuk beda environment
+- dev mode untuk development
+- multi env untuk beda environment
 
 =====================================
 END
