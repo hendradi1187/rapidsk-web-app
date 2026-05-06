@@ -15,8 +15,8 @@ import {
   ConnectionPoolListResponse,
 } from "../types";
 
-// Backend path: /api/v1/onboarding/onboarding/...
-const BASE_PATH = "/api/v1/onboarding/onboarding";
+// Backend path: /api/v1/onboarding/...
+const BASE_PATH = "/api/v1/onboarding";
 
 // ============ PARTICIPANTS ============
 

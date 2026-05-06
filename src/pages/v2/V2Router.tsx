@@ -1,0 +1,114 @@
+// src/pages/v2/V2Router.tsx
+// Replaces the monolithic DataspaceV2.tsx with a proper per-route router
+
+import { lazy, Suspense } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useAuth, type AppRole } from "@/context/AuthContext";
+import { getDefaultV2RouteForRole } from "@/lib/dataspace-version";
+
+// Lazy-load all V2 pages for code splitting
+const AuthorityDashboard = lazy(() => import("./authority/AuthorityDashboard"));
+const RegisterAdminConsumer = lazy(() => import("./authority/RegisterAdminConsumer"));
+const RoleSetup = lazy(() => import("./authority/RoleSetup"));
+const ActivationEmailPreview = lazy(() => import("./authority/ActivationEmailPreview"));
+const UserProvisioning = lazy(() => import("./authority/UserProvisioning"));
+const ActivationLifecycle = lazy(() => import("./authority/ActivationLifecycle"));
+const PermissionCatalog = lazy(() => import("./authority/PermissionCatalog"));
+const GatewayMonitor = lazy(() => import("./authority/GatewayMonitor"));
+
+const ConsumerDashboard = lazy(() => import("./admin-consumer/ConsumerDashboard"));
+const MasterData = lazy(() => import("./admin-consumer/MasterData"));
+const PolicyContract = lazy(() => import("./admin-consumer/PolicyContract"));
+const SystemSetup = lazy(() => import("./admin-consumer/SystemSetup"));
+const AdminProvider = lazy(() => import("./admin-consumer/AdminProvider"));
+const DomainMapping = lazy(() => import("./admin-consumer/DomainMapping"));
+const TransferMonitor = lazy(() => import("./admin-consumer/TransferMonitor"));
+const AuditLog = lazy(() => import("./admin-consumer/AuditLog"));
+const Compliance = lazy(() => import("./admin-consumer/Compliance"));
+const Reports = lazy(() => import("./admin-consumer/Reports"));
+
+const ProviderDashboard = lazy(() => import("./admin-provider/ProviderDashboard"));
+const AssignedDomains = lazy(() => import("./admin-provider/AssignedDomains"));
+const ContractFulfilment = lazy(() => import("./admin-provider/ContractFulfilment"));
+const DatasetRegistration = lazy(() => import("./admin-provider/DatasetRegistration"));
+const FulfilmentReports = lazy(() => import("./admin-provider/FulfilmentReports"));
+
+const ROLE_PREFIX: Record<AppRole, string> = {
+  SUPER_ADMIN: "authority",
+  CONSUMER: "admin-consumer",
+  PROVIDER: "admin-provider",
+  VIEWER: "",
+};
+
+const LoadingFallback = () => (
+  <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="flex flex-col items-center gap-3">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <p className="text-sm text-muted-foreground animate-pulse">Loading module...</p>
+    </div>
+  </div>
+);
+
+const V2Router = () => {
+  const { role } = useAuth();
+  const location = useLocation();
+
+  // Redirect VIEWER to v1
+  if (role === "VIEWER") {
+    return <Navigate to="/" replace />;
+  }
+
+  // Redirect /v2 to role-specific dashboard
+  const relativePath = location.pathname.replace("/v2", "").replace(/^\//, "");
+  if (!relativePath) {
+    return <Navigate to={getDefaultV2RouteForRole(role)} replace />;
+  }
+
+  // Guard: only allow access to own role prefix.
+  // SUPER_ADMIN bypasses the prefix check so they can inspect/test consumer
+  // and provider pages without re-logging in as a different role.
+  const allowedPrefix = ROLE_PREFIX[role];
+  if (role !== "SUPER_ADMIN" && allowedPrefix && !relativePath.startsWith(allowedPrefix)) {
+    return <Navigate to={getDefaultV2RouteForRole(role)} replace />;
+  }
+
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        {/* Authority (SUPER_ADMIN) */}
+        <Route path="authority/dashboard" element={<AuthorityDashboard />} />
+        <Route path="authority/register-admin-consumer" element={<RegisterAdminConsumer />} />
+        <Route path="authority/role-setup" element={<RoleSetup />} />
+        <Route path="authority/activation-email" element={<ActivationEmailPreview />} />
+        <Route path="authority/activation" element={<ActivationLifecycle />} />
+        <Route path="authority/user-provisioning" element={<UserProvisioning />} />
+        <Route path="authority/permissions" element={<PermissionCatalog />} />
+        <Route path="authority/gateway" element={<GatewayMonitor />} />
+
+        {/* Admin Consumer (CONSUMER / SKK Migas) */}
+        <Route path="admin-consumer/dashboard" element={<ConsumerDashboard />} />
+        <Route path="admin-consumer/master-data" element={<MasterData />} />
+        <Route path="admin-consumer/policy-contract" element={<PolicyContract />} />
+        <Route path="admin-consumer/system-setup" element={<SystemSetup />} />
+        <Route path="admin-consumer/admin-provider" element={<AdminProvider />} />
+        <Route path="admin-consumer/domain-mapping" element={<DomainMapping />} />
+        <Route path="admin-consumer/transfer-monitor" element={<TransferMonitor />} />
+        <Route path="admin-consumer/audit" element={<AuditLog />} />
+        <Route path="admin-consumer/compliance" element={<Compliance />} />
+        <Route path="admin-consumer/reports" element={<Reports />} />
+
+        {/* Admin Provider (PROVIDER / KKKS) */}
+        <Route path="admin-provider/dashboard" element={<ProviderDashboard />} />
+        <Route path="admin-provider/assigned-domains" element={<AssignedDomains />} />
+        <Route path="admin-provider/contract-fulfilment" element={<ContractFulfilment />} />
+        <Route path="admin-provider/dataset-registration" element={<DatasetRegistration />} />
+        <Route path="admin-provider/fulfilment-reports" element={<FulfilmentReports />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to={getDefaultV2RouteForRole(role)} replace />} />
+      </Routes>
+    </Suspense>
+  );
+};
+
+export default V2Router;

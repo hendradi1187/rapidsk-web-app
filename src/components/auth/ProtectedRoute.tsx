@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { getDefaultV2RouteForRole, isDataspaceV2Enabled } from "@/lib/dataspace-version";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -26,10 +27,10 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
  * Redirects to dashboard if user is already authenticated
  */
 export const PublicRoute = ({ children }: ProtectedRouteProps) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, role } = useAuth();
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={isDataspaceV2Enabled() ? getDefaultV2RouteForRole(role) : "/"} replace />;
   }
 
   return <>{children}</>;

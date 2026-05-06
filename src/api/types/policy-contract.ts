@@ -3,54 +3,50 @@ import { PaginatedResponse } from "./common";
 // ============ CONTRACT ============
 // Based on UI data from Contracts.tsx
 
-export type ContractStatus = "active" | "pending" | "draft" | "expired" | "rejected";
+export type ContractStatus = "REQUESTED" | "APPROVED" | "ACTIVE" | "REJECTED" | string;
+
+export interface ContractDataset {
+  dataset_id: string;
+  dataset_policy_id: string;
+}
+
+export interface ContractContractPolicy {
+  contract_policy_id: string;
+}
 
 export interface Contract {
-  id: number;
-  title: string;
-  provider: string;
-  consumer: string;
-  domain: string;
-  policy: string;
+  id: string;
+  domain_id: string;
+  consumer_id: string;
+  provider_id: string;
+  name: string;
   status: ContractStatus;
-  startDate: string;
-  endDate: string;
-  // Extended fields from API
-  name?: string;
-  description?: string | null;
-  domain_id?: string;
-  provider_id?: string;
-  created_at?: string;
-  updated_at?: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  contract_policies: ContractContractPolicy[];
+  datasets: ContractDataset[];
+  // Legacy-friendly fields for older pages.
+  title?: string;
+  provider?: string;
+  consumer?: string;
 }
 
 export interface ContractCreateRequest {
-  title: string;
-  name?: string;
-  provider: string;
-  consumer: string;
-  domain: string;
-  policy: string;
-  startDate: string;
-  endDate?: string;
-  description?: string | null;
-  // API specific
-  provider_id?: string;
-  contract_policies?: string[];
-  datasets?: ContractDatasetRequest[];
+  consumer_id: string;
+  provider_id: string;
+  name: string;
+  description: string;
+  contract_policies: string[];
+  datasets: ContractDatasetRequest[];
 }
 
 export interface ContractUpdateRequest {
-  title?: string | null;
   name?: string | null;
-  provider?: string | null;
-  consumer?: string | null;
-  domain?: string | null;
-  policy?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
   status?: ContractStatus | null;
   description?: string | null;
+  contract_policies?: string[] | null;
+  datasets?: ContractDatasetRequest[] | null;
 }
 
 export interface ContractDatasetRequest {

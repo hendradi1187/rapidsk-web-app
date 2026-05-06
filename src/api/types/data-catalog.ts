@@ -1,63 +1,75 @@
 import { PaginatedResponse } from "./common";
 
 // ============ DATASET ============
-// Based on UI data from Datasets.tsx
 
-export type DatasetFormat = "WMS" | "WFS" | "WCS";
-export type DatasetStatus = "published" | "draft";
-export type DatasetDomain = "Lifting Data" | "Reservoir Data" | "Well Test" | "Exploration" | "Production Data" | string;
-export type AccessLevel = "public" | "restricted" | "confidential";
+export type DatasetEndpointAccessType = "PUBLIC" | "PRIVATE";
+export type DatasetEndpointProtocol = "REST_API" | "GRPC" | "ODATA" | "GRAPHQL";
+export type DatasetStatus = "DRAFT" | "PUBLISHED";
+
+export interface DatasetEndpointAuthStrategyConfig {
+  [key: string]: unknown;
+}
+
+export interface DatasetEndpointAuthStrategy {
+  type: string;
+  config: DatasetEndpointAuthStrategyConfig;
+}
+
+export interface DatasetEndpoint {
+  url: string;
+  access_type: DatasetEndpointAccessType;
+  auth_strategy: DatasetEndpointAuthStrategy | null;
+  protocol: DatasetEndpointProtocol;
+}
+
+export interface DatasetEndpointMetadata {
+  rate_limit: Record<string, unknown>;
+  documentation_url: string;
+  data_format: string;
+  tags: string[];
+  sla: string;
+}
 
 export interface Dataset {
-  id: number;
+  id: string;
   name: string;
-  provider: string;
-  domain: DatasetDomain;
-  format: DatasetFormat;
-  endpoint: string;
-  period: string;
-  wells: number;
+  endpoint: DatasetEndpoint;
+  endpoint_metadata: DatasetEndpointMetadata;
+  description: string | null;
+  version: string;
+  domain_id: string;
+  provider_id: string;
+  schema_id: string;
   status: DatasetStatus;
-  lastUpdated: string;
-  // Extended fields from API
-  description?: string | null;
-  version?: string;
-  domain_id?: string;
-  provider_id?: string;
-  schema_id?: string;
-  accessLevel?: AccessLevel;
-  created_by?: string | null;
-  created_at?: string;
-  updated_at?: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  metadata: DatasetMetadata[];
+  // Legacy-friendly aliases kept optional for older presentational pages.
+  provider?: string;
+  format?: string;
 }
 
 export interface DatasetCreateRequest {
   name: string;
-  provider: string;
-  domain: DatasetDomain;
-  format: DatasetFormat;
-  endpoint: string;
-  period: string;
-  wells?: number;
+  provider_id: string;
+  schema_id: string;
+  endpoint: DatasetEndpoint;
+  endpoint_metadata: DatasetEndpointMetadata;
+  version: string;
+  metadata: DatasetMetadataRequest[];
   description?: string | null;
-  accessLevel?: AccessLevel;
-  // API specific
-  provider_id?: string;
-  schema_id?: string;
-  version?: string;
 }
 
 export interface DatasetUpdateRequest {
   name?: string | null;
   description?: string | null;
-  provider?: string | null;
-  domain?: DatasetDomain | null;
-  format?: DatasetFormat | null;
-  endpoint?: string | null;
-  period?: string | null;
-  wells?: number | null;
+  endpoint?: DatasetEndpoint | null;
+  endpoint_metadata?: DatasetEndpointMetadata | null;
+  version?: string | null;
+  schema_id?: string | null;
   status?: DatasetStatus | null;
-  accessLevel?: AccessLevel | null;
+  metadata?: DatasetMetadataRequest[] | null;
 }
 
 export type DatasetListResponse = PaginatedResponse<Dataset>;
