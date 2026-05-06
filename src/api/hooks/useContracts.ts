@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { contractsApi, contractPoliciesApi, agreementsApi } from "../services";
+import { contractsApi, contractPoliciesApi, agreementsApi, datasetPoliciesApi } from "../services";
 import {
   ContractCreateRequest,
   ContractUpdateRequest,
@@ -7,8 +7,65 @@ import {
   ContractPolicyUpdateRequest,
   AgreementCreateRequest,
   AgreementUpdateRequest,
+  DatasetPolicyCreateRequest,
+  DatasetPolicyUpdateRequest,
   PaginationParams,
 } from "../types";
+
+export const datasetPolicyKeys = {
+  all: ["datasetPolicies"] as const,
+  lists: () => [...datasetPolicyKeys.all, "list"] as const,
+  list: (domainId: string, params?: PaginationParams) =>
+    [...datasetPolicyKeys.lists(), domainId, params] as const,
+};
+
+export function useDatasetPolicies(domainId: string, params?: PaginationParams) {
+  return useQuery({
+    queryKey: datasetPolicyKeys.list(domainId, params),
+    queryFn: () => datasetPoliciesApi.list(domainId, params),
+    enabled: !!domainId,
+  });
+}
+
+export function useCreateDatasetPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ domainId, data }: { domainId: string; data: DatasetPolicyCreateRequest }) =>
+      datasetPoliciesApi.create(domainId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: datasetPolicyKeys.lists() });
+    },
+  });
+}
+
+export function useUpdateDatasetPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      domainId,
+      id,
+      data,
+    }: {
+      domainId: string;
+      id: string;
+      data: DatasetPolicyUpdateRequest;
+    }) => datasetPoliciesApi.update(domainId, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: datasetPolicyKeys.lists() });
+    },
+  });
+}
+
+export function useDeleteDatasetPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ domainId, id }: { domainId: string; id: string }) =>
+      datasetPoliciesApi.delete(domainId, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: datasetPolicyKeys.lists() });
+    },
+  });
+}
 
 // ============ CONTRACT KEYS ============
 

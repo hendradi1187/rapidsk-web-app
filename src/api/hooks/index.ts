@@ -9,3 +9,5 @@ export * from "./useDataTransfers";
 export * from "./useVocabularies";
 export * from "./useConnectionPools";
 export * from "./useAgreements";
+export * from "./useMonitorings";
+export * from "./useTransferRuntime";

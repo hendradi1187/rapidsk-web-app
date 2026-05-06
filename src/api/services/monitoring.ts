@@ -1,30 +1,31 @@
 import { apiClient } from "../client";
-import type { MonitoringConfigCreateRequest } from "../types/monitoring";
+import type { PaginationParams } from "../types/common";
+import type {
+  Monitoring,
+  MonitoringConfigCreateRequest,
+  MonitoringCreateRequest,
+  MonitoringListResponse,
+  MonitoringUpdateRequest,
+} from "../types/monitoring";
 
-// Backend path: /api/v1/monitoring/...
-// NOTE: Config endpoint is anticipated — not yet implemented by backend (Feb 2026).
-// Health check and streaming endpoints are planned but also pending.
-const BASE_PATH = "/api/v1/monitoring";
-
+const LIVE_BASE_PATH = "/api/v1/onboarding";
+const LEGACY_BASE_PATH = "/api/v1/monitoring";
 const STORAGE_KEY_PREFIX = "rapidsk-monitoring-";
 
 export const monitoringApi = {
   /**
-   * Save monitoring configuration for a domain.
-   * Tries backend first; falls back to localStorage if endpoint is unavailable.
-   * Returns true if saved to backend, false if saved to localStorage fallback.
+   * Existing onboarding wizard config fallback.
+   * This remains non-v2 and intentionally uses the old anticipated endpoint.
    */
   configure: async (
     domainId: string,
     data: MonitoringConfigCreateRequest
   ): Promise<{ savedToBackend: boolean }> => {
     try {
-      await apiClient.post(`${BASE_PATH}/${domainId}/config`, data);
-      // Clear localStorage fallback if backend now available
+      await apiClient.post(`${LEGACY_BASE_PATH}/${domainId}/config`, data);
       localStorage.removeItem(`${STORAGE_KEY_PREFIX}${domainId}`);
       return { savedToBackend: true };
     } catch {
-      // Backend endpoint not yet available — persist locally as fallback
       localStorage.setItem(
         `${STORAGE_KEY_PREFIX}${domainId}`,
         JSON.stringify({ ...data, domainId, configuredAt: new Date().toISOString() })
@@ -33,30 +34,63 @@ export const monitoringApi = {
     }
   },
 
-  /**
-   * Get monitoring configuration for a domain.
-   * Tries backend first; falls back to localStorage.
-   */
   getConfig: async (domainId: string): Promise<MonitoringConfigCreateRequest | null> => {
     try {
       const response = await apiClient.get<MonitoringConfigCreateRequest>(
-        `${BASE_PATH}/${domainId}/config`
+        `${LEGACY_BASE_PATH}/${domainId}/config`
       );
       return response.data;
     } catch {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${domainId}`);
-      if (stored) {
-        return JSON.parse(stored) as MonitoringConfigCreateRequest;
-      }
-      return null;
+      return stored ? (JSON.parse(stored) as MonitoringConfigCreateRequest) : null;
     }
   },
 
-  /**
-   * Platform health check.
-   */
   health: async (): Promise<{ status: string }> => {
-    const response = await apiClient.get<{ status: string }>(`${BASE_PATH}/health`);
+    const response = await apiClient.get<{ status: string }>(`${LEGACY_BASE_PATH}/health`);
     return response.data;
+  },
+
+  /**
+   * Live backend path for sequence-based v2 monitoring:
+   * /api/v1/onboarding/{domain_id}/monitorings
+   */
+  list: async (domainId: string, params?: PaginationParams): Promise<MonitoringListResponse> => {
+    const response = await apiClient.get<MonitoringListResponse>(
+      `${LIVE_BASE_PATH}/${domainId}/monitorings`,
+      { params }
+    );
+    return response.data;
+  },
+
+  getById: async (domainId: string, id: string): Promise<Monitoring> => {
+    const response = await apiClient.get<Monitoring>(
+      `${LIVE_BASE_PATH}/${domainId}/monitorings/${id}`
+    );
+    return response.data;
+  },
+
+  create: async (domainId: string, data: MonitoringCreateRequest): Promise<Monitoring> => {
+    const response = await apiClient.post<Monitoring>(
+      `${LIVE_BASE_PATH}/${domainId}/monitorings`,
+      data
+    );
+    return response.data;
+  },
+
+  update: async (
+    domainId: string,
+    id: string,
+    data: MonitoringUpdateRequest
+  ): Promise<Monitoring> => {
+    const response = await apiClient.patch<Monitoring>(
+      `${LIVE_BASE_PATH}/${domainId}/monitorings/${id}`,
+      data
+    );
+    return response.data;
+  },
+
+  delete: async (domainId: string, id: string): Promise<void> => {
+    await apiClient.delete(`${LIVE_BASE_PATH}/${domainId}/monitorings/${id}`);
   },
 };

@@ -21,5 +21,16 @@ export {
 } from "./policy-contract";
 export { consumerApi, providerApi } from "./connector";
 export { dataTransfersApi } from "./data-transfer";
-export { authService, usersService } from "./identity-provider";
+export {
+  authService,
+  usersService,
+  userCategoriesService,
+  userGroupsService,
+} from "./identity-provider";
 export { monitoringApi } from "./monitoring";
+export {
+  complianceControlsApi,
+  complianceChecklistsApi,
+  auditComplianceService,
+} from "./audit-compliance";
+export { transferProcessesApi, dataTransferRuntimeApi } from "./transfer-runtime";

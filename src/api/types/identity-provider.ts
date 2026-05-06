@@ -26,7 +26,8 @@ export interface UserGroup {
 export interface UserResponse {
   id: string;
   email: string;
-  full_name: string;
+  full_name: string | null;
+  is_email_confirmed?: boolean;
   category: UserCategory | null;
   group: UserGroup | null;
   created_at: string;
@@ -42,8 +43,10 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  refresh_expires_in: number;
   token_type: string;
-  user?: UserResponse;
 }
 
 export interface UserCreateRequest {
@@ -65,3 +68,44 @@ export interface UserUpdateRequest {
 }
 
 export type UserListResponse = PaginatedResponse<UserResponse>;
+export type UserCategoryListResponse = PaginatedResponse<UserCategory>;
+export type UserGroupListResponse = PaginatedResponse<UserGroup>;
+
+export interface RefreshTokenRequest {
+  refresh_token: string;
+}
+
+export interface RevokeTokenRequest {
+  token: string;
+}
+
+export interface RevokeUserTokenRequest {
+  user_id: string;
+}
+
+export interface ValidateTokenRequest {
+  token: string;
+}
+
+export interface TokenPayload {
+  sub: string;
+  username: string;
+  email: string;
+  is_superadmin: boolean;
+  exp: string;
+  iat: string;
+  category: { id: string; code: string };
+  group: { id: string; code: string };
+}
+
+export interface NormalizedAuthSession {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  role: "SUPER_ADMIN" | "PROVIDER" | "CONSUMER" | "VIEWER";
+  permissions: string[];
+  is_superadmin: boolean;
+  category: { id?: string; name: string; code: string; description: string | null };
+  group: { id?: string; category_id?: string; name: string; code: string; description: string | null; priority: number };
+}

@@ -27,6 +27,8 @@ import AccessManagementPage from "./pages/AccessManagement";
 import VocabulariesPage from "./pages/Vocabularies";
 import ConnectionPoolsPage from "./pages/ConnectionPools";
 import AgreementsPage from "./pages/Agreements";
+import V2Router from "./pages/v2/V2Router";
+import Activation from "./pages/Activation";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +56,12 @@ const App = () => (
               element={<ParticipantGateway />}
             />
 
+            {/* Activation Page — Preview (public, pre-auth) */}
+            <Route
+              path="/activate"
+              element={<Activation />}
+            />
+
             {/* Protected Routes - Require Authentication + Role Check */}
             <Route
               path="/*"
@@ -63,6 +71,7 @@ const App = () => (
                     <RoleGuard>
                       <Routes>
                         <Route path="/" element={<Dashboard />} />
+                        <Route path="/v2/*" element={<V2Router />} />
                         <Route path="/onboarding" element={<Onboarding />} />
                         <Route path="/organizations" element={<Organizations />} />
                         <Route path="/domains" element={<Domains />} />

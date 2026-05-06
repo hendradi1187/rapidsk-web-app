@@ -16,7 +16,7 @@ import type { ApiCategory } from "@/components/api-docs";
 import { useOpenApiSpec } from "@/hooks/use-openapi-spec";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8181";
+  import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8182";
 
 export default function ApiDocs() {
   const [searchQuery, setSearchQuery] = useState("");

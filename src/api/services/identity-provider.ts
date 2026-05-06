@@ -9,6 +9,11 @@ import type {
   UserCreateRequest,
   UserListResponse,
   UserUpdateRequest,
+  UserCategory,
+  UserCategoryListResponse,
+  UserGroup,
+  UserGroupListResponse,
+  TokenPayload,
 } from "../types/identity-provider";
 
 const IDP_BASE_PATH = "/api/v1/identity-provider";
@@ -54,12 +59,45 @@ export const authService = {
   },
 
   /**
-   * Validates the current user's token.
-   * @returns A promise resolving to the validation result.
+   * Refresh the access token using a refresh token.
    */
-  validate: async (): Promise<{ valid: boolean; user?: Partial<User> }> => {
-    const response = await apiClient.post(
-      `${IDP_BASE_PATH}/auth/validate`
+  refreshToken: async (refreshToken: string): Promise<LoginResponse> => {
+    const response = await apiClient.post<LoginResponse>(
+      `${IDP_BASE_PATH}/auth/refresh-token`,
+      { refresh_token: refreshToken }
+    );
+    return response.data;
+  },
+
+  /**
+   * Revoke a specific token.
+   */
+  revokeToken: async (token: string): Promise<boolean> => {
+    const response = await apiClient.post<boolean>(
+      `${IDP_BASE_PATH}/auth/revoke-token`,
+      { token }
+    );
+    return response.data;
+  },
+
+  /**
+   * Revoke all tokens for a user (admin action).
+   */
+  revokeUserToken: async (userId: string): Promise<number> => {
+    const response = await apiClient.post<number>(
+      `${IDP_BASE_PATH}/auth/revoke-user-token`,
+      { user_id: userId }
+    );
+    return response.data;
+  },
+
+  /**
+   * Validates the current user's token.
+   */
+  validate: async (token: string): Promise<TokenPayload> => {
+    const response = await apiClient.post<TokenPayload>(
+      `${IDP_BASE_PATH}/auth/validate`,
+      { token }
     );
     return response.data;
   },
@@ -126,5 +164,45 @@ export const usersService = {
    */
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`${IDP_BASE_PATH}/users/${id}`);
+  },
+};
+
+/**
+ * == User Categories Service ==
+ */
+export const userCategoriesService = {
+  list: async (params: PaginationParams = {}): Promise<UserCategoryListResponse> => {
+    const response = await apiClient.get<UserCategoryListResponse>(
+      `${IDP_BASE_PATH}/user/categories/`,
+      { params }
+    );
+    return response.data;
+  },
+
+  getById: async (id: string): Promise<UserCategory> => {
+    const response = await apiClient.get<UserCategory>(
+      `${IDP_BASE_PATH}/user/categories/${id}`
+    );
+    return response.data;
+  },
+};
+
+/**
+ * == User Groups Service ==
+ */
+export const userGroupsService = {
+  list: async (params: PaginationParams = {}): Promise<UserGroupListResponse> => {
+    const response = await apiClient.get<UserGroupListResponse>(
+      `${IDP_BASE_PATH}/user/groups/`,
+      { params }
+    );
+    return response.data;
+  },
+
+  getById: async (id: string): Promise<UserGroup> => {
+    const response = await apiClient.get<UserGroup>(
+      `${IDP_BASE_PATH}/user/groups/${id}`
+    );
+    return response.data;
   },
 };

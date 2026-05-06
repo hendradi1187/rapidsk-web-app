@@ -55,6 +55,8 @@ import {
   useCreateUser,
   useUpdateUser,
   useDeleteUser,
+  useUserCategories,
+  useUserGroups,
 } from "@/api/hooks/useUsers";
 import { UserResponse } from "@/api/types/identity-provider";
 import { ROLE_LABELS } from "@/config/rbac";
@@ -81,14 +83,25 @@ const UsersPage = () => {
     isLoading,
     refetch,
   } = useUsers({ limit: pageSize, offset: page * pageSize });
+  const { data: categoriesData, isLoading: loadingCategories } = useUserCategories({ limit: 100 });
+  const { data: groupsData, isLoading: loadingGroups } = useUserGroups({ limit: 100 });
 
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
   const deleteMutation = useDeleteUser();
 
   const categoryOptions = useMemo<UserCategoryOption[]>(() => {
-    const categoryMap = new Map<string, UserCategoryOption>();
+    const liveOptions = (categoriesData?.data ?? []).map((category) => ({
+      id: category.id,
+      name: category.name || category.code,
+      code: category.code,
+    }));
 
+    if (liveOptions.length > 0) {
+      return liveOptions;
+    }
+
+    const categoryMap = new Map<string, UserCategoryOption>();
     if (user?.category?.id) {
       categoryMap.set(user.category.id, {
         id: user.category.id,
@@ -107,11 +120,21 @@ const UsersPage = () => {
     });
 
     return Array.from(categoryMap.values());
-  }, [user, usersData]);
+  }, [categoriesData, user, usersData]);
 
   const groupOptions = useMemo<UserGroupOption[]>(() => {
-    const groupMap = new Map<string, UserGroupOption>();
+    const liveOptions = (groupsData?.data ?? []).map((group) => ({
+      id: group.id,
+      category_id: group.category?.id || "",
+      name: group.name || group.code,
+      code: group.code,
+    }));
 
+    if (liveOptions.length > 0) {
+      return liveOptions;
+    }
+
+    const groupMap = new Map<string, UserGroupOption>();
     if (user?.group?.id && user?.category?.id) {
       groupMap.set(user.group.id, {
         id: user.group.id,
@@ -139,7 +162,7 @@ const UsersPage = () => {
     });
 
     return Array.from(groupMap.values());
-  }, [user, usersData]);
+  }, [groupsData, user, usersData]);
 
   const handleAdd = () => {
     setSelectedUser(null);
@@ -161,17 +184,24 @@ const UsersPage = () => {
   }) => {
     try {
       if (selectedUser) {
-        // Update
-        await updateMutation.mutateAsync({ 
-            id: selectedUser.id, 
-            data: {
-                username: values.username || null,
-                full_name: values.full_name,
-                email: values.email,
-                password: values.password || null,
-                category_id: values.category_id,
-                group_id: values.group_id,
-            } 
+        const updatePayload: Record<string, string | null> = {
+          full_name: values.full_name ?? null,
+          email: values.email,
+          category_id: values.category_id,
+          group_id: values.group_id,
+        };
+
+        if (values.username?.trim()) {
+          updatePayload.username = values.username.trim();
+        }
+
+        if (values.password?.trim()) {
+          updatePayload.password = values.password.trim();
+        }
+
+        await updateMutation.mutateAsync({
+            id: selectedUser.id,
+            data: updatePayload,
         });
       } else {
         // Create
@@ -200,7 +230,7 @@ const UsersPage = () => {
     } catch (err) {}
   };
 
-  if (isLoading) {
+  if (isLoading || loadingCategories || loadingGroups) {
     return (
       <div className="min-h-screen">
         <Header title="Users Management" subtitle="Manage system access and roles" />
@@ -213,8 +243,20 @@ const UsersPage = () => {
 
   return (
     <div className="min-h-screen">
-      <Header title="Users Management" subtitle="Manage system access and roles" />
+      <Header title="Users Management" subtitle="Create backend-backed test users with live category and group IDs." />
       <div className="p-6 space-y-6">
+        <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">Recommended testing flow</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Create one user per target role from the live identity-provider dictionaries, then log in with that account so V2 derives the role from <code>is_superadmin</code>, <code>category.code</code>, and <code>group.code</code>.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline">{categoryOptions.length} categories loaded</Badge>
+            <Badge variant="outline">{groupOptions.length} groups loaded</Badge>
+            <Badge variant="outline">{usersData?.total ?? usersData?.data?.length ?? 0} users visible</Badge>
+          </div>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -268,6 +310,9 @@ const UsersPage = () => {
                       <Badge variant="outline" className="border-accent/30 text-accent bg-accent/5">
                         {ROLE_LABELS[appRole] || "Viewer"}
                       </Badge>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {u.category?.code || "-"} / {u.group?.code || "-"}
+                      </div>
                     </TableCell>
                     <TableCell>{u.category?.name || "N/A"}</TableCell>
                     <TableCell>

@@ -3,15 +3,17 @@ import { Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { MENU_ITEMS } from "@/config/rbac";
+import { getMenuItems } from "@/config/rbac";
+import { isDataspaceV2Enabled } from "@/lib/dataspace-version";
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+  const isV2 = isDataspaceV2Enabled();
 
   // Only show menu items allowed for the current role
-  const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(role));
+  const visibleItems = getMenuItems(role, isV2, user?.permissions ?? []);
 
   return (
     <aside
@@ -32,6 +34,7 @@ export const Sidebar = () => {
                 rapi<span className="text-gradient-amber">DSK</span>
               </h1>
               <p className="text-xs text-sidebar-foreground/50">Dataspace Connector</p>
+              {isV2 && <p className="text-xs text-amber-400">V2 Sequence Mode</p>}
             </div>
           )}
         </div>
@@ -56,10 +59,12 @@ export const Sidebar = () => {
 
       {/* Settings & Collapse */}
       <div className="p-4 border-t border-sidebar-border space-y-1">
-        <Link to="/settings" className="nav-item">
-          <Settings className="w-5 h-5 flex-shrink-0" />
-          {!collapsed && <span className="font-medium">Settings</span>}
-        </Link>
+        {!isV2 && (
+          <Link to="/settings" className="nav-item">
+            <Settings className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="font-medium">Settings</span>}
+          </Link>
+        )}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="nav-item w-full justify-center"

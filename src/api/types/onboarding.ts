@@ -44,6 +44,7 @@ export type ParticipantResponse = Participant;
 export type ParticipantDomainStatus = "ACTIVE";
 
 export interface ParticipantDomain {
+  id?: string;
   participant_id: string;
   domain_id: string;
   status: ParticipantDomainStatus;

@@ -19,10 +19,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
 import { ChevronsUpDown, Loader2 } from "lucide-react";
 import { userSchema, type UserFormValues } from "./user.schemas";
 import { UserResponse } from "@/api/types/identity-provider";
 import { useEffect, useMemo, useState } from "react";
+import { derivePermissions, deriveRole } from "@/context/AuthContext";
+import { ROLE_LABELS } from "@/config/rbac";
 
 const LAST_CATEGORY_ID_KEY = "demo_user_category_id";
 const LAST_GROUP_ID_KEY = "demo_user_group_id";
@@ -94,6 +97,10 @@ export const UserForm = ({
   const groupSelectValue = filteredGroupOptions.some((group) => group.id === selectedGroupId)
     ? selectedGroupId
     : undefined;
+  const selectedCategory = categoryOptions.find((category) => category.id === selectedCategoryId);
+  const selectedGroup = groupOptions.find((group) => group.id === selectedGroupId);
+  const derivedRole = deriveRole(selectedCategory?.code || "", selectedGroup?.code || "");
+  const derivedPermissions = derivePermissions(selectedCategory?.code || "", selectedGroup?.code || "");
 
   useEffect(() => {
     if (initialData) {
@@ -173,22 +180,31 @@ export const UserForm = ({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="username"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Username</FormLabel>
-              <FormControl>
-                <Input placeholder="john.doe" {...field} value={field.value || ""} />
-              </FormControl>
-              <FormDescription>
-                Required by API on create. If left empty, the page will derive it from the email prefix.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {!initialData ? (
+          <FormField
+            control={form.control}
+            name="username"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Username</FormLabel>
+                <FormControl>
+                  <Input placeholder="john.doe" {...field} value={field.value || ""} />
+                </FormControl>
+                <FormDescription>
+                  Required by API on create. If left empty, the page will derive it from the email prefix.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : (
+          <div className="rounded-xl border border-border/70 bg-muted/35 p-3">
+            <p className="text-sm font-medium">Username is not exposed by the current backend user response</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Edit mode only updates the fields that the live API returns reliably here: email, full name, category, and group. If username changes are needed, that capability should be exposed explicitly by the backend response contract.
+            </p>
+          </div>
+        )}
         <FormField
           control={form.control}
           name="full_name"
@@ -215,7 +231,7 @@ export const UserForm = ({
             </FormItem>
           )}
         />
-        {!initialData && (
+        {!initialData ? (
           <FormField
             control={form.control}
             name="password"
@@ -225,10 +241,16 @@ export const UserForm = ({
                 <FormControl>
                   <Input type="password" placeholder="Min 8 characters" {...field} value={field.value || ""} />
                 </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        ) : (
+          <div className="rounded-xl border border-border/70 bg-muted/35 p-3">
+            <p className="text-xs text-muted-foreground">
+              Password is not preloaded in edit mode. Use dedicated reset or activation flow once the backend exposes that lifecycle.
+            </p>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-4">
@@ -285,8 +307,20 @@ export const UserForm = ({
         </div>
 
         <div className="rounded-xl border border-border/70 bg-muted/35 p-3">
-          <p className="text-xs text-muted-foreground">
-            Demo mode uses valid category and group values discovered from the current session and existing users.
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-muted-foreground">Live backend mapping preview:</p>
+            <Badge variant="outline" className="border-accent/30 bg-accent/5 text-accent">
+              {ROLE_LABELS[derivedRole]}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              from {selectedCategory?.code || "-"} / {selectedGroup?.code || "-"}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Categories and groups are loaded from the live identity-provider API. This preview shows which app role the frontend will derive after login.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Permission set: {derivedPermissions.join(", ") || "-"}
           </p>
         </div>
 
