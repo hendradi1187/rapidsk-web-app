@@ -45,12 +45,27 @@ const getErrorDescription = (error: any) => {
  * Hook for user login.
  * On success, stores token + user_info in localStorage and syncs AuthContext.
  */
+// Decode JWT client-side without verification. Used as fallback when backend
+// /auth/validate endpoint is restricted (e.g. requires SUPERADMIN — backend bug).
+// Token signature is still validated server-side on every authenticated request.
+const decodeJwtPayload = (token: string): any | null => {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const json = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+};
+
 export const useLogin = () => {
   const queryClient = useQueryClient();
   const { setAuthUser } = useAuth();
 
   return useMutation({
     mutationFn: async (credentials: LoginRequest): Promise<NormalizedAuthSession> => {
+      // Step 1: actual login — get access token
       const data = await authService.login(credentials);
 
       localStorage.setItem("auth_token", data.access_token);
@@ -62,7 +77,35 @@ export const useLogin = () => {
         localStorage.setItem("token_expires_at", String(Date.now() + data.expires_in * 1000));
       }
 
-      const payload = await authService.validate(data.access_token);
+      // Step 2: get user info — try /auth/validate first, fall back to JWT decode.
+      // Backend currently restricts /auth/validate to SUPERADMIN (bug), so for
+      // CONSUMER/PROVIDER users we decode JWT claims client-side.
+      let payload: any;
+      try {
+        payload = await authService.validate(data.access_token);
+      } catch (validateErr: any) {
+        const decoded = decodeJwtPayload(data.access_token);
+        if (!decoded) {
+          // Re-throw with clearer context
+          throw new Error(
+            `Login token diterima tapi /auth/validate gagal (HTTP ${validateErr?.response?.status}) dan token tidak bisa di-decode. Backend bug.`
+          );
+        }
+        // Build payload from JWT claims (matches TokenPayload shape)
+        payload = {
+          sub: decoded.sub,
+          username: decoded.username,
+          email: decoded.email,
+          category: decoded.category,
+          group: decoded.group,
+          is_superadmin: decoded.is_superadmin,
+        };
+        toast.warning("Backend /auth/validate restricted — using JWT claims instead", {
+          description: "Login lanjut, tapi minta backend dev fix /auth/validate biar accessible untuk semua user.",
+          duration: 6000,
+        });
+      }
+
       const role = deriveRole(
         payload.category?.code || "",
         payload.group?.code || "",
@@ -120,14 +163,36 @@ export const useLogin = () => {
       localStorage.removeItem("token_expires_at");
       localStorage.removeItem("user_info");
       console.error("Login error details:", error.response?.data);
-      const errorMessage =
+      const status = error?.response?.status;
+      const url = error?.config?.url || "";
+      const baseMessage =
         error?.response?.data?.errors?.detail ||
         error?.response?.data?.detail ||
         error?.response?.data?.message ||
+        error?.message ||
         "Invalid credentials";
-      toast.error("Login failed", {
-        description: errorMessage,
-      });
+
+      let title = "Login failed";
+      let description = baseMessage;
+
+      if (status === 401) {
+        title = "Wrong username or password";
+        description = `Cek typo. Backend reject credential. Raw: ${baseMessage}`;
+      } else if (status === 403) {
+        title = "Access denied (HTTP 403)";
+        if (url.includes("/auth/validate")) {
+          description = "Backend bug: /auth/validate restricted ke SUPERADMIN. Minta backend dev hilangkan RBAC dari endpoint ini.";
+        } else if (url.includes("/auth/login")) {
+          description = "Backend reject login walau credential bener. Mungkin email belum di-confirm. Confirm email dulu.";
+        } else {
+          description = `Endpoint ${url} restricted. ${baseMessage}`;
+        }
+      } else if (status === 500) {
+        title = "Backend crash (HTTP 500)";
+        description = `Endpoint ${url} crash. Cek backend log untuk traceback.`;
+      }
+
+      toast.error(title, { description, duration: 8000 });
     },
   });
 };

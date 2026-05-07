@@ -1,131 +1,62 @@
 // src/pages/v2/admin-consumer/AuditLog.tsx
-// Phase 2 — Audit log derived from transfer process history (real data) +
-// stubbed event-stream for actions like login, contract.create, agreement.approve.
+// Audit log view — backed by /api/v1/audit-compliance/audit-logs (read-only).
+// Backend writes audit entries automatically (append-only); UI is read-only.
 
 import { useMemo, useState } from "react";
-import { ClipboardCheck, Filter, Download, Layers, RefreshCcw } from "lucide-react";
+import { ClipboardCheck, Filter, Download, RefreshCcw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { V2PageShell, MetricCard, DataTable } from "../V2PageShell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAllDomains } from "@/api/hooks/useDomains";
-import { useTransferProcessesHistory } from "@/api/hooks/useTransferRuntime";
-import { BackendPendingBadge } from "@/components/dev/BackendPendingBadge";
+import { auditLogsApi } from "@/api/services/audit-log";
 import { toast } from "sonner";
 
-type AuditCategory = "AUTH" | "CATALOG" | "CONTRACT" | "AGREEMENT" | "TRANSFER" | "ADMIN";
-
-interface AuditEvent {
-  id: string;
-  category: AuditCategory;
-  action: string;
-  actor: string;
-  resource_id: string | null;
-  outcome: "SUCCESS" | "FAILED";
-  occurred_at: string;
-  metadata: Record<string, any>;
-  source: "live" | "stub";
-}
-
-const CATEGORY_COLORS: Record<AuditCategory, string> = {
-  AUTH: "border-blue-500/40 text-blue-500",
-  CATALOG: "border-violet-500/40 text-violet-500",
-  CONTRACT: "border-amber-500/40 text-amber-500",
-  AGREEMENT: "border-purple-500/40 text-purple-500",
-  TRANSFER: "border-emerald-500/40 text-emerald-500",
-  ADMIN: "border-slate-400/40 text-slate-400",
-};
-
-const STORAGE_KEY = "v2-audit-stub-events";
-
-const loadStubEvents = (): AuditEvent[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as AuditEvent[]) : [];
-  } catch {
-    return [];
-  }
+const STATUS_COLORS: Record<string, string> = {
+  SUCCESS: "border-emerald-500/40 text-emerald-500",
+  FAILED: "border-red-500/40 text-red-500",
+  PENDING: "border-amber-500/40 text-amber-500",
+  INFO: "border-blue-500/40 text-blue-500",
 };
 
 const AuditLog = () => {
-  const { data: domainsData } = useAllDomains({ limit: 50 });
-  const domains = domainsData?.data ?? [];
-  const [selectedDomain, setSelectedDomain] = useState<string>("");
-  const domainId = selectedDomain || domains[0]?.id || "";
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["audit-logs"],
+    queryFn: () => auditLogsApi.list({ limit: 200 }),
+  });
+  const events = data?.data ?? [];
 
-  const { data: processesData, isLoading, refetch } = useTransferProcessesHistory(domainId, { limit: 100 });
-  const processes = processesData?.data ?? [];
-  const [stubEvents, setStubEvents] = useState<AuditEvent[]>(loadStubEvents);
-  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [actionFilter, setActionFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const liveEvents: AuditEvent[] = useMemo(() => processes.map((p) => ({
-    id: p.id,
-    category: "TRANSFER" as AuditCategory,
-    action: `transfer_process.${(p.state || "unknown").toLowerCase()}`,
-    actor: p.id.slice(0, 8),
-    resource_id: p.id,
-    outcome: p.error_message ? "FAILED" : "SUCCESS",
-    occurred_at: p.completed_at || p.started_at || new Date().toISOString(),
-    metadata: { state: p.state, error: p.error_message },
-    source: "live" as const,
-  })), [processes]);
+  const actionTypes = useMemo(() => Array.from(new Set(events.map((e) => e.action_type))).sort(), [events]);
 
-  const allEvents = useMemo(() => {
-    return [...liveEvents, ...stubEvents].sort((a, b) =>
-      new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()
-    );
-  }, [liveEvents, stubEvents]);
-
-  const filtered = useMemo(() => allEvents.filter((e) => {
-    if (filterCategory !== "all" && e.category !== filterCategory) return false;
+  const filtered = useMemo(() => events.filter((e) => {
+    if (actionFilter !== "all" && e.action_type !== actionFilter) return false;
     if (search) {
-      const hay = `${e.action} ${e.actor} ${e.resource_id || ""} ${JSON.stringify(e.metadata)}`.toLowerCase();
+      const hay = `${e.action_type} ${e.actor_id} ${e.resource_id} ${e.status}`.toLowerCase();
       if (!hay.includes(search.toLowerCase())) return false;
     }
     return true;
-  }), [allEvents, filterCategory, search]);
+  }), [events, actionFilter, search]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { total: allEvents.length, failed: 0, today: 0 };
     const today = new Date().toDateString();
-    allEvents.forEach((e) => {
-      if (e.outcome === "FAILED") c.failed += 1;
-      if (new Date(e.occurred_at).toDateString() === today) c.today += 1;
-    });
-    return c;
-  }, [allEvents]);
-
-  const persistStub = (next: AuditEvent[]) => {
-    setStubEvents(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  };
-
-  const handleEmitStub = (category: AuditCategory, action: string) => {
-    const event: AuditEvent = {
-      id: `stub-${Date.now()}`,
-      category,
-      action,
-      actor: "demo-user",
-      resource_id: null,
-      outcome: "SUCCESS",
-      occurred_at: new Date().toISOString(),
-      metadata: { source: "manual-stub" },
-      source: "stub",
+    return {
+      total: events.length,
+      today: events.filter((e) => new Date(e.timestamp).toDateString() === today).length,
+      failed: events.filter((e) => /fail|error/i.test(e.status)).length,
     };
-    persistStub([event, ...stubEvents]);
-    toast.success(`Stub event emitted: ${action}`);
-  };
-
-  const handleClearStubs = () => {
-    persistStub([]);
-    toast.success("Stub events cleared");
-  };
+  }, [events]);
 
   const handleExport = () => {
-    const headers = ["id", "category", "action", "actor", "resource_id", "outcome", "occurred_at", "source"];
+    if (filtered.length === 0) {
+      toast.error("Nothing to export");
+      return;
+    }
+    const headers = ["id", "timestamp", "actor_id", "action_type", "resource_id", "status"];
     const lines = [headers.join(",")];
     filtered.forEach((e) => {
       lines.push(headers.map((h) => {
@@ -146,90 +77,47 @@ const AuditLog = () => {
   };
 
   return (
-    <V2PageShell title="Audit Log" subtitle="Track auth, catalog, contract, agreement, and transfer events across the dataspace." status="Preview only">
-      <BackendPendingBadge variant="block" message="Endpoint /audit/events generic belum tersedia. Untuk transfer events, halaman ini menarik dari /transfer-processes/history (live). Event auth/catalog/contract/admin di-emit ke localStorage sebagai stub sampai backend audit-event-bus ready." />
-
-      <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-card p-4">
-        <Layers className="h-5 w-5 text-primary" />
-        <div className="flex-1">
-          <p className="text-sm font-medium">Domain Scope</p>
-          <p className="text-xs text-muted-foreground">Live transfer events scoped per domain. Stub events are global.</p>
-        </div>
-        <Select value={domainId} onValueChange={setSelectedDomain}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Select domain" /></SelectTrigger>
-          <SelectContent>
-            {domains.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name} ({d.code})</SelectItem>))}
-          </SelectContent>
-        </Select>
-        <Button size="sm" variant="outline" className="gap-2" onClick={() => refetch()}>
-          <RefreshCcw className="h-4 w-4" />Refresh
-        </Button>
-      </div>
-
+    <V2PageShell title="Audit Log" subtitle="Read-only audit trail of all platform actions." status="Live API">
       <div className="grid gap-4 sm:grid-cols-3">
-        <MetricCard title="Total Events" value={counts.total} subtitle="Live + stub combined" icon={ClipboardCheck} trend="up" />
-        <MetricCard title="Today" value={counts.today} subtitle="Last 24h activity" icon={Filter} trend="neutral" />
-        <MetricCard title="Failed" value={counts.failed} subtitle="Outcome=FAILED" icon={ClipboardCheck} trend={counts.failed > 0 ? "down" : "up"} />
+        <MetricCard title="Total Events" value={isLoading ? "..." : counts.total} subtitle="All audit entries" icon={ClipboardCheck} trend="up" />
+        <MetricCard title="Today" value={isLoading ? "..." : counts.today} subtitle="Last 24h activity" icon={Filter} trend="neutral" />
+        <MetricCard title="Failed" value={isLoading ? "..." : counts.failed} subtitle="Failed outcomes" icon={ClipboardCheck} trend={counts.failed > 0 ? "down" : "up"} />
       </div>
-
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="text-base">Emit Stub Event</CardTitle>
-          <CardDescription>Until backend is ready, manually emit demo events to populate the log.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {([
-            ["AUTH", "auth.login"],
-            ["AUTH", "auth.logout"],
-            ["CATALOG", "schema.create"],
-            ["CONTRACT", "contract.create"],
-            ["AGREEMENT", "agreement.approve"],
-            ["AGREEMENT", "agreement.reject"],
-            ["ADMIN", "participant.activate"],
-          ] as const).map(([cat, act]) => (
-            <Button key={act} size="sm" variant="outline" onClick={() => handleEmitStub(cat, act)}>
-              + {act}
-            </Button>
-          ))}
-          <Button size="sm" variant="outline" className="border-destructive/40 text-destructive ml-auto" onClick={handleClearStubs}>
-            Clear stub events
-          </Button>
-        </CardContent>
-      </Card>
 
       <Card className="border-border/50">
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base">Audit Trail</CardTitle>
-            <CardDescription>Filter by category or search by action / actor / resource.</CardDescription>
+            <CardDescription>From <code className="rounded bg-muted px-1 text-xs">/api/v1/audit-compliance/audit-logs</code> — append-only, backend-managed.</CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <Select value={actionFilter} onValueChange={setActionFilter}>
+              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {(Object.keys(CATEGORY_COLORS) as AuditCategory[]).map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
+                <SelectItem value="all">All actions</SelectItem>
+                {actionTypes.map((a) => (<SelectItem key={a} value={a}>{a}</SelectItem>))}
               </SelectContent>
             </Select>
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-60" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search actor/resource..." className="w-60" />
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => refetch()}>
+              <RefreshCcw className="h-4 w-4" />Refresh
+            </Button>
             <Button size="sm" variant="outline" className="gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" />Export
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable headers={["When", "Category", "Action", "Actor", "Resource", "Outcome", "Source"]} isLoading={isLoading}>
+          <DataTable headers={["When", "Action", "Actor", "Resource", "Status"]} isLoading={isLoading}>
             {filtered.length > 0 ? filtered.map((e) => (
               <tr key={e.id} className="hover:bg-muted/20">
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(e.occurred_at).toLocaleString()}</td>
-                <td className="px-4 py-3"><Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[e.category]}`}>{e.category}</Badge></td>
-                <td className="px-4 py-3 font-mono text-xs">{e.action}</td>
-                <td className="px-4 py-3 text-xs">{e.actor}</td>
-                <td className="px-4 py-3 font-mono text-xs">{e.resource_id ? e.resource_id.slice(0, 8) + "..." : "—"}</td>
-                <td className="px-4 py-3"><Badge variant="outline" className={`text-[10px] ${e.outcome === "SUCCESS" ? "border-emerald-500/40 text-emerald-500" : "border-red-500/40 text-red-500"}`}>{e.outcome}</Badge></td>
-                <td className="px-4 py-3"><Badge variant="outline" className="text-[10px]">{e.source}</Badge></td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(e.timestamp).toLocaleString()}</td>
+                <td className="px-4 py-3 font-mono text-xs">{e.action_type}</td>
+                <td className="px-4 py-3 font-mono text-xs">{e.actor_id?.slice(0, 12) || "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs">{e.resource_id?.slice(0, 12) || "—"}</td>
+                <td className="px-4 py-3"><Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[e.status] || ""}`}>{e.status}</Badge></td>
               </tr>
-            )) : (<tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">No audit events match the filter.</td></tr>)}
+            )) : (<tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">No audit events match the filter.</td></tr>)}
           </DataTable>
         </CardContent>
       </Card>

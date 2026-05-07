@@ -1,15 +1,16 @@
 // src/pages/v2/admin-provider/ProviderDashboard.tsx
 import { Layers, Database, FileText, Activity, Handshake } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { V2PageShell, MetricCard } from "../V2PageShell";
 import { WizardStepper } from "@/components/ui/wizard-stepper";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useParticipants, useParticipantDomains } from "@/api/hooks/useParticipants";
 import { useAuth } from "@/context/AuthContext";
 import { V2_ROLE_LABELS } from "@/config/rbac";
 
 const ProviderDashboard = () => {
   const { role, user } = useAuth();
+  const navigate = useNavigate();
   const { data: participantsData, isLoading: loadingP } = useParticipants({ limit: 50 });
   const participants = participantsData?.data ?? [];
   const myParticipant = participants.find(p => p.organization_type === "ENTERPRISE") ?? participants[0];
@@ -27,10 +28,18 @@ const ProviderDashboard = () => {
   return (
     <V2PageShell title="Dashboard Provider" subtitle={`${V2_ROLE_LABELS[role]} — ${user?.email || "Authenticated"}`} status="Live API">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Organization" value={myParticipant?.organization_name || "—"} subtitle="Your provider identity" icon={Handshake} trend="neutral" />
-        <MetricCard title="Assigned Domains" value={loadingM ? "..." : mappings.length} subtitle="Domain access scope" icon={Layers} trend="up" />
-        <MetricCard title="Provider Status" value="Active" subtitle="Participant registered" icon={Activity} trend="up" />
-        <MetricCard title="Workflow Steps" value="4" subtitle="All provider steps" icon={FileText} trend="neutral" />
+        <Link to="/v2/admin-provider/assigned-domains" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Organization" value={myParticipant?.organization_name || "—"} subtitle="View assigned domains →" icon={Handshake} trend="neutral" />
+        </Link>
+        <Link to="/v2/admin-provider/assigned-domains" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Assigned Domains" value={loadingM ? "..." : mappings.length} subtitle="Open domain map →" icon={Layers} trend="up" />
+        </Link>
+        <Link to="/v2/admin-provider/dataset-registration" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Provider Status" value="Active" subtitle="Manage datasets →" icon={Activity} trend="up" />
+        </Link>
+        <Link to="/v2/admin-provider/contract-fulfilment" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Workflow Steps" value="4" subtitle="Open contract fulfilment →" icon={FileText} trend="neutral" />
+        </Link>
       </div>
 
       {/* Guided Onboarding Wizard */}
@@ -43,9 +52,9 @@ const ProviderDashboard = () => {
           <WizardStepper
             currentStepId="assigned-domains" // For demo purposes
             onStepClick={(id) => {
-              if (id === "assigned-domains") window.location.href = "/v2/admin-provider/assigned-domains";
-              if (id === "dataset-registration") window.location.href = "/v2/admin-provider/dataset-registration";
-              if (id === "contract-fulfilment") window.location.href = "/v2/admin-provider/contract-fulfilment";
+              if (id === "assigned-domains") navigate("/v2/admin-provider/assigned-domains");
+              if (id === "dataset-registration") navigate("/v2/admin-provider/dataset-registration");
+              if (id === "contract-fulfilment") navigate("/v2/admin-provider/contract-fulfilment");
             }}
             steps={[
               {

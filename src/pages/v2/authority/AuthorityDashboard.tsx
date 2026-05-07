@@ -8,12 +8,15 @@ import { Button } from "@/components/ui/button";
 import { useParticipants } from "@/api/hooks/useParticipants";
 import { useUsers } from "@/api/hooks/useUsers";
 import { useAllDomains } from "@/api/hooks/useDomains";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { V2_ROLE_LABELS } from "@/config/rbac";
 
+const LINK_CLS = "block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl";
+
 const AuthorityDashboard = () => {
   const { role, user } = useAuth();
+  const navigate = useNavigate();
   const { data: participantsData, isLoading: loadingP } = useParticipants({ limit: 100 });
   const { data: usersData, isLoading: loadingU } = useUsers({ limit: 100 });
   const { data: domainsData, isLoading: loadingD } = useAllDomains({ limit: 100 });
@@ -24,12 +27,20 @@ const AuthorityDashboard = () => {
 
   return (
     <V2PageShell title="Dashboard Authority" subtitle={`${V2_ROLE_LABELS[role]} — ${user?.email || "Authenticated"}`} status="Live API">
-      {/* Metrics */}
+      {/* Metrics — clickable cards that navigate to detail pages */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Total Participants" value={loadingP ? "..." : participants.length} subtitle="From live onboarding API" icon={Users2} trend="up" />
-        <MetricCard title="Registered Users" value={loadingU ? "..." : users.length} subtitle="From identity-provider API" icon={ShieldCheck} trend="up" />
-        <MetricCard title="Active Domains" value={loadingD ? "..." : domains.length} subtitle="From governance API" icon={Layers} trend="neutral" />
-        <MetricCard title="Role Setup" value="Configured" subtitle="Categories & Groups ready" icon={KeyRound} trend="neutral" />
+        <Link to="/v2/admin-consumer/admin-provider" className={LINK_CLS}>
+          <MetricCard title="Total Participants" value={loadingP ? "..." : participants.length} subtitle="Click to manage organizations →" icon={Users2} trend="up" />
+        </Link>
+        <Link to="/v2/authority/register-admin-consumer" className={LINK_CLS}>
+          <MetricCard title="Registered Users" value={loadingU ? "..." : users.length} subtitle="Click to manage login accounts →" icon={ShieldCheck} trend="up" />
+        </Link>
+        <Link to="/v2/admin-consumer/master-data" className={LINK_CLS}>
+          <MetricCard title="Active Domains" value={loadingD ? "..." : domains.length} subtitle="Click to manage in Master Data →" icon={Layers} trend="neutral" />
+        </Link>
+        <Link to="/v2/authority/role-setup" className={LINK_CLS}>
+          <MetricCard title="Role Setup" value="Configured" subtitle="Click to manage Categories & Groups →" icon={KeyRound} trend="neutral" />
+        </Link>
       </div>
 
       {/* Guided Onboarding Wizard */}
@@ -42,9 +53,12 @@ const AuthorityDashboard = () => {
           <WizardStepper
             currentStepId={users.length > 0 ? (participants.length > 0 ? "activate" : "register") : "roles"}
             onStepClick={(id) => {
-              if (id === "roles") window.location.href = "/v2/authority/role-setup";
-              if (id === "register") window.location.href = "/v2/authority/register-admin-consumer";
-              if (id === "activate") window.location.href = "/v2/authority/activation-email";
+              if (id === "roles") navigate("/v2/authority/role-setup");
+              if (id === "register") navigate("/v2/authority/register-admin-consumer");
+              if (id === "activate") navigate("/v2/authority/activation");
+            }}
+            onComplete={() => {
+              navigate("/v2/admin-consumer/dashboard");
             }}
             steps={[
               {

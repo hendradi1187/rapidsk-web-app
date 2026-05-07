@@ -1,7 +1,11 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
 
-// API Base URL - can be configured via environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8182";
+// API Base URL — in dev (when Vite proxy is active), use relative path so
+// requests go to localhost:8282/api/* and Vite forwards to backend (bypasses CORS).
+// In prod (Docker), VITE_API_BASE_URL is baked at build time → absolute URL.
+const API_BASE_URL = import.meta.env.DEV
+  ? ""
+  : (import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8182");
 
 // Create axios instance with default configuration
 export const apiClient: AxiosInstance = axios.create({

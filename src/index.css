@@ -111,6 +111,20 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, sans-serif;
   }
+
+  /* Defensive: hide orphan Radix portal overlays that occasionally persist
+     after HMR / route changes and visually block the app. */
+  body > [data-radix-portal] [data-state="closed"],
+  body > div[data-state="closed"][class*="bg-black"] {
+    display: none !important;
+    pointer-events: none !important;
+  }
+
+  /* Force pointer-events through any leftover transparent fixed overlay
+     that has no children — these are typically dead portal artifacts. */
+  body > div[class*="fixed inset-0"]:empty {
+    display: none !important;
+  }
 }
 
 @layer components {

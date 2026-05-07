@@ -2,8 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { parseOpenApiSpec } from "@/components/api-docs/openapi-parser";
 import type { ApiCategory } from "@/components/api-docs/api-endpoints";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8182";
+const API_BASE_URL = import.meta.env.DEV
+  ? ""
+  : (import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8182");
 
 export interface OpenApiSpecResult {
   categories: ApiCategory[];
