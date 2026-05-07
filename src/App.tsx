@@ -29,6 +29,7 @@ import ConnectionPoolsPage from "./pages/ConnectionPools";
 import AgreementsPage from "./pages/Agreements";
 import V2Router from "./pages/v2/V2Router";
 import Activation from "./pages/Activation";
+import ConfirmEmail from "./pages/ConfirmEmail";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +61,12 @@ const App = () => (
             <Route
               path="/activate"
               element={<Activation />}
+            />
+
+            {/* Email Confirmation — public, link from invite email */}
+            <Route
+              path="/confirm-email"
+              element={<ConfirmEmail />}
             />
 
             {/* Protected Routes - Require Authentication + Role Check */}

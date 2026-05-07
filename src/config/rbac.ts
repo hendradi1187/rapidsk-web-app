@@ -149,10 +149,10 @@ export const MENU_ITEMS_V2: MenuItem[] = [
   },
   {
     icon: Users2,
-    label: "Register Admin Consumer",
+    label: "Register Admin Login",
     path: "/v2/authority/register-admin-consumer",
     roles: ["SUPER_ADMIN"],
-    requiredPermissions: ["participants.manage"],
+    requiredPermissions: ["users.manage"],
   },
   {
     icon: KeyRound,
@@ -193,6 +193,12 @@ export const MENU_ITEMS_V2: MenuItem[] = [
     icon: RadioTower,
     label: "Gateway Monitor",
     path: "/v2/authority/gateway",
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    icon: Network,
+    label: "Channels",
+    path: "/v2/authority/channels",
     roles: ["SUPER_ADMIN"],
   },
   {

@@ -34,3 +34,5 @@ export {
   auditComplianceService,
 } from "./audit-compliance";
 export { transferProcessesApi, dataTransferRuntimeApi } from "./transfer-runtime";
+export { channelsApi, transferProcessMutationsApi, dataTransferMutationsApi } from "./connector-runtime";
+export { auditLogsApi } from "./audit-log";

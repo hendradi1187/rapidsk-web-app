@@ -15,6 +15,7 @@ const UserProvisioning = lazy(() => import("./authority/UserProvisioning"));
 const ActivationLifecycle = lazy(() => import("./authority/ActivationLifecycle"));
 const PermissionCatalog = lazy(() => import("./authority/PermissionCatalog"));
 const GatewayMonitor = lazy(() => import("./authority/GatewayMonitor"));
+const Channels = lazy(() => import("./authority/Channels"));
 
 const ConsumerDashboard = lazy(() => import("./admin-consumer/ConsumerDashboard"));
 const MasterData = lazy(() => import("./admin-consumer/MasterData"));
@@ -84,6 +85,7 @@ const V2Router = () => {
         <Route path="authority/user-provisioning" element={<UserProvisioning />} />
         <Route path="authority/permissions" element={<PermissionCatalog />} />
         <Route path="authority/gateway" element={<GatewayMonitor />} />
+        <Route path="authority/channels" element={<Channels />} />
 
         {/* Admin Consumer (CONSUMER / SKK Migas) */}
         <Route path="admin-consumer/dashboard" element={<ConsumerDashboard />} />

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Users2, Plus, Building2, Pencil, Trash2 } from "lucide-react";
+import { Users2, Plus, Building2, Pencil, Trash2, MailCheck, Badge as BadgeIcon } from "lucide-react";
 import { V2PageShell, MetricCard, DataTable } from "../V2PageShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,8 @@ import {
   useDeleteParticipant,
   useUpdateParticipant,
 } from "@/api/hooks/useParticipants";
+import { useUsers } from "@/api/hooks/useUsers";
+import { apiClient } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
@@ -44,6 +47,7 @@ const emptyForm = {
 const AdminProvider = () => {
   const { hasPermission } = useAuth();
   const { data: participantsData, isLoading } = useParticipants({ limit: 50 });
+  const { data: usersData, refetch: refetchUsers } = useUsers({ limit: 200 });
   const createParticipant = useCreateParticipant();
   const updateParticipant = useUpdateParticipant();
   const deleteParticipant = useDeleteParticipant();
@@ -52,7 +56,40 @@ const AdminProvider = () => {
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [form, setForm] = useState(emptyForm);
   const participants = participantsData?.data ?? [];
+  const users = usersData?.data ?? [];
   const providers = participants.filter((participant) => participant.organization_type === "ENTERPRISE");
+
+  // Map participant → matching IDP user (by email)
+  const userByParticipantEmail = (email?: string) => {
+    if (!email) return undefined;
+    return users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  };
+
+  // Confirm-email dialog state — admin paste activation token
+  const [confirmTarget, setConfirmTarget] = useState<{ user_email: string; org_name: string } | null>(null);
+  const [confirmToken, setConfirmToken] = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  const submitConfirm = async () => {
+    if (!confirmToken.trim()) { toast.error("Token wajib"); return; }
+    setConfirming(true);
+    try {
+      await apiClient.post(`/api/v1/identity-provider/users/confirm-email`, { token: confirmToken.trim() });
+      toast.success(`Email ${confirmTarget?.user_email} confirmed — provider bisa login sekarang`);
+      setConfirmTarget(null);
+      setConfirmToken("");
+      refetchUsers();
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail || err?.response?.data?.error || err?.message;
+      toast.error(`Confirm failed (HTTP ${status})`, {
+        description: status === 404 ? "Token invalid / expired / used" : detail,
+        duration: 7000,
+      });
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -196,12 +233,34 @@ const AdminProvider = () => {
           </Dialog>
         </CardHeader>
         <CardContent>
-          <DataTable headers={["Organization", "Contact", "Email", "Created", "Actions"]} isLoading={isLoading}>
-            {providers.length > 0 ? providers.map((provider) => (
+          <DataTable headers={["Organization", "Contact", "Email", "Login Status", "Created", "Actions"]} isLoading={isLoading}>
+            {providers.length > 0 ? providers.map((provider) => {
+              const matchedUser = userByParticipantEmail(provider.contact_person?.email);
+              return (
               <tr key={provider.id} className="transition-colors hover:bg-muted/20">
                 <td className="px-4 py-3 text-sm font-medium">{provider.organization_name}</td>
                 <td className="px-4 py-3 text-sm">{provider.contact_person?.name || "-"}</td>
                 <td className="px-4 py-3 text-sm text-muted-foreground">{provider.contact_person?.email || "-"}</td>
+                <td className="px-4 py-3">
+                  {!matchedUser ? (
+                    <Badge variant="outline" className="border-slate-400/40 text-slate-400 text-[10px]">No login account</Badge>
+                  ) : matchedUser.is_email_confirmed ? (
+                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 text-[10px]">Active ({matchedUser.username})</Badge>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-amber-500/40 text-amber-500 text-[10px]">Pending</Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 gap-1 border-emerald-500/40 text-emerald-500 text-[10px] px-2"
+                        title="Activate provider via POST /confirm-email — paste activation token"
+                        onClick={() => { setConfirmTarget({ user_email: matchedUser.email, org_name: provider.organization_name }); setConfirmToken(""); }}
+                      >
+                        <MailCheck className="h-3 w-3" />Activate
+                      </Button>
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(provider.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
@@ -216,12 +275,43 @@ const AdminProvider = () => {
                   </div>
                 </td>
               </tr>
-            )) : (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">No provider participants registered yet</td></tr>
+              );
+            }) : (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">No provider participants registered yet</td></tr>
             )}
           </DataTable>
         </CardContent>
       </Card>
+
+      {/* Activate provider dialog — POST /users/confirm-email */}
+      <Dialog open={!!confirmTarget} onOpenChange={(o) => { if (!o) { setConfirmTarget(null); setConfirmToken(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activate {confirmTarget?.org_name}</DialogTitle>
+            <DialogDescription>
+              Provider <strong>{confirmTarget?.user_email}</strong> belum activate. Paste activation token dari email user / backend log → POST /confirm-email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid gap-2">
+              <Label>Activation Token</Label>
+              <Input value={confirmToken} onChange={(e) => setConfirmToken(e.target.value)} placeholder="paste token disini" autoFocus />
+            </div>
+            <div className="rounded-lg border border-border/50 bg-muted/20 p-3 text-xs space-y-1">
+              <p className="font-medium">Cara dapatin token kalau user belum dapat email:</p>
+              <p>1. Minta backend dev: <code className="rounded bg-muted px-1">SELECT activation_token FROM users WHERE email = '{confirmTarget?.user_email}'</code></p>
+              <p>2. Atau cek <code className="rounded bg-muted px-1">docker logs &lt;backend&gt;</code> saat user di-create</p>
+              <p>3. Atau backend dev langsung run <code className="rounded bg-muted px-1">UPDATE users SET is_email_confirmed=true WHERE email='{confirmTarget?.user_email}'</code></p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmTarget(null); setConfirmToken(""); }}>Cancel</Button>
+            <Button onClick={submitConfirm} disabled={confirming || !confirmToken.trim()}>
+              {confirming ? "Activating..." : "Activate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(nextOpen) => !nextOpen && setDeleteTarget(null)}>
         <AlertDialogContent>

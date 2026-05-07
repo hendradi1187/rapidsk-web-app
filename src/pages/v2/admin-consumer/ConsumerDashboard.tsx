@@ -1,5 +1,6 @@
 // src/pages/v2/admin-consumer/ConsumerDashboard.tsx
 import { Layers, BookOpen, FileText, Handshake, Network, Activity } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { V2PageShell, MetricCard } from "../V2PageShell";
 import { WizardStepper } from "@/components/ui/wizard-stepper";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import { V2_ROLE_LABELS } from "@/config/rbac";
 
 const ConsumerDashboard = () => {
   const { role, user } = useAuth();
+  const navigate = useNavigate();
   const { data: domainsData, isLoading: loadingD } = useAllDomains({ limit: 50 });
   const { data: participantsData, isLoading: loadingP } = useParticipants({ limit: 50 });
 
@@ -29,10 +31,18 @@ const ConsumerDashboard = () => {
   return (
     <V2PageShell title="Dashboard Consumer" subtitle={`${V2_ROLE_LABELS[role]} — ${user?.email || "Authenticated"}`} status="Live API">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Active Domains" value={loadingD ? "..." : domains.length} subtitle="Governance API" icon={Layers} trend="up" />
-        <MetricCard title="Participants" value={loadingP ? "..." : participants.length} subtitle="Onboarding API" icon={Handshake} trend="up" />
-        <MetricCard title="Providers" value={loadingP ? "..." : participants.filter(p => p.organization_type === "ENTERPRISE").length} subtitle="Enterprise type" icon={Network} trend="neutral" />
-        <MetricCard title="Workflow Steps" value="6" subtitle="All steps available" icon={Activity} trend="neutral" />
+        <Link to="/v2/admin-consumer/master-data" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Active Domains" value={loadingD ? "..." : domains.length} subtitle="Manage in Master Data →" icon={Layers} trend="up" />
+        </Link>
+        <Link to="/v2/admin-consumer/admin-provider" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Participants" value={loadingP ? "..." : participants.length} subtitle="Manage participants →" icon={Handshake} trend="up" />
+        </Link>
+        <Link to="/v2/admin-consumer/domain-mapping" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Providers" value={loadingP ? "..." : participants.filter(p => p.organization_type === "ENTERPRISE").length} subtitle="Manage domain mapping →" icon={Network} trend="neutral" />
+        </Link>
+        <Link to="/v2/admin-consumer/transfer-monitor" className="block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl">
+          <MetricCard title="Workflow Steps" value="6" subtitle="Open transfer monitor →" icon={Activity} trend="neutral" />
+        </Link>
       </div>
 
       {/* Guided Onboarding Wizard */}
@@ -45,10 +55,10 @@ const ConsumerDashboard = () => {
           <WizardStepper
             currentStepId="master-data" // For demo purposes, we can leave it at step 1 or make it dynamic
             onStepClick={(id) => {
-              if (id === "master-data") window.location.href = "/v2/admin-consumer/master-data";
-              if (id === "policy") window.location.href = "/v2/admin-consumer/policy-contract";
-              if (id === "provider") window.location.href = "/v2/admin-consumer/admin-provider";
-              if (id === "mapping") window.location.href = "/v2/admin-consumer/domain-mapping";
+              if (id === "master-data") navigate("/v2/admin-consumer/master-data");
+              if (id === "policy") navigate("/v2/admin-consumer/policy-contract");
+              if (id === "provider") navigate("/v2/admin-consumer/admin-provider");
+              if (id === "mapping") navigate("/v2/admin-consumer/domain-mapping");
             }}
             steps={[
               {
