@@ -24,7 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 const AuditLog = () => {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["audit-logs"],
-    queryFn: () => auditLogsApi.list({ limit: 200 }),
+    queryFn: () => auditLogsApi.list({ limit: 100 }),
   });
   const events = data?.data ?? [];
 

@@ -17,6 +17,14 @@ export function useTransferProcessesHistory(domainId: string, params?: Paginatio
   });
 }
 
+export function useTransferProcessesActive(domainId: string, params?: PaginationParams) {
+  return useQuery({
+    queryKey: ["transfer-processes-active", domainId, params],
+    queryFn: () => transferProcessesApi.active(domainId, params),
+    enabled: !!domainId,
+  });
+}
+
 export function useTransferProcess(domainId: string, id: string) {
   return useQuery({
     queryKey: transferRuntimeKeys.process(domainId, id),

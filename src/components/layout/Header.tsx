@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useLogout } from "@/api/hooks/useUsers";
+import { useBackendHealth } from "@/api/hooks/useHealth";
 import { useAuth, type AppRole } from "@/context/AuthContext";
 import { ROLE_LABELS } from "@/config/rbac";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
   const { user, role } = useAuth();
+  const health = useBackendHealth();
+  const isBackendUp = !health.isError && health.data?.status?.toLowerCase() !== "down";
 
   const userName = user?.full_name || "User";
   const userInitials = userName
@@ -67,6 +70,25 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
               placeholder="Search..."
               className="pl-10 w-64 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-accent"
             />
+          </div>
+
+          {/* Backend health indicator */}
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30 cursor-default"
+            title={
+              health.isLoading ? "Checking backend..."
+              : isBackendUp ? `Backend: ${health.data?.status || "OK"}`
+              : "Backend down or unreachable"
+            }
+          >
+            <span className={cn(
+              "inline-block h-2 w-2 rounded-full",
+              health.isLoading ? "bg-amber-400 animate-pulse" :
+              isBackendUp ? "bg-emerald-500" : "bg-red-500 animate-pulse"
+            )} />
+            <span className="hidden md:inline text-[10px] font-medium text-muted-foreground">
+              {health.isLoading ? "checking" : isBackendUp ? "online" : "offline"}
+            </span>
           </div>
 
           {/* Notifications */}

@@ -42,6 +42,9 @@ export interface Domain {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Frontend enrichment (populated by useAllDomains) — not from backend.
+  organization_name?: string;
+  organization_code?: string;
 }
 
 export interface DomainCreateRequest {

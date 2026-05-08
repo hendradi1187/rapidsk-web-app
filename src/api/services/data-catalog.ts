@@ -105,10 +105,13 @@ export const vocabularyTermsApi = {
     domainId: string,
     vocabularyId: string
   ): Promise<VocabularyTermResponse[]> => {
-    const response = await apiClient.get<VocabularyTermResponse[]>(
-      `${BASE_PATH}/${domainId}/vocabularies/${vocabularyId}/terms`
+    const response = await apiClient.get<VocabularyTermListResponse | VocabularyTermResponse[]>(
+      `${BASE_PATH}/${domainId}/vocabularies/${vocabularyId}/terms`,
+      { params: { limit: 100 } }
     );
-    return response.data;
+    // Backend returns paginated { data: [...], total }, but tolerate raw array.
+    if (Array.isArray(response.data)) return response.data;
+    return response.data?.data ?? [];
   },
 
   /**

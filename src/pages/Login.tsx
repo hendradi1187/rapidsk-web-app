@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLogin } from "@/api/hooks/useUsers";
 import {
-  DATASPACE_UI_VERSION_KEY,
   getDefaultV2RouteForRole,
   setDataspaceV2Enabled,
 } from "@/lib/dataspace-version";
@@ -16,16 +14,10 @@ import { toast } from "sonner";
 
 const Login = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const loginMutation = useLogin();
-
-  const from = (location.state as any)?.from?.pathname || "/";
 
   const [formData, setFormData] = useState({ username: "", password: "" });
   const [rememberMe, setRememberMe] = useState(false);
-  const [useDataspaceV2, setUseDataspaceV2] = useState(
-    () => localStorage.getItem(DATASPACE_UI_VERSION_KEY) === "v2"
-  );
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
 
@@ -61,10 +53,10 @@ const Login = () => {
         localStorage.removeItem("remember_username");
       }
 
-      setDataspaceV2Enabled(useDataspaceV2);
+      setDataspaceV2Enabled(true);
 
       const nextRole = session.role;
-      const nextPath = useDataspaceV2 ? getDefaultV2RouteForRole(nextRole) : from;
+      const nextPath = getDefaultV2RouteForRole(nextRole);
 
       setTimeout(() => navigate(nextPath, { replace: true }), 500);
     } catch (error: any) {
@@ -249,21 +241,13 @@ const Login = () => {
               </div>
 
               <div
-                className="flex items-center justify-between gap-4 rounded-md px-3 py-3"
+                className="rounded-md px-3 py-3"
                 style={{ border: "1px solid #1e2d44", backgroundColor: "#111b2d" }}
               >
-                <div>
-                  <p className="text-sm font-semibold text-white">Dataspace v2 POC</p>
-                  <p className="text-xs" style={{ color: "#5a6a82" }}>
-                    Use sequence-based role menus after login
-                  </p>
-                </div>
-                <Switch
-                  checked={useDataspaceV2}
-                  onCheckedChange={setUseDataspaceV2}
-                  disabled={loginMutation.isPending}
-                  aria-label="Enable Dataspace v2 POC"
-                />
+                <p className="text-sm font-semibold text-white">Dataspace V2 Active</p>
+                <p className="text-xs" style={{ color: "#5a6a82" }}>
+                  Login sekarang langsung masuk ke workflow V2 sesuai role. Akses mode V1 disembunyikan dari halaman ini.
+                </p>
               </div>
 
               {/* Error alert */}

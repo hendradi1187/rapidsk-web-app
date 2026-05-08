@@ -81,6 +81,8 @@ const LIVE_API = {
   monitorings: "/api/v1/onboarding/{domain_id}/monitorings",
   consume: "/api/v1/consumer/{domain_id}/consume/{agreement_id}",
   provide: "/api/v1/provider/{domain_id}/provide/{agreement_id}",
+  dataTransfers: "/api/v1/{domain_id}/data-transfers",
+  transferHistory: "/api/v1/{domain_id}/transfer-processes/history",
 };
 
 const SECTION_SPECS: Record<string, SectionSpec> = {
@@ -244,13 +246,14 @@ const SECTION_SPECS: Record<string, SectionSpec> = {
     actor: "ADMIN PROVIDER (KKKS)",
     sequencePhase: "Provider login setelah diaktivasi",
     status: "Live API",
-    endpoints: [LIVE_API.participantDomains, LIVE_API.datasets, LIVE_API.monitorings],
+    endpoints: [LIVE_API.participantDomains, LIVE_API.datasets, LIVE_API.dataTransfers],
     responsibilities: [
       "Melihat menu terbatas provider.",
       "Melihat assigned domains dan contract fulfilment.",
       "Upload/register dataset untuk contract aktif.",
+      "Ringkasan transfer memakai /data-transfers karena /transfer-processes/history belum stabil di backend.",
     ],
-    nextActions: ["Cek assigned domains.", "Register dataset untuk fulfilment."],
+    nextActions: ["Cek assigned domains.", "Register dataset untuk fulfilment.", "Buka Fulfilment Reports untuk lihat transfer domain scope."],
   },
   "/v2/admin-provider/assigned-domains": {
     title: "Assigned Domains",
@@ -296,17 +299,23 @@ const SECTION_SPECS: Record<string, SectionSpec> = {
   },
   "/v2/admin-provider/fulfilment-reports": {
     title: "Fulfilment Reports",
-    subtitle: "Transfer history and fulfilment status",
+    subtitle: "Provider report memakai data-transfers domain scope",
     actor: "ADMIN PROVIDER (KKKS)",
     sequencePhase: "PROSES 4: View Data Transfer sesuai Contract Fulfilment",
-    status: "Live API",
-    endpoints: [LIVE_API.monitorings, LIVE_API.provide],
-    responsibilities: [
-      "Lihat report fulfilment sesuai contract.",
-      "Lihat status monitoring dan notification.",
-      "V2 report memakai monitoring onboarding dan provider connector.",
+    status: "Preview only",
+    endpoints: [
+      LIVE_API.dataTransfers,
+      LIVE_API.contracts,
+      LIVE_API.agreements,
+      `${LIVE_API.transferHistory} (backend route broken)`,
+      "/api/v1/{domain_id}/transfer-reports?contract_id={contract_id} (belum disediakan)",
     ],
-    nextActions: ["Filter berdasarkan domain/participant.", "Cek monitoring data live."],
+    responsibilities: [
+      "Lihat report fulfilment dari data transfer domain yang tersedia.",
+      "Tandai jelas bila endpoint dedicated per-contract belum disediakan.",
+      "Jangan lagi bergantung pada /transfer-processes/history untuk provider report.",
+    ],
+    nextActions: ["Filter berdasarkan domain.", "Gunakan export sebagai snapshot sementara.", "Minta backend sediakan endpoint report by contract bila butuh agregasi final."],
   },
 };
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Network, Activity, Layers, Plus, Pencil, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Network, Activity, Layers, Plus, Pencil, Trash2, Settings, UserPlus, ArrowRight, CheckCircle2 } from "lucide-react";
 import { V2PageShell, MetricCard, DataTable } from "../V2PageShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,7 +65,7 @@ const emptyMonitoringForm = {
 
 const SystemSetup = () => {
   const { hasPermission } = useAuth();
-  const { data: domainsData, isLoading: loadingDomains } = useAllDomains({ limit: 50 });
+  const { data: domainsData, isLoading: loadingDomains } = useAllDomains({ limit: 1000 });
   const { data: participantsData } = useParticipants({ limit: 100 });
   const domains = domainsData?.data ?? [];
   const participants = participantsData?.data ?? [];
@@ -92,10 +93,13 @@ const SystemSetup = () => {
 
   const pools = poolsData?.data ?? [];
   const monitorings = monitoringsData?.data ?? [];
-  const scopedParticipants = useMemo(
-    () => participants.filter((participant) => participant.organization_type !== "ENTERPRISE"),
-    [participants]
-  );
+  // Monitoring per seq diagram: any participant, not filtered.
+  const scopedParticipants = useMemo(() => participants, [participants]);
+  const participantNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    participants.forEach((p) => map.set(p.id, p.organization_name));
+    return map;
+  }, [participants]);
 
   const resetPoolForm = () => {
     setEditingPool(null);
@@ -158,14 +162,35 @@ const SystemSetup = () => {
       toast.error("Domain, participant, and notification email are required");
       return;
     }
+    // Backend MonitoringNotification.email expects RFC email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(monitoringForm.email)) {
+      toast.error("Invalid email format");
+      return;
+    }
+    const retention = Number(monitoringForm.retention);
+    if (!Number.isInteger(retention) || retention <= 0) {
+      toast.error("Retention must be a positive integer (days)");
+      return;
+    }
+    const compliance = monitoringForm.compliance.split(",").map((entry) => entry.trim()).filter(Boolean);
+    if (compliance.length === 0) {
+      toast.error("Pick at least one compliance framework");
+      return;
+    }
+    const ALLOWED = new Set(["ISO 27001", "SKK MIGAS", "COBIT", "ITIL 4"]);
+    const invalid = compliance.filter((v) => !ALLOWED.has(v));
+    if (invalid.length > 0) {
+      toast.error(`Invalid compliance value(s): ${invalid.join(", ")}`);
+      return;
+    }
 
     const payload = {
       participant_id: monitoringForm.participant_id,
       log: {
         enabled: monitoringForm.logEnabled,
-        retention: Number(monitoringForm.retention || 0),
+        retention,
       },
-      compliance: monitoringForm.compliance.split(",").map((entry) => entry.trim()).filter(Boolean),
+      compliance,
       notification: {
         email: monitoringForm.email,
         realtime: monitoringForm.realtime,
@@ -227,12 +252,48 @@ const SystemSetup = () => {
   };
 
   return (
-    <V2PageShell title="System Setup" subtitle="Connection pools and monitoring are now actionable, not just visible." status="Live API">
+    <V2PageShell title="System Setup" subtitle="Group C — System config, participant provisioning, dan domain mapping per sequence diagram." status="Live API">
+      {/* Group C 3-step guide (per sequence diagram) */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="border-border/50">
+          <CardContent className="space-y-2 p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
+              <Settings className="h-3.5 w-3.5" /> Step 1 · System Config
+            </div>
+            <p className="text-sm font-medium">Endpoint, encryption, retention, compliance, notification</p>
+            <p className="text-xs text-muted-foreground">Configured per-domain via the <strong>System Configuration</strong> tab below (saved as <code className="text-[10px]">monitoring</code> records).</p>
+            <Badge variant="outline" className="text-[10px]">{monitorings.length} configured</Badge>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="space-y-2 p-4">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-primary">
+              <span className="flex items-center gap-2"><UserPlus className="h-3.5 w-3.5" /> Step 2 · Input Participant Provider</span>
+              <Link to="/v2/admin-consumer/admin-provider" className="text-[10px] text-primary hover:underline inline-flex items-center gap-1">Open <ArrowRight className="h-3 w-3" /></Link>
+            </div>
+            <p className="text-sm font-medium">Daftarkan KKKS sebagai PROVIDER → trigger email aktivasi</p>
+            <p className="text-xs text-muted-foreground">Status awal: <code className="text-[10px]">PENDING_ACTIVATION</code>. Dikelola di menu Admin Provider.</p>
+            <Badge variant="outline" className="text-[10px]">{participants.filter((p) => p.organization_type === "ENTERPRISE").length} provider participants</Badge>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="space-y-2 p-4">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-primary">
+              <span className="flex items-center gap-2"><Layers className="h-3.5 w-3.5" /> Step 3 · Mapping Participant ↔ Domain</span>
+              <Link to="/v2/admin-consumer/domain-mapping" className="text-[10px] text-primary hover:underline inline-flex items-center gap-1">Open <ArrowRight className="h-3 w-3" /></Link>
+            </div>
+            <p className="text-sm font-medium">Bind participant ke domain</p>
+            <p className="text-xs text-muted-foreground">Backend hanya butuh <code className="text-[10px]">domain_id</code> per participant. <code className="text-[10px]">access_level</code> di seq diagram belum ada di endpoint.</p>
+            <Badge variant="outline" className="text-[10px]">Dikelola di menu Domain Mapping</Badge>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-card p-4">
         <Layers className="h-5 w-5 text-primary" />
         <div className="flex-1">
-          <p className="text-sm font-medium">Domain Scope</p>
-          <p className="text-xs text-muted-foreground">Monitoring remains domain-scoped. Connection pools stay global under onboarding.</p>
+          <p className="text-sm font-medium">Active Domain {domainId && <CheckCircle2 className="inline h-3.5 w-3.5 text-emerald-500 ml-1" />}</p>
+          <p className="text-xs text-muted-foreground">System Configuration di-scope per domain. Connection pools tetap global under onboarding.</p>
         </div>
         <Select value={domainId} onValueChange={setSelectedDomain}>
           <SelectTrigger className="w-64"><SelectValue placeholder={loadingDomains ? "Loading..." : "Select domain"} /></SelectTrigger>
@@ -251,10 +312,10 @@ const SystemSetup = () => {
         <MetricCard title="Monitoring Configs" value={loadingMonitorings ? "..." : monitorings.length} subtitle="Audit & compliance monitoring" icon={Activity} trend="neutral" />
       </div>
 
-      <Tabs defaultValue="pools">
+      <Tabs defaultValue="monitoring">
         <TabsList>
+          <TabsTrigger value="monitoring">System Configuration (Monitoring)</TabsTrigger>
           <TabsTrigger value="pools">Connection Pools</TabsTrigger>
-          <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pools">
@@ -301,19 +362,25 @@ const SystemSetup = () => {
           <Card className="border-border/50">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-base">Monitoring Configuration</CardTitle>
-                <CardDescription>Create, update, and remove audit logging, compliance, and notification settings.</CardDescription>
+                <CardTitle className="text-base">System Configuration (per domain)</CardTitle>
+                <CardDescription>Per sequence diagram Step 1 — endpoint, encryption, retention policy. Backend menyimpan sebagai <code className="text-xs">monitoring</code> record (POST <code className="text-xs">/api/v1/onboarding/{`{domain_id}`}/monitorings</code>).</CardDescription>
               </div>
-              <Button onClick={() => setMonitoringDialogOpen(true)} disabled={!hasPermission("monitoring.manage") || !domainId} className="gap-2">
+              <Button onClick={() => setMonitoringDialogOpen(true)} disabled={!hasPermission("monitoring.manage") || !domainId || participants.length === 0} className="gap-2">
                 <Plus className="h-4 w-4" />
-                Add Monitoring
+                Add Configuration
               </Button>
             </CardHeader>
             <CardContent>
+              {!domainId && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400 mb-3">Pilih domain di header dulu.</p>
+              )}
+              {domainId && participants.length === 0 && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400 mb-3">Belum ada participant — daftarkan dulu di <Link to="/v2/admin-consumer/admin-provider" className="underline">Admin Provider</Link>.</p>
+              )}
               <DataTable headers={["Participant", "Log Enabled", "Retention", "Compliance", "Realtime Alerts", "Email", "Actions"]} isLoading={!domainId || loadingMonitorings}>
                 {monitorings.length > 0 ? monitorings.map((monitoring: any) => (
                   <tr key={monitoring.id} className="transition-colors hover:bg-muted/20">
-                    <td className="px-4 py-3 font-mono text-xs">{monitoring.participant_id?.slice(0, 8)}...</td>
+                    <td className="px-4 py-3 text-sm">{participantNameById.get(monitoring.participant_id) || <span className="font-mono text-xs">{monitoring.participant_id?.slice(0, 8)}...</span>}</td>
                     <td className="px-4 py-3"><Badge variant="outline" className={`text-xs ${monitoring.log?.enabled ? "border-emerald-500/30 text-emerald-500" : "border-red-500/30 text-red-500"}`}>{monitoring.log?.enabled ? "Yes" : "No"}</Badge></td>
                     <td className="px-4 py-3 text-sm">{monitoring.log?.retention || 0} days</td>
                     <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(monitoring.compliance || []).map((entry: string) => (<Badge key={entry} variant="outline" className="text-[10px]">{entry}</Badge>))}</div></td>
@@ -332,7 +399,7 @@ const SystemSetup = () => {
                       </div>
                     </td>
                   </tr>
-                )) : (<tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">{domainId ? "No monitoring records" : "Select a domain"}</td></tr>)}
+                )) : (<tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">{!domainId ? "Pilih domain dulu" : "Belum ada konfigurasi sistem untuk domain ini — klik Add Configuration."}</td></tr>)}
               </DataTable>
             </CardContent>
           </Card>
@@ -404,37 +471,52 @@ const SystemSetup = () => {
       <Dialog open={monitoringDialogOpen} onOpenChange={(nextOpen) => { setMonitoringDialogOpen(nextOpen); if (!nextOpen) resetMonitoringForm(); }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingMonitoring ? "Edit Monitoring" : "Create Monitoring"}</DialogTitle>
-            <DialogDescription>Choose an existing participant and configure logging, retention, compliance, and notifications.</DialogDescription>
+            <DialogTitle>{editingMonitoring ? "Edit System Configuration" : "Create System Configuration"}</DialogTitle>
+            <DialogDescription>Per seq diagram Step 1: pilih participant lalu set retention policy (log), compliance framework, dan notification.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label>Participant</Label>
+                <Label>Participant *</Label>
                 <Select value={monitoringForm.participant_id} onValueChange={(value) => setMonitoringForm((prev) => ({ ...prev, participant_id: value }))}>
                   <SelectTrigger><SelectValue placeholder="Select participant" /></SelectTrigger>
                   <SelectContent>
                     {scopedParticipants.map((participant) => (
                       <SelectItem key={participant.id} value={participant.id}>
-                        {participant.organization_name}
+                        {participant.organization_name} <span className="text-xs text-muted-foreground">({participant.organization_type})</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Retention (days)</Label>
-                <Input value={monitoringForm.retention} onChange={(event) => setMonitoringForm((prev) => ({ ...prev, retention: event.target.value }))} placeholder="30" />
+                <Label>Retention Policy (days) *</Label>
+                <Input type="number" min="1" value={monitoringForm.retention} onChange={(event) => setMonitoringForm((prev) => ({ ...prev, retention: event.target.value }))} placeholder="30" />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label>Notification Email</Label>
-                <Input value={monitoringForm.email} onChange={(event) => setMonitoringForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="ops@example.com" />
+                <Label>Notification Email *</Label>
+                <Input type="email" value={monitoringForm.email} onChange={(event) => setMonitoringForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="ops@example.com" />
               </div>
               <div className="grid gap-2">
-                <Label>Compliance</Label>
-                <Input value={monitoringForm.compliance} onChange={(event) => setMonitoringForm((prev) => ({ ...prev, compliance: event.target.value }))} placeholder="SKK MIGAS, ISO 27001" />
+                <Label>Compliance Framework * (enum backend)</Label>
+                <div className="flex flex-wrap gap-2 rounded-md border border-border/60 p-2">
+                  {(["ISO 27001", "SKK MIGAS", "COBIT", "ITIL 4"] as const).map((opt) => {
+                    const current = monitoringForm.compliance.split(",").map((s) => s.trim()).filter(Boolean);
+                    const checked = current.includes(opt);
+                    return (
+                      <label key={opt} className="flex items-center gap-2 rounded border border-border/40 px-2 py-1 text-xs">
+                        <Checkbox checked={checked} onCheckedChange={(next) => {
+                          const set = new Set(current);
+                          if (next) set.add(opt); else set.delete(opt);
+                          setMonitoringForm((prev) => ({ ...prev, compliance: Array.from(set).join(", ") }));
+                        }} />
+                        {opt}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

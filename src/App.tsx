@@ -1,8 +1,9 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute, PublicRoute } from "@/components/auth/ProtectedRoute";
@@ -33,6 +34,54 @@ import ConfirmEmail from "./pages/ConfirmEmail";
 
 const queryClient = new QueryClient();
 
+/**
+ * Sweeps stuck Radix portal overlays (bg-black/80 fixed inset-0) on every
+ * route change. These can persist when a Dialog/AlertDialog unmounts before
+ * Radix can run its close animation, leaving an orphan dark overlay that
+ * blocks the entire UI.
+ */
+const StuckOverlaySweeper = () => {
+  const location = useLocation();
+  useEffect(() => {
+    const sweep = () => {
+      // Any portal overlay element that has bg-black* and inset-0 — if it has
+      // no live content sibling (data-state="open"), nuke it.
+      document.querySelectorAll<HTMLElement>('div[class*="fixed"][class*="inset-0"]').forEach((el) => {
+        const cls = el.className || "";
+        if (!/bg-black|bg-background\/95/.test(cls)) return;
+        // Check if any sibling has data-state="open" (live dialog content)
+        const parent = el.parentElement;
+        const hasLiveSibling = parent && [...parent.children].some(
+          (c) => c !== el && (c as HTMLElement).getAttribute?.("data-state") === "open"
+        );
+        if (!hasLiveSibling) {
+          el.style.display = "none";
+          el.style.pointerEvents = "none";
+        }
+      });
+    };
+    // Sweep now and after a short delay (let Radix mount finish first)
+    sweep();
+    const t = setTimeout(sweep, 120);
+    return () => clearTimeout(t);
+  }, [location.pathname]);
+
+  // Esc key: emergency nuke any leftover dark overlay
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      document.querySelectorAll<HTMLElement>('div[class*="fixed"][class*="inset-0"][class*="bg-black"]').forEach((el) => {
+        el.style.display = "none";
+        el.style.pointerEvents = "none";
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return null;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -40,6 +89,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <StuckOverlaySweeper />
           <Routes>
             {/* Public Route - Login Page */}
             <Route

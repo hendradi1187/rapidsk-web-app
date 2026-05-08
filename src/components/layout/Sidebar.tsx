@@ -13,7 +13,7 @@ export const Sidebar = () => {
   const isV2 = isDataspaceV2Enabled();
 
   // Only show menu items allowed for the current role
-  const visibleItems = getMenuItems(role, isV2, user?.permissions ?? []);
+  const visibleItems = getMenuItems(role, isV2, user?.permissions ?? [], user?.is_superadmin === true);
 
   return (
     <aside

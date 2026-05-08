@@ -64,7 +64,6 @@ import { toast } from "sonner";
 import { useAllDomains } from "@/api/hooks/useDomains";
 import {
   useContracts,
-  useCreateContract,
   useDeleteContract,
   useContractPolicies,
   useCreateContractPolicy,
@@ -125,7 +124,6 @@ const Contracts = () => {
     refetch: refetchAgreements,
   } = useAgreements(selectedDomainId, { limit: 100 });
 
-  const createContractMutation = useCreateContract();
   const deleteContractMutation = useDeleteContract();
   const createPolicyMutation = useCreateContractPolicy();
 
@@ -203,30 +201,9 @@ const Contracts = () => {
 
   // Handle add contract
   const handleSaveContract = async () => {
-    if (!contractForm.title.trim()) {
-      toast.error("Contract title is required");
-      return;
-    }
-
-    try {
-      await createContractMutation.mutateAsync({
-        domainId: selectedDomainId,
-        data: {
-          title: contractForm.title,
-          provider: contractForm.provider,
-          consumer: contractForm.consumer,
-          domain: "",
-          policy: contractForm.policy,
-          startDate: contractForm.startDate,
-          endDate: contractForm.endDate,
-        },
-      });
-      toast.success("Contract created successfully");
-      setIsContractDialogOpen(false);
-      resetContractForm();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to create contract");
-    }
+    toast.error("Legacy contract form dinonaktifkan", {
+      description: "Gunakan menu V2 Consumer Policy & Contract agar payload contract tetap sesuai API live.",
+    });
   };
 
   // Handle add policy
@@ -477,13 +454,10 @@ const Contracts = () => {
                 <Button
                   size="sm"
                   className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                  onClick={() => {
-                    resetContractForm();
-                    setIsContractDialogOpen(true);
-                  }}
+                  disabled
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  New Contract
+                  Use V2 Contract Flow
                 </Button>
               )}
               {activeTab === "policies" && (
@@ -760,7 +734,7 @@ const Contracts = () => {
             <DialogHeader>
               <DialogTitle>New Contract</DialogTitle>
               <DialogDescription>
-                Create a new data sharing contract
+                Legacy form ini sudah dinonaktifkan. Gunakan flow V2 Consumer Policy & Contract untuk payload yang sesuai API live.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -827,10 +801,9 @@ const Contracts = () => {
               <Button
                 onClick={handleSaveContract}
                 className="bg-accent hover:bg-accent/90"
-                disabled={createContractMutation.isPending}
+                disabled
               >
-                {createContractMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Create Contract
+                Use V2 Flow
               </Button>
             </DialogFooter>
           </DialogContent>

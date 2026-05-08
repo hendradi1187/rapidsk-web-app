@@ -41,6 +41,7 @@ import type { UserResponse } from "@/api/types/identity-provider";
 import { UserForm, type UserCategoryOption, type UserGroupOption } from "@/components/users/UserForm";
 import { deriveRole, useAuth } from "@/context/AuthContext";
 import { ROLE_LABELS } from "@/config/rbac";
+import { toast } from "sonner";
 
 const UserProvisioning = () => {
   const { user, hasPermission } = useAuth();
@@ -133,11 +134,15 @@ const UserProvisioning = () => {
           data: updatePayload,
         });
       } else {
+        if (!values.password || values.password.length < 3) {
+          toast.error("Password is required (min 3 chars — backend rule)");
+          return;
+        }
         await createMutation.mutateAsync({
           username: values.username?.trim() || values.email.split("@")[0],
           full_name: values.full_name,
           email: values.email,
-          password: values.password || "",
+          password: values.password,
           category_id: values.category_id,
           group_id: values.group_id,
         });
@@ -252,9 +257,20 @@ const UserProvisioning = () => {
                           {(entry.category?.code || "-") + " / " + (entry.group?.code || "-")}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline" className={entry.is_email_confirmed ? "text-emerald-600" : "text-amber-600"}>
-                            {entry.is_email_confirmed ? "Confirmed" : "Pending"}
-                          </Badge>
+                          {(() => {
+                            const verified = (entry as any).is_verified ?? entry.is_email_confirmed ?? false;
+                            const active = (entry as any).is_active ?? true;
+                            return (
+                              <div className="flex flex-col gap-1">
+                                <Badge variant="outline" className={active ? "border-emerald-500/40 text-emerald-600 text-[10px] w-fit" : "border-red-500/40 text-red-600 text-[10px] w-fit"}>
+                                  {active ? "✓ Active" : "✗ Inactive"}
+                                </Badge>
+                                <Badge variant="outline" className={verified ? "border-emerald-500/40 text-emerald-600 text-[10px] w-fit" : "border-amber-500/40 text-amber-600 text-[10px] w-fit"}>
+                                  {verified ? "✓ Verified" : "⚠ Not verified"}
+                                </Badge>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           <DropdownMenu>
@@ -267,6 +283,32 @@ const UserProvisioning = () => {
                               <DropdownMenuItem onClick={() => handleEdit(entry)}>
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Edit User
+                              </DropdownMenuItem>
+                              {!((entry as any).is_verified ?? entry.is_email_confirmed) && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    const url = `/v2/authority/activation-email`;
+                                    window.open(url, "_blank");
+                                    toast.info(`Buka /activation-email tab baru — pilih user "${entry.username || entry.email}", paste activation token, submit.`, { duration: 7000 });
+                                  }}
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Confirm Email (open helper)
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    const { authService } = await import("@/api/services/identity-provider");
+                                    await authService.revokeUserToken(entry.id);
+                                    toast.success(`Revoked all tokens for ${entry.username || entry.email}`);
+                                  } catch (err: any) {
+                                    toast.error("Revoke failed", { description: err?.response?.data?.detail || err?.message });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Revoke All Tokens (force logout)
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem

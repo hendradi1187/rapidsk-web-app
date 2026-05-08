@@ -1,6 +1,3 @@
-// src/pages/v2/authority/Channels.tsx
-// Communication Channels — POST /channels, PUT activate/close, GET status, GET by transfer-process
-
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plug, Plus, Power, Square, RefreshCcw, Layers, Search } from "lucide-react";
@@ -9,21 +6,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAllDomains } from "@/api/hooks/useDomains";
-import { useTransferProcessesHistory } from "@/api/hooks/useTransferRuntime";
+import { useTransferProcessesActive, useTransferProcessesHistory } from "@/api/hooks/useTransferRuntime";
 import { channelsApi } from "@/api/services/connector-runtime";
 import { toast } from "sonner";
+import { RuntimeCapabilityNotice, RuntimeExecutionLogPanel } from "@/components/runtime/RuntimeSupport";
+import { createRuntimeExecutionLog, runtimeCapabilities, type RuntimeExecutionLogEntry } from "@/lib/runtime-capabilities";
+import { getApiErrorSummary } from "@/lib/provider-flow-diagnostics";
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "border-emerald-500/40 text-emerald-500",
@@ -34,18 +27,23 @@ const STATUS_COLORS: Record<string, string> = {
 
 const Channels = () => {
   const qc = useQueryClient();
-  const { data: domainsData } = useAllDomains({ limit: 50 });
+  const [runtimeLogs, setRuntimeLogs] = useState<RuntimeExecutionLogEntry[]>([]);
+  const pushLog = (entry: RuntimeExecutionLogEntry) => setRuntimeLogs((prev) => [entry, ...prev].slice(0, 10));
+
+  const { data: domainsData } = useAllDomains({ limit: 1000 });
   const domains = domainsData?.data ?? [];
   const [domainId, setDomainId] = useState("");
   const effectiveDomainId = domainId || domains[0]?.id || "";
 
-  const { data: processesData } = useTransferProcessesHistory(effectiveDomainId, { limit: 50 });
-  const processes = processesData?.data ?? [];
+  const { data: historyProcessesData, refetch: refetchHistory } = useTransferProcessesHistory(effectiveDomainId, { limit: 50 });
+  const { data: activeProcessesData, refetch: refetchActive } = useTransferProcessesActive(effectiveDomainId, { limit: 50 });
+  const historyProcesses = historyProcessesData?.data ?? [];
+  const activeProcesses = activeProcessesData?.data ?? [];
+  const processes = historyProcesses.length > 0 ? historyProcesses : activeProcesses;
 
   const [filterProcessId, setFilterProcessId] = useState("");
   const filterProcessIdEffective = filterProcessId || processes[0]?.id || "";
 
-  // Channels by transfer process (lifecycle is per-process)
   const channelsQuery = useQuery({
     queryKey: ["channels", effectiveDomainId, filterProcessIdEffective],
     queryFn: () => channelsApi.listByTransferProcess(effectiveDomainId, filterProcessIdEffective, { limit: 100 }),
@@ -53,7 +51,6 @@ const Channels = () => {
   });
   const channels = channelsQuery.data?.data ?? [];
 
-  // Lookup channel by ID for inspect dialog
   const [lookupId, setLookupId] = useState("");
   const lookupQuery = useQuery({
     queryKey: ["channel-detail", effectiveDomainId, lookupId],
@@ -65,32 +62,49 @@ const Channels = () => {
     mutationFn: ({ domain, payload }: { domain: string; payload: Record<string, any> }) => channelsApi.create(domain, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["channels"] });
+      pushLog(createRuntimeExecutionLog(runtimeCapabilities.channels, "Create communication channel", "success", "Channel created."));
       toast.success("Channel created");
     },
-    onError: (e: any) => toast.error("Create failed", { description: e?.response?.data?.detail || "Unexpected error" }),
+    onError: (error: any) => {
+      const summary = getApiErrorSummary(error, "Create failed");
+      pushLog(createRuntimeExecutionLog(runtimeCapabilities.channels, "Create communication channel", "error", summary.detail));
+      toast.error(summary.title, { description: summary.detail });
+    },
   });
   const activateChannel = useMutation({
     mutationFn: ({ domain, id }: { domain: string; id: string }) => channelsApi.activate(domain, id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["channels"] });
+      pushLog(createRuntimeExecutionLog(runtimeCapabilities.channels, "Activate communication channel", "success", "Channel activated."));
       toast.success("Channel activated");
     },
-    onError: (e: any) => toast.error("Activate failed", { description: e?.response?.data?.detail || "Unexpected error" }),
+    onError: (error: any) => {
+      const summary = getApiErrorSummary(error, "Activate failed");
+      pushLog(createRuntimeExecutionLog(runtimeCapabilities.channels, "Activate communication channel", "error", summary.detail));
+      toast.error(summary.title, { description: summary.detail });
+    },
   });
   const closeChannel = useMutation({
     mutationFn: ({ domain, id }: { domain: string; id: string }) => channelsApi.close(domain, id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["channels"] });
+      pushLog(createRuntimeExecutionLog(runtimeCapabilities.channels, "Close communication channel", "success", "Channel closed."));
       toast.success("Channel closed");
     },
-    onError: (e: any) => toast.error("Close failed", { description: e?.response?.data?.detail || "Unexpected error" }),
+    onError: (error: any) => {
+      const summary = getApiErrorSummary(error, "Close failed");
+      pushLog(createRuntimeExecutionLog(runtimeCapabilities.channels, "Close communication channel", "error", summary.detail));
+      toast.error(summary.title, { description: summary.detail });
+    },
   });
 
-  // Create dialog
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     transfer_process_id: "",
-    payload_json: "{}",
+    protocol: "HTTPS",
+    endpoint_url: "",
+    encryption_method: "TLS_1_3",
+    authentication_method: "BEARER_TOKEN",
   });
 
   const submitCreate = () => {
@@ -102,60 +116,78 @@ const Channels = () => {
       toast.error("Pick a transfer process");
       return;
     }
-    let extra: Record<string, any> = {};
-    try {
-      extra = JSON.parse(form.payload_json || "{}");
-    } catch {
-      toast.error("Payload must be valid JSON");
+    if (!form.endpoint_url) {
+      toast.error("Endpoint URL required");
       return;
     }
-    createChannel.mutate({
-      domain: effectiveDomainId,
-      payload: { transfer_process_id: form.transfer_process_id, ...extra },
-    }, {
-      onSuccess: () => {
-        setOpen(false);
-        setForm({ transfer_process_id: "", payload_json: "{}" });
+
+    createChannel.mutate(
+      {
+        domain: effectiveDomainId,
+        payload: {
+          transfer_process_id: form.transfer_process_id,
+          protocol: form.protocol,
+          endpoint_url: form.endpoint_url,
+          encryption_method: form.encryption_method,
+          authentication_method: form.authentication_method,
+        },
       },
-    });
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setForm({ transfer_process_id: "", protocol: "HTTPS", endpoint_url: "", encryption_method: "TLS_1_3", authentication_method: "BEARER_TOKEN" });
+        },
+      }
+    );
   };
 
   return (
-    <V2PageShell title="Communication Channels" subtitle="Establish, activate, and close connector communication channels per transfer process." status="Live API">
+    <V2PageShell title="Communication Channels" subtitle="Channel lifecycle with fallback process picker when history backend is broken." status="Live API">
+      <RuntimeCapabilityNotice capability={runtimeCapabilities.channels} />
+      <RuntimeCapabilityNotice capability={runtimeCapabilities.transferHistory} />
+      {historyProcesses.length === 0 && activeProcesses.length > 0 && (
+        <Alert>
+          <AlertTitle>Transfer process picker sedang fallback</AlertTitle>
+          <AlertDescription>
+            Daftar process dibaca dari <code>/transfer-processes/active</code> karena history backend rusak.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border/50 bg-card p-4">
         <Layers className="h-5 w-5 text-primary" />
         <div className="flex-1">
           <p className="text-sm font-medium">Domain & Transfer Process Scope</p>
-          <p className="text-xs text-muted-foreground">Channels are scoped per domain and per transfer process.</p>
+          <p className="text-xs text-muted-foreground">Channels are live, process picker may fallback from history to active state.</p>
         </div>
         <Select value={effectiveDomainId} onValueChange={setDomainId}>
           <SelectTrigger className="w-56"><SelectValue placeholder="Select domain" /></SelectTrigger>
           <SelectContent>
-            {domains.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name} ({d.code})</SelectItem>))}
+            {domains.map((domain) => (<SelectItem key={domain.id} value={domain.id}>{domain.name} ({domain.code})</SelectItem>))}
           </SelectContent>
         </Select>
         <Select value={filterProcessIdEffective} onValueChange={setFilterProcessId} disabled={processes.length === 0}>
           <SelectTrigger className="w-72"><SelectValue placeholder={processes.length ? "Select transfer process" : "No transfer processes yet"} /></SelectTrigger>
           <SelectContent>
-            {processes.map((p) => (<SelectItem key={p.id} value={p.id}>{p.id.slice(0, 8)} — {p.state}</SelectItem>))}
+            {processes.map((process) => (<SelectItem key={process.id} value={process.id}>{process.id.slice(0, 8)} - {process.state}</SelectItem>))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="outline" className="gap-2" onClick={() => channelsQuery.refetch()}>
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => { refetchHistory(); refetchActive(); channelsQuery.refetch(); }}>
           <RefreshCcw className="h-4 w-4" />Refresh
         </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <MetricCard title="Channels (in scope)" value={channelsQuery.isLoading ? "..." : channels.length} subtitle="For selected transfer process" icon={Plug} trend="up" />
-        <MetricCard title="Active" value={channels.filter((c) => c.status === "ACTIVE").length} subtitle="Currently open" icon={Power} trend="up" />
-        <MetricCard title="Closed" value={channels.filter((c) => c.status === "CLOSED").length} subtitle="Lifecycle ended" icon={Square} trend="neutral" />
+        <MetricCard title="Active" value={channels.filter((channel) => channel.status === "ACTIVE").length} subtitle="Currently open" icon={Power} trend="up" />
+        <MetricCard title="Closed" value={channels.filter((channel) => channel.status === "CLOSED").length} subtitle="Lifecycle ended" icon={Square} trend="neutral" />
       </div>
 
       <Card className="border-border/50">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base">Channels</CardTitle>
-            <CardDescription>Each channel mediates the connector handshake for one transfer process.</CardDescription>
+            <CardDescription>Channel lifecycle is live from backend.</CardDescription>
           </div>
           <Button size="sm" className="gap-2" onClick={() => setOpen(true)} disabled={!effectiveDomainId}>
             <Plus className="h-4 w-4" />New Channel
@@ -163,18 +195,18 @@ const Channels = () => {
         </CardHeader>
         <CardContent>
           <DataTable headers={["Channel ID", "Process ID", "Status", "Created", "Actions"]} isLoading={channelsQuery.isLoading}>
-            {channels.length > 0 ? channels.map((c) => (
-              <tr key={c.id} className="hover:bg-muted/20">
-                <td className="px-4 py-3 font-mono text-xs">{c.id.slice(0, 8)}</td>
-                <td className="px-4 py-3 font-mono text-xs">{(c.transfer_process_id || "—").slice(0, 8)}</td>
-                <td className="px-4 py-3"><Badge variant="outline" className={`text-xs ${STATUS_COLORS[c.status] || ""}`}>{c.status}</Badge></td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{c.created_at ? new Date(c.created_at).toLocaleString() : "—"}</td>
+            {channels.length > 0 ? channels.map((channel) => (
+              <tr key={channel.id} className="hover:bg-muted/20">
+                <td className="px-4 py-3 font-mono text-xs">{channel.id.slice(0, 8)}</td>
+                <td className="px-4 py-3 font-mono text-xs">{(channel.transfer_process_id || "-").slice(0, 8)}</td>
+                <td className="px-4 py-3"><Badge variant="outline" className={`text-xs ${STATUS_COLORS[channel.status] || ""}`}>{channel.status}</Badge></td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{channel.created_at ? new Date(channel.created_at).toLocaleString() : "-"}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" className="border-emerald-500/40 text-emerald-500" disabled={c.status === "ACTIVE" || activateChannel.isPending} onClick={() => activateChannel.mutate({ domain: effectiveDomainId, id: c.id })}>
+                    <Button size="sm" variant="outline" className="border-emerald-500/40 text-emerald-500" disabled={channel.status === "ACTIVE" || activateChannel.isPending} onClick={() => activateChannel.mutate({ domain: effectiveDomainId, id: channel.id })}>
                       <Power className="mr-1 h-3 w-3" />Activate
                     </Button>
-                    <Button size="sm" variant="outline" className="border-red-500/40 text-red-500" disabled={c.status === "CLOSED" || closeChannel.isPending} onClick={() => closeChannel.mutate({ domain: effectiveDomainId, id: c.id })}>
+                    <Button size="sm" variant="outline" className="border-red-500/40 text-red-500" disabled={channel.status === "CLOSED" || closeChannel.isPending} onClick={() => closeChannel.mutate({ domain: effectiveDomainId, id: channel.id })}>
                       <Square className="mr-1 h-3 w-3" />Close
                     </Button>
                   </div>
@@ -188,56 +220,94 @@ const Channels = () => {
       <Card className="border-border/50">
         <CardHeader>
           <CardTitle className="text-base">Inspect Channel by ID</CardTitle>
-          <CardDescription>Lookup any channel ID directly via <code className="rounded bg-muted px-1 text-xs">GET /channels/{`{id}`}</code>.</CardDescription>
+          <CardDescription>Direct lookup via <code className="rounded bg-muted px-1 text-xs">GET /channels/{`{id}`}</code>.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
-            <Input value={lookupId} onChange={(e) => setLookupId(e.target.value)} placeholder="channel UUID" />
+            <Input value={lookupId} onChange={(event) => setLookupId(event.target.value)} placeholder="channel UUID" />
             <Button className="gap-2" onClick={() => lookupQuery.refetch()} disabled={!lookupId || !effectiveDomainId}>
               <Search className="h-4 w-4" />Inspect
             </Button>
           </div>
-          {lookupQuery.data && (
+          {lookupQuery.data ? (
             <pre className="max-h-80 overflow-auto rounded-lg border border-border/50 bg-muted/30 p-4 text-xs text-muted-foreground">{JSON.stringify(lookupQuery.data, null, 2)}</pre>
-          )}
-          {lookupQuery.error && (
+          ) : null}
+          {lookupQuery.error ? (
             <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-500">
-              {(lookupQuery.error as any)?.response?.data?.detail || "Lookup failed"}
+              {getApiErrorSummary(lookupQuery.error, "Lookup failed").detail}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Establish Channel</DialogTitle>
-            <DialogDescription>Pick a transfer process and (optionally) provide extra payload as JSON.</DialogDescription>
+            <DialogTitle>Establish Communication Channel</DialogTitle>
+            <DialogDescription>Primary channel endpoints are live. Process picker may be fallback-backed.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid gap-2">
               <Label>Transfer Process *</Label>
-              <Select value={form.transfer_process_id} onValueChange={(v) => setForm({ ...form, transfer_process_id: v })}>
+              <Select value={form.transfer_process_id} onValueChange={(value) => setForm({ ...form, transfer_process_id: value })}>
                 <SelectTrigger><SelectValue placeholder="Pick transfer process" /></SelectTrigger>
                 <SelectContent>
-                  {processes.map((p) => (<SelectItem key={p.id} value={p.id}>{p.id.slice(0, 8)} — {p.state}</SelectItem>))}
+                  {processes.map((process) => (<SelectItem key={process.id} value={process.id}>{process.id.slice(0, 8)} - {process.state}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Extra Payload (JSON)</Label>
-              <Textarea value={form.payload_json} onChange={(e) => setForm({ ...form, payload_json: e.target.value })} rows={5} placeholder='{}' />
-              <p className="text-xs text-muted-foreground">Backend may require fields like consumer_pool_id, provider_pool_id — cek backend docs.</p>
+              <Label>Endpoint URL *</Label>
+              <Input value={form.endpoint_url} onChange={(event) => setForm({ ...form, endpoint_url: event.target.value })} placeholder="https://provider.example.com/dsp/channel" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Protocol *</Label>
+                <Select value={form.protocol} onValueChange={(value) => setForm({ ...form, protocol: value })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="HTTPS">HTTPS</SelectItem>
+                    <SelectItem value="HTTP">HTTP</SelectItem>
+                    <SelectItem value="GRPC">gRPC</SelectItem>
+                    <SelectItem value="MQTT">MQTT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Encryption *</Label>
+                <Select value={form.encryption_method} onValueChange={(value) => setForm({ ...form, encryption_method: value })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TLS_1_3">TLS 1.3</SelectItem>
+                    <SelectItem value="TLS_1_2">TLS 1.2</SelectItem>
+                    <SelectItem value="AES_256">AES-256</SelectItem>
+                    <SelectItem value="NONE">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Authentication *</Label>
+              <Select value={form.authentication_method} onValueChange={(value) => setForm({ ...form, authentication_method: value })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BEARER_TOKEN">Bearer Token</SelectItem>
+                  <SelectItem value="API_KEY">API Key</SelectItem>
+                  <SelectItem value="MTLS">Mutual TLS</SelectItem>
+                  <SelectItem value="OAUTH2">OAuth 2.0</SelectItem>
+                  <SelectItem value="NONE">None</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submitCreate} disabled={createChannel.isPending}>
-              {createChannel.isPending ? "Creating..." : "Create"}
-            </Button>
+            <Button onClick={submitCreate} disabled={createChannel.isPending}>{createChannel.isPending ? "Creating..." : "Create"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RuntimeExecutionLogPanel title="Channel Action Log" entries={runtimeLogs} />
     </V2PageShell>
   );
 };

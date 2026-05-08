@@ -18,6 +18,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
+// REAL backend codes (verified via /user/categories/ + /user/groups/)
+// Backend has exactly 3 categories: INTERNAL / CONSUMER / PROVIDER
+// Each external category has groups: ADMIN / STEWARD / VIEWER
+// INTERNAL has additionally: SUPERADMIN
 const ROLE_PROFILES: {
   role: AppRole;
   label: string;
@@ -29,39 +33,48 @@ const ROLE_PROFILES: {
 }[] = [
   {
     role: "SUPER_ADMIN",
-    label: "Authority (Super Admin)",
-    desc: "Platform administrator — full access",
+    label: "Super Admin (Authority)",
+    desc: "INTERNAL + SUPERADMIN",
     icon: Crown,
     color: "text-amber-400",
-    category: { id: "cat-1", name: "Platform", code: "PLATFORM", description: "Platform category" },
-    group: { id: "grp-1", category_id: "cat-1", name: "Admin", code: "ADMIN", description: "Administrator group", priority: 0 },
+    category: { id: "7bdca0ce-1318-4d65-8d43-866ad08545fd", name: "Internal Application", code: "INTERNAL", description: null },
+    group: { id: "bf3e340e-bf80-4c54-8a09-3b76727d944b", category_id: "7bdca0ce-1318-4d65-8d43-866ad08545fd", name: "Superadmin", code: "SUPERADMIN", description: null, priority: 1 },
+  },
+  {
+    role: "ADMIN",
+    label: "Internal Admin (Platform)",
+    desc: "INTERNAL + ADMIN",
+    icon: Crown,
+    color: "text-orange-400",
+    category: { id: "7bdca0ce-1318-4d65-8d43-866ad08545fd", name: "Internal Application", code: "INTERNAL", description: null },
+    group: { id: "09d3fc12-8c8d-4158-ba6d-555f9b847676", category_id: "7bdca0ce-1318-4d65-8d43-866ad08545fd", name: "Admin", code: "ADMIN", description: null, priority: 10 },
   },
   {
     role: "CONSUMER",
     label: "Admin Consumer (SKK Migas)",
-    desc: "Regulator — manages domains, policies, agreements",
+    desc: "CONSUMER + ADMIN",
     icon: Building2,
     color: "text-blue-400",
-    category: { id: "cat-2", name: "Government", code: "GOVERNMENT", description: "Government regulator" },
-    group: { id: "grp-2", category_id: "cat-2", name: "Regulator", code: "REGULATOR", description: "Regulator group", priority: 1 },
+    category: { id: "cc280d58-2c9f-49a4-8ce1-7cf5f3152170", name: "Participant (Consumer)", code: "CONSUMER", description: null },
+    group: { id: "e6e66e4d-7c43-4190-b11e-5a35392e6e7f", category_id: "cc280d58-2c9f-49a4-8ce1-7cf5f3152170", name: "Admin", code: "ADMIN", description: null, priority: 10 },
   },
   {
     role: "PROVIDER",
     label: "Admin Provider (KKKS)",
-    desc: "Data owner — registers datasets, fulfils contracts",
+    desc: "PROVIDER + ADMIN",
     icon: Pickaxe,
     color: "text-violet-400",
-    category: { id: "cat-3", name: "Enterprise", code: "ENTERPRISE", description: "Enterprise KKKS" },
-    group: { id: "grp-3", category_id: "cat-3", name: "Provider", code: "KKKS", description: "KKKS provider group", priority: 2 },
+    category: { id: "52937a85-6234-4136-ae41-97a5e6c89353", name: "Participant (Provider)", code: "PROVIDER", description: null },
+    group: { id: "00000000-0000-0000-0000-000000000000", category_id: "52937a85-6234-4136-ae41-97a5e6c89353", name: "Admin", code: "ADMIN", description: null, priority: 10 },
   },
   {
     role: "VIEWER",
     label: "Viewer (Read-only)",
-    desc: "Basic user — read-only catalog access",
+    desc: "INTERNAL + VIEWER",
     icon: Eye,
     color: "text-slate-400",
-    category: { id: "cat-4", name: "Public", code: "PUBLIC", description: "Public viewer" },
-    group: { id: "grp-4", category_id: "cat-4", name: "Viewer", code: "VIEWER", description: "Viewer group", priority: 3 },
+    category: { id: "7bdca0ce-1318-4d65-8d43-866ad08545fd", name: "Internal Application", code: "INTERNAL", description: null },
+    group: { id: "b947d933-3e2a-49cb-9849-55e6ec8d5d04", category_id: "7bdca0ce-1318-4d65-8d43-866ad08545fd", name: "Viewer", code: "VIEWER", description: null, priority: 30 },
   },
 ];
 
@@ -76,14 +89,18 @@ export const RoleSwitcher = () => {
     if (profile.role === role) return;
 
     // Derive role (sanity check)
-    const derivedRole = deriveRole(profile.category.code, profile.group.code);
+    const derivedRole = deriveRole(profile.category.code, profile.group.code, user?.is_superadmin);
 
-    // Update user_info in localStorage
+    // Preserve is_superadmin from original session — switching role di RoleSwitcher
+    // bersifat preview UI only, tidak menghilangkan power dari real super admin.
     const newUser = {
       id: user?.id || "dev-user-001",
+      username: user?.username,
       email: user?.email || "dev@rapidsk.local",
       full_name: user?.full_name || "Dev User",
       role: derivedRole,
+      permissions: user?.permissions || [],
+      is_superadmin: user?.is_superadmin || false,
       category: profile.category,
       group: profile.group,
     };
