@@ -3,7 +3,8 @@
 
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useAuth, type AppRole } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
+import { canAccess } from "@/config/rbac";
 import { getDefaultV2RouteForRole } from "@/lib/dataspace-version";
 
 // Lazy-load all V2 pages for code splitting
@@ -16,6 +17,7 @@ const ActivationLifecycle = lazy(() => import("./authority/ActivationLifecycle")
 const PermissionCatalog = lazy(() => import("./authority/PermissionCatalog"));
 const GatewayMonitor = lazy(() => import("./authority/GatewayMonitor"));
 const Channels = lazy(() => import("./authority/Channels"));
+const Organizations = lazy(() => import("./authority/Organizations"));
 
 const ConsumerDashboard = lazy(() => import("./admin-consumer/ConsumerDashboard"));
 const MasterData = lazy(() => import("./admin-consumer/MasterData"));
@@ -34,13 +36,6 @@ const ContractFulfilment = lazy(() => import("./admin-provider/ContractFulfilmen
 const DatasetRegistration = lazy(() => import("./admin-provider/DatasetRegistration"));
 const FulfilmentReports = lazy(() => import("./admin-provider/FulfilmentReports"));
 
-const ROLE_PREFIX: Record<AppRole, string> = {
-  SUPER_ADMIN: "authority",
-  CONSUMER: "admin-consumer",
-  PROVIDER: "admin-provider",
-  VIEWER: "",
-};
-
 const LoadingFallback = () => (
   <div className="flex min-h-[60vh] items-center justify-center">
     <div className="flex flex-col items-center gap-3">
@@ -51,7 +46,7 @@ const LoadingFallback = () => (
 );
 
 const V2Router = () => {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const location = useLocation();
 
   // Redirect VIEWER to v1
@@ -65,12 +60,15 @@ const V2Router = () => {
     return <Navigate to={getDefaultV2RouteForRole(role)} replace />;
   }
 
-  // Guard: only allow access to own role prefix.
-  // SUPER_ADMIN bypasses the prefix check so they can inspect/test consumer
-  // and provider pages without re-logging in as a different role.
-  const allowedPrefix = ROLE_PREFIX[role];
-  if (role !== "SUPER_ADMIN" && allowedPrefix && !relativePath.startsWith(allowedPrefix)) {
-    return <Navigate to={getDefaultV2RouteForRole(role)} replace />;
+  // STRICT role lockdown using MENU_ITEMS_V2 roles array as source of truth.
+  // Real super admin (is_superadmin=true from JWT) may bypass for inspection.
+  // For other roles, they can access any path that has their role in roles[].
+  const isRealSuperAdmin = user?.is_superadmin === true;
+  if (!isRealSuperAdmin) {
+    const fullPath = `/v2/${relativePath}`;
+    if (!canAccess(role, fullPath, true)) {
+      return <Navigate to={getDefaultV2RouteForRole(role)} replace />;
+    }
   }
 
   return (
@@ -86,6 +84,7 @@ const V2Router = () => {
         <Route path="authority/permissions" element={<PermissionCatalog />} />
         <Route path="authority/gateway" element={<GatewayMonitor />} />
         <Route path="authority/channels" element={<Channels />} />
+        <Route path="authority/organizations" element={<Organizations />} />
 
         {/* Admin Consumer (CONSUMER / SKK Migas) */}
         <Route path="admin-consumer/dashboard" element={<ConsumerDashboard />} />

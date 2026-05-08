@@ -40,12 +40,13 @@ import {
   useUserCategories,
   useUserGroups,
 } from "@/api/hooks/useUsers";
+import { useParticipants } from "@/api/hooks/useParticipants";
 import type { UserResponse } from "@/api/types/identity-provider";
 import { useAuth, deriveRole } from "@/context/AuthContext";
 import { ROLE_LABELS } from "@/config/rbac";
 import { toast } from "sonner";
 
-type RoleChoice = "CONSUMER" | "PROVIDER";
+type RoleChoice = "INTERNAL" | "CONSUMER" | "PROVIDER";
 type Mode = "create" | "edit";
 
 const emptyForm = {
@@ -55,12 +56,21 @@ const emptyForm = {
   password: "",
   category_id: "",
   group_id: "",
+  participant_id: "",  // optional — link user to participant org at create
 };
 
+// Backend category codes are exact: INTERNAL / CONSUMER / PROVIDER
 const detectRoleFromCategory = (code: string): RoleChoice => {
   const c = (code || "").toUpperCase();
-  if (/KKKS|ENTERPRISE/.test(c)) return "PROVIDER";
-  return "CONSUMER";
+  if (c === "PROVIDER") return "PROVIDER";
+  if (c === "CONSUMER") return "CONSUMER";
+  return "INTERNAL"; // INTERNAL or unknown → default to internal tab
+};
+
+const ROLE_TAB_LABELS: Record<RoleChoice, string> = {
+  INTERNAL: "Internal Admin (Platform)",
+  CONSUMER: "Consumer Admin (SKK)",
+  PROVIDER: "Provider Admin (KKKS)",
 };
 
 const RegisterAdminConsumer = () => {
@@ -68,6 +78,8 @@ const RegisterAdminConsumer = () => {
   const { data: usersData, isLoading } = useUsers({ limit: 100 });
   const { data: categoriesData } = useUserCategories({ limit: 100 });
   const { data: groupsData } = useUserGroups({ limit: 100 });
+  const { data: participantsData } = useParticipants({ limit: 100 });
+  const allParticipants = participantsData?.data ?? [];
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
@@ -114,19 +126,15 @@ const RegisterAdminConsumer = () => {
   const [mode, setMode] = useState<Mode>("create");
   const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserResponse | null>(null);
-  const [role, setRole] = useState<RoleChoice>("CONSUMER");
+  const [role, setRole] = useState<RoleChoice>("INTERNAL");
   const [form, setForm] = useState(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
   const [search, setSearch] = useState("");
 
-  // Filter categories whose code derives to chosen role
+  // Backend has exactly 3 categories: INTERNAL, CONSUMER, PROVIDER.
+  // Filter by exact match to the chosen role tab.
   const roleCompatibleCategories = useMemo(() => {
-    return categories.filter((c) => {
-      const code = (c.code || "").toUpperCase();
-      if (role === "PROVIDER") return /KKKS|ENTERPRISE/.test(code);
-      if (role === "CONSUMER") return /GOV|SKK|REGULATOR/.test(code);
-      return true;
-    });
+    return categories.filter((c) => (c.code || "").toUpperCase() === role);
   }, [categories, role]);
 
   const filteredGroups = useMemo(() => {
@@ -135,13 +143,18 @@ const RegisterAdminConsumer = () => {
     return matched.length > 0 ? matched : groups;
   }, [groups, form.category_id]);
 
-  // Reset cat/group when role flips (only in create mode)
+  // Auto-pick category when role tab flips (only in create mode).
+  // Backend has exactly 1 category per role code (INTERNAL/CONSUMER/PROVIDER).
   useEffect(() => {
-    if (mode === "create") {
-      setForm((prev) => ({ ...prev, category_id: "", group_id: "" }));
-    }
+    if (mode !== "create") return;
+    const matched = categories.find((c) => (c.code || "").toUpperCase() === role);
+    setForm((prev) => ({
+      ...prev,
+      category_id: matched?.id || "",
+      group_id: "", // reset group, will auto-pick first available below
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+  }, [role, categories.length]);
 
   // Auto-derive username from email (only create)
   useEffect(() => {
@@ -246,6 +259,7 @@ const RegisterAdminConsumer = () => {
         password: form.password,
         category_id: form.category_id,
         group_id: form.group_id,
+        participant_id: form.participant_id || null, // link user to participant org if picked
       });
       toast.info(`User "${created.username || form.username}" can login now`, { duration: 6000 });
       setOpen(false);
@@ -269,7 +283,8 @@ const RegisterAdminConsumer = () => {
 
   const consumerUsers = users.filter((u) => deriveRole(u.category?.code || "", u.group?.code || "") === "CONSUMER").length;
   const providerUsers = users.filter((u) => deriveRole(u.category?.code || "", u.group?.code || "") === "PROVIDER").length;
-  const superAdminUsers = users.filter((u) => deriveRole(u.category?.code || "", u.group?.code || "", u.is_superadmin) === "SUPER_ADMIN").length;
+  // Backend /users/ list response doesn't include is_superadmin — derive from group code
+  const superAdminUsers = users.filter((u) => deriveRole(u.category?.code || "", u.group?.code || "", u.group?.code === "SUPERADMIN") === "SUPER_ADMIN").length;
 
   return (
     <V2PageShell title="Register Admin Login (Consumer / Provider)" subtitle="Full CRUD untuk akun login admin via Identity Provider." status="Live API">
@@ -309,9 +324,14 @@ const RegisterAdminConsumer = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable headers={["Username", "Full Name", "Email", "Derived Role", "Email Confirmed", "Created", "Actions"]} isLoading={isLoading}>
+          <DataTable headers={["Username", "Full Name", "Email", "Derived Role", "Active", "Verified", "Created", "Actions"]} isLoading={isLoading}>
             {filteredUsers.length > 0 ? filteredUsers.map((u) => {
-              const derived = deriveRole(u.category?.code || "", u.group?.code || "", u.is_superadmin);
+              // Backend response now uses is_verified (was is_email_confirmed)
+              // and includes is_active separately. Derive superadmin from group code.
+              const isSuper = u.group?.code === "SUPERADMIN";
+              const derived = deriveRole(u.category?.code || "", u.group?.code || "", isSuper);
+              const verified = u.is_verified ?? u.is_email_confirmed ?? false;
+              const active = u.is_active ?? true; // default true if backend omits
               return (
                 <tr key={u.id} className="hover:bg-muted/20">
                   <td className="px-4 py-3 text-sm font-medium">{u.username || "—"}</td>
@@ -319,8 +339,15 @@ const RegisterAdminConsumer = () => {
                   <td className="px-4 py-3 text-xs text-muted-foreground">{u.email}</td>
                   <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{ROLE_LABELS[derived]}</Badge></td>
                   <td className="px-4 py-3">
-                    {u.is_email_confirmed ? (
-                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-500 text-xs">Confirmed</Badge>
+                    {active ? (
+                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-500 text-xs">Active</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-red-500/30 text-red-500 text-xs">Inactive</Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {verified ? (
+                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-500 text-xs">Verified</Badge>
                     ) : (
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="border-amber-500/30 text-amber-500 text-xs">Pending</Badge>
@@ -332,7 +359,7 @@ const RegisterAdminConsumer = () => {
                           title="POST /users/confirm-email { token } — paste token dari email atau backend DB"
                           onClick={() => { setConfirmDialog(u); setConfirmToken(""); }}
                         >
-                          <MailCheck className="h-3 w-3" />Confirm Email
+                          <MailCheck className="h-3 w-3" />Confirm
                         </Button>
                       </div>
                     )}
@@ -352,7 +379,7 @@ const RegisterAdminConsumer = () => {
               );
             }) : (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                   {search ? "No users match the search." : "No login accounts yet. Click \"Register Admin Login\"."}
                 </td>
               </tr>
@@ -374,9 +401,12 @@ const RegisterAdminConsumer = () => {
           </DialogHeader>
 
           <Tabs value={role} onValueChange={(v) => setRole(v as RoleChoice)} className="mt-2">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="INTERNAL" className="gap-2">
+                <ShieldCheck className="h-4 w-4" />Internal (Platform)
+              </TabsTrigger>
               <TabsTrigger value="CONSUMER" className="gap-2">
-                <Building2 className="h-4 w-4" />Consumer (SKK/Gov)
+                <Building2 className="h-4 w-4" />Consumer (SKK)
               </TabsTrigger>
               <TabsTrigger value="PROVIDER" className="gap-2">
                 <UserPlus className="h-4 w-4" />Provider (KKKS)
@@ -397,7 +427,7 @@ const RegisterAdminConsumer = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Email *</Label>
-                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={role === "CONSUMER" ? "admin@skkmigas.go.id" : "admin@kkks.com"} />
+                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={role === "INTERNAL" ? "admin@gxspace.com" : role === "CONSUMER" ? "admin@skkmigas.go.id" : "admin@kkks.com"} />
                 </div>
                 <div className="grid gap-2">
                   <Label>Password {mode === "create" ? "*" : <span className="text-muted-foreground">(leave blank to keep)</span>}</Label>
@@ -442,6 +472,28 @@ const RegisterAdminConsumer = () => {
                   </Select>
                 </div>
               </div>
+
+              {/* Participant link — optional, but powerful: links user→participant org directly */}
+              {(role === "CONSUMER" || role === "PROVIDER") && (
+                <div className="grid gap-2">
+                  <Label>
+                    Link to Participant (Org) <span className="text-muted-foreground">(opsional, recommended)</span>
+                  </Label>
+                  <Select value={form.participant_id} onValueChange={(v) => setForm({ ...form, participant_id: v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={role === "PROVIDER" ? "Pilih KKKS yg user ini admin-nya" : "Pilih organisasi consumer"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allParticipants
+                        .filter((p) => role === "PROVIDER" ? p.organization_type === "ENTERPRISE" : p.organization_type !== "ENTERPRISE")
+                        .map((p) => (<SelectItem key={p.id} value={p.id}>{p.organization_name} ({p.organization_type})</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Backend akan link user ke organisasi ini langsung. Lebih reliable daripada email-matching.
+                  </p>
+                </div>
+              )}
 
               {previewRole && (
                 <div className="rounded-md border border-border/40 bg-muted/20 px-3 py-2 text-xs">

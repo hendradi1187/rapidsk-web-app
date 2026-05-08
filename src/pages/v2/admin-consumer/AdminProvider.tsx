@@ -47,7 +47,7 @@ const emptyForm = {
 const AdminProvider = () => {
   const { hasPermission } = useAuth();
   const { data: participantsData, isLoading } = useParticipants({ limit: 50 });
-  const { data: usersData, refetch: refetchUsers } = useUsers({ limit: 200 });
+  const { data: usersData, refetch: refetchUsers } = useUsers({ limit: 100 });
   const createParticipant = useCreateParticipant();
   const updateParticipant = useUpdateParticipant();
   const deleteParticipant = useDeleteParticipant();
@@ -99,6 +99,14 @@ const AdminProvider = () => {
   const handleSubmit = () => {
     if (!form.organization_name || !form.contact_email) {
       toast.error("Organization name and contact email are required");
+      return;
+    }
+    if (!form.address || form.address.length < 3) {
+      toast.error("Address is required (min 3 chars — backend rule)");
+      return;
+    }
+    if (!form.contact_name || !form.contact_phone) {
+      toast.error("Contact person name & phone are required");
       return;
     }
 
@@ -244,7 +252,7 @@ const AdminProvider = () => {
                 <td className="px-4 py-3">
                   {!matchedUser ? (
                     <Badge variant="outline" className="border-slate-400/40 text-slate-400 text-[10px]">No login account</Badge>
-                  ) : matchedUser.is_email_confirmed ? (
+                  ) : ((matchedUser as any).is_verified ?? matchedUser.is_email_confirmed) ? (
                     <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 text-[10px]">Active ({matchedUser.username})</Badge>
                   ) : (
                     <div className="flex items-center gap-2">

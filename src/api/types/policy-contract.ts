@@ -14,6 +14,11 @@ export interface ContractContractPolicy {
   contract_policy_id: string;
 }
 
+export interface ContractSnapshotOptions {
+  authoritativeRelations?: boolean;
+  authoritativeParties?: boolean;
+}
+
 export interface Contract {
   id: string;
   domain_id: string;
@@ -42,7 +47,9 @@ export interface ContractCreateRequest {
 }
 
 export interface ContractUpdateRequest {
-  name?: string | null;
+  consumer_id: string;
+  provider_id: string;
+  name: string;
   status?: ContractStatus | null;
   description?: string | null;
   contract_policies?: string[] | null;
@@ -56,6 +63,102 @@ export interface ContractDatasetRequest {
 
 export type ContractListResponse = PaginatedResponse<Contract>;
 export type ContractResponse = Contract;
+
+export function normalizeContractDatasets(value: unknown): ContractDataset[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry) return null;
+      if (typeof entry === "string") {
+        return { dataset_id: entry, dataset_policy_id: "" };
+      }
+      if (typeof entry !== "object") return null;
+      const row = entry as Record<string, unknown>;
+      const dataset_id =
+        typeof row.dataset_id === "string"
+          ? row.dataset_id
+          : typeof row.id === "string"
+          ? row.id
+          : "";
+      const dataset_policy_id =
+        typeof row.dataset_policy_id === "string" ? row.dataset_policy_id : "";
+      if (!dataset_id) return null;
+      return { dataset_id, dataset_policy_id };
+    })
+    .filter((entry): entry is ContractDataset => entry !== null);
+}
+
+export function normalizeContractPolicyIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (!entry || typeof entry !== "object") return "";
+      const row = entry as Record<string, unknown>;
+      if (typeof row.contract_policy_id === "string") return row.contract_policy_id;
+      if (typeof row.id === "string") return row.id;
+      return "";
+    })
+    .filter(Boolean);
+}
+
+export function normalizeContractPolicyRefs(value: unknown): ContractContractPolicy[] {
+  return normalizeContractPolicyIds(value).map((contract_policy_id) => ({ contract_policy_id }));
+}
+
+function hasNonEmptyRelations<T>(rows: T[] | undefined): rows is T[] {
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+export function mergeContractSnapshot(
+  existing: Partial<Contract> | null | undefined,
+  incoming: Partial<Contract> | null | undefined,
+  options: ContractSnapshotOptions = {}
+): Contract | null {
+  if (!existing && !incoming) return null;
+
+  const base = (existing ?? {}) as Partial<Contract>;
+  const next = (incoming ?? {}) as Partial<Contract>;
+  const authoritativeRelations = options.authoritativeRelations ?? false;
+  const authoritativeParties = options.authoritativeParties ?? false;
+
+  const hasIncomingDatasets = Array.isArray(next.datasets);
+  const hasIncomingPolicies = Array.isArray(next.contract_policies);
+
+  const normalizedExistingDatasets = normalizeContractDatasets(base.datasets);
+  const normalizedIncomingDatasets = normalizeContractDatasets(next.datasets);
+  const normalizedExistingPolicies = normalizeContractPolicyRefs(base.contract_policies);
+  const normalizedIncomingPolicies = normalizeContractPolicyRefs(next.contract_policies);
+
+  const datasets =
+    hasIncomingDatasets && (authoritativeRelations || hasNonEmptyRelations(normalizedIncomingDatasets))
+      ? normalizedIncomingDatasets
+      : normalizedExistingDatasets;
+
+  const contract_policies =
+    hasIncomingPolicies && (authoritativeRelations || hasNonEmptyRelations(normalizedIncomingPolicies))
+      ? normalizedIncomingPolicies
+      : normalizedExistingPolicies;
+
+  const consumer_id =
+    typeof next.consumer_id === "string" && (authoritativeParties || next.consumer_id)
+      ? next.consumer_id
+      : base.consumer_id ?? "";
+
+  const provider_id =
+    typeof next.provider_id === "string" && (authoritativeParties || next.provider_id)
+      ? next.provider_id
+      : base.provider_id ?? "";
+
+  return {
+    ...(base as Contract),
+    ...(next as Contract),
+    consumer_id,
+    provider_id,
+    datasets,
+    contract_policies,
+  };
+}
 
 // ============ POLICY ============
 // Based on UI data from Contracts.tsx (policies tab)

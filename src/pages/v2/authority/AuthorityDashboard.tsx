@@ -11,6 +11,7 @@ import { useAllDomains } from "@/api/hooks/useDomains";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { V2_ROLE_LABELS } from "@/config/rbac";
+import { SeedDemoData } from "@/components/dev/SeedDemoData";
 
 const LINK_CLS = "block cursor-pointer text-inherit no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg rounded-xl";
 
@@ -19,7 +20,7 @@ const AuthorityDashboard = () => {
   const navigate = useNavigate();
   const { data: participantsData, isLoading: loadingP } = useParticipants({ limit: 100 });
   const { data: usersData, isLoading: loadingU } = useUsers({ limit: 100 });
-  const { data: domainsData, isLoading: loadingD } = useAllDomains({ limit: 100 });
+  const { data: domainsData, isLoading: loadingD } = useAllDomains({ limit: 1000 });
 
   const participants = participantsData?.data ?? [];
   const users = usersData?.data ?? [];
@@ -50,38 +51,66 @@ const AuthorityDashboard = () => {
           <CardDescription>Follow these steps to initialize your Dataspace environment</CardDescription>
         </CardHeader>
         <CardContent>
-          <WizardStepper
-            currentStepId={users.length > 0 ? (participants.length > 0 ? "activate" : "register") : "roles"}
-            onStepClick={(id) => {
-              if (id === "roles") navigate("/v2/authority/role-setup");
-              if (id === "register") navigate("/v2/authority/register-admin-consumer");
-              if (id === "activate") navigate("/v2/authority/activation");
-            }}
-            onComplete={() => {
-              navigate("/v2/admin-consumer/dashboard");
-            }}
-            steps={[
-              {
-                id: "roles",
-                title: "Setup Roles",
-                description: "Define Categories & Groups",
-                isCompleted: users.length > 0
-              },
-              {
-                id: "register",
-                title: "Register Consumer",
-                description: "Create SKK Migas participant",
-                isCompleted: participants.length > 0
-              },
-              {
-                id: "activate",
-                title: "Send Activation",
-                description: "Email code to Consumer",
-                isCompleted: false
-              }
-            ]}
-          />
+          {(() => {
+            // Real completion checks (bukan dummy):
+            const consumerOrgExists = participants.some((p: any) => p.organization_type !== "ENTERPRISE");
+            const providerOrgExists = participants.some((p: any) => p.organization_type === "ENTERPRISE");
+            const consumerLoginExists = users.some((u: any) => u.category?.code === "CONSUMER");
+            const providerLoginExists = users.some((u: any) => u.category?.code === "PROVIDER");
+            const verifiedUserExists = users.some((u: any) => u.is_verified || u.is_email_confirmed);
+
+            const currentStepId = !consumerOrgExists ? "register-org"
+              : !consumerLoginExists ? "register-login"
+              : !verifiedUserExists ? "verify-email"
+              : "complete";
+
+            return (
+              <WizardStepper
+                currentStepId={currentStepId}
+                onStepClick={(id) => {
+                  if (id === "register-org") navigate("/v2/admin-consumer/admin-provider");
+                  if (id === "register-login") navigate("/v2/authority/register-admin-consumer");
+                  if (id === "verify-email") navigate("/v2/authority/activation-email");
+                  if (id === "complete") navigate("/v2/authority/dashboard");
+                }}
+                onComplete={() => navigate("/v2/admin-consumer/dashboard")}
+                steps={[
+                  {
+                    id: "register-org",
+                    title: "Register Org (Participant)",
+                    description: `Consumer ${consumerOrgExists ? "✓" : "—"} | Provider ${providerOrgExists ? "✓" : "—"}`,
+                    isCompleted: consumerOrgExists && providerOrgExists,
+                  },
+                  {
+                    id: "register-login",
+                    title: "Register Login Account",
+                    description: `Consumer ${consumerLoginExists ? "✓" : "—"} | Provider ${providerLoginExists ? "✓" : "—"}`,
+                    isCompleted: consumerLoginExists && providerLoginExists,
+                  },
+                  {
+                    id: "verify-email",
+                    title: "Verify Email",
+                    description: verifiedUserExists ? "Min 1 user verified ✓" : "Belum ada yg verified",
+                    isCompleted: verifiedUserExists,
+                  },
+                ]}
+              />
+            );
+          })()}
         </CardContent>
+      </Card>
+
+      <Card className="border-violet-500/30 bg-gradient-to-r from-violet-500/5 to-purple-500/5">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users2 className="h-5 w-5 text-violet-500" />
+              Smoke Test — Demo Data
+            </CardTitle>
+            <CardDescription>1 klik bikin end-to-end chain (org → domain → vocab → schema → participants → mapping → pools → dataset → policies → contract → agreement). Habis itu Trigger Provide/Consume bisa langsung dites.</CardDescription>
+          </div>
+          <SeedDemoData />
+        </CardHeader>
       </Card>
 
       <Card className="border-border/50">

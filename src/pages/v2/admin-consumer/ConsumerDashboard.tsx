@@ -13,7 +13,7 @@ import { V2_ROLE_LABELS } from "@/config/rbac";
 const ConsumerDashboard = () => {
   const { role, user } = useAuth();
   const navigate = useNavigate();
-  const { data: domainsData, isLoading: loadingD } = useAllDomains({ limit: 50 });
+  const { data: domainsData, isLoading: loadingD } = useAllDomains({ limit: 1000 });
   const { data: participantsData, isLoading: loadingP } = useParticipants({ limit: 50 });
 
   const domains = domainsData?.data ?? [];
@@ -52,41 +52,32 @@ const ConsumerDashboard = () => {
           <CardDescription>Follow these steps to configure the dataspace rules and invite providers</CardDescription>
         </CardHeader>
         <CardContent>
-          <WizardStepper
-            currentStepId="master-data" // For demo purposes, we can leave it at step 1 or make it dynamic
-            onStepClick={(id) => {
-              if (id === "master-data") navigate("/v2/admin-consumer/master-data");
-              if (id === "policy") navigate("/v2/admin-consumer/policy-contract");
-              if (id === "provider") navigate("/v2/admin-consumer/admin-provider");
-              if (id === "mapping") navigate("/v2/admin-consumer/domain-mapping");
-            }}
-            steps={[
-              {
-                id: "master-data",
-                title: "Master Data",
-                description: "Define Vocabulary & Schema",
-                isCompleted: domains.length > 0 // dummy condition
-              },
-              {
-                id: "policy",
-                title: "Policy & Contract",
-                description: "Create data rules",
-                isCompleted: false
-              },
-              {
-                id: "provider",
-                title: "Partner Setup",
-                description: "Register KKKS Provider",
-                isCompleted: participants.filter(p => p.organization_type === "ENTERPRISE").length > 0
-              },
-              {
-                id: "mapping",
-                title: "Domain Mapping",
-                description: "Assign Provider to Domain",
-                isCompleted: false
-              }
-            ]}
-          />
+          {(() => {
+            const masterDataDone = domains.length > 0;
+            const providerDone = participants.filter((p) => p.organization_type === "ENTERPRISE").length > 0;
+            // Sequence: master-data → provider → mapping → policy
+            const currentStepId = !masterDataDone ? "master-data"
+              : !providerDone ? "provider"
+              : "mapping";
+            return (
+              <WizardStepper
+                currentStepId={currentStepId}
+                onStepClick={(id) => {
+                  if (id === "master-data") navigate("/v2/admin-consumer/master-data");
+                  if (id === "provider") navigate("/v2/admin-consumer/admin-provider");
+                  if (id === "mapping") navigate("/v2/admin-consumer/domain-mapping");
+                  if (id === "policy") navigate("/v2/admin-consumer/policy-contract");
+                }}
+                onComplete={() => navigate("/v2/admin-consumer/transfer-monitor")}
+                steps={[
+                  { id: "master-data", title: "Master Data", description: "Domain + Vocab + Schema", isCompleted: masterDataDone },
+                  { id: "provider", title: "Register Provider", description: "Add KKKS participant", isCompleted: providerDone },
+                  { id: "mapping", title: "Map Provider→Domain", description: "Grant domain access", isCompleted: false /* perlu cek participant_domains real */ },
+                  { id: "policy", title: "Policy & Contract", description: "Author rules + agreement", isCompleted: false /* perlu cek contracts real */ },
+                ]}
+              />
+            );
+          })()}
         </CardContent>
       </Card>
 

@@ -7,8 +7,6 @@ import {
   schemasApi,
 } from "@/api/services/data-catalog";
 import {
-  contractsApi,
-  contractPoliciesApi,
   datasetPoliciesApi,
   agreementsApi
 } from "@/api/services/policy-contract";
@@ -401,36 +399,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
 
       // Step 7: Contract Request
       if (formData.contractRequest && domainId && !contractId) {
-        try {
-          const contractData = formData.contractRequest;
-          const policyIds: string[] = [];
-          for (const policy of contractData.policies) {
-            const cp = await contractPoliciesApi.create(domainId, {
-              name: policy.name,
-              data_clasification: policy.dataClassification,
-              effective_from: contractData.startDate,
-              effective_to: contractData.endDate || "",
-              description: policy.description || null,
-            });
-            policyIds.push(cp.id);
-          }
-
-          const contract = await contractsApi.create(domainId, {
-            title: contractData.title,
-            provider: contractData.provider,
-            consumer: contractData.consumer,
-            domain: formData.organization?.domainName || "",
-            policy: policyIds[0] || "",
-            startDate: contractData.startDate,
-            endDate: contractData.endDate,
-            description: contractData.description || null,
-            contract_policies: policyIds,
-          });
-          contractId = String(contract.id);
-          setCreatedIds((prev) => ({ ...prev, contractId, contractPolicyIds: policyIds }));
-        } catch (error) {
-          errors.push(`Contract Request: ${error instanceof Error ? error.message : "Failed"}`);
-        }
+        errors.push("Contract Request: legacy onboarding contract submit dinonaktifkan. Gunakan flow V2 Consumer Policy & Contract.");
       }
 
       // Step 8: Agreement & Approval

@@ -25,9 +25,13 @@ export interface UserGroup {
 
 export interface UserResponse {
   id: string;
+  username?: string;
   email: string;
   full_name: string | null;
-  is_email_confirmed?: boolean;
+  // Backend renamed flags. is_email_confirmed kept as legacy alias for older code.
+  is_active?: boolean;
+  is_verified?: boolean;
+  is_email_confirmed?: boolean; // legacy alias — falls back to is_verified
   category: UserCategory | null;
   group: UserGroup | null;
   created_at: string;
@@ -56,6 +60,7 @@ export interface UserCreateRequest {
   password: string;
   category_id: string;
   group_id: string;
+  participant_id?: string | null; // backend now supports direct user→participant link
 }
 
 export interface UserUpdateRequest {

@@ -141,65 +141,72 @@ export const MENU_ITEMS_V1: MenuItem[] = [
 ];
 
 export const MENU_ITEMS_V2: MenuItem[] = [
+  // ── AUTHORITY menus — for SUPER_ADMIN and ADMIN (internal users)
+  // Per sequence diagram Phase 1 & 2: register participant, role mgmt,
+  // email activation, monitoring, gateway, channels.
+  // ADMIN sees everything visible here EXCEPT items requiring users.manage
+  // (Register Admin Login + User Provisioning + Permission Catalog).
   {
     icon: Gauge,
     label: "Dashboard Authority",
     path: "/v2/authority/dashboard",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "ADMIN"],
   },
   {
     icon: Users2,
     label: "Register Admin Login",
     path: "/v2/authority/register-admin-consumer",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN"], // ADMIN tidak bisa register user (need users.manage)
     requiredPermissions: ["users.manage"],
   },
   {
     icon: KeyRound,
     label: "Role Setup",
     path: "/v2/authority/role-setup",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "ADMIN"],
     requiredPermissions: ["participants.manage"],
   },
   {
     icon: Mail,
     label: "Activation Email Preview",
     path: "/v2/authority/activation-email",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "ADMIN"],
     requiredPermissions: ["participants.manage"],
   },
-  {
-    icon: Mail,
-    label: "Activation Lifecycle",
-    path: "/v2/authority/activation",
-    roles: ["SUPER_ADMIN"],
-    requiredPermissions: ["participants.manage"],
-  },
+  // Activation Lifecycle (stub localStorage page) dihapus dari menu — bingungin.
+  // Real activation flow ada di "Activation Email Preview" (/v2/authority/activation-email)
+  // yang bisa POST /confirm-email beneran.
   {
     icon: UserPlus,
     label: "User Provisioning",
     path: "/v2/authority/user-provisioning",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN"], // ADMIN tidak bisa provision user
     requiredPermissions: ["users.manage"],
   },
   {
     icon: Shield,
     label: "Permission Catalog",
     path: "/v2/authority/permissions",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN"], // SUPER_ADMIN only — sensitive
     requiredPermissions: ["users.manage"],
   },
   {
     icon: RadioTower,
     label: "Gateway Monitor",
     path: "/v2/authority/gateway",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "ADMIN"],
   },
   {
     icon: Network,
     label: "Channels",
     path: "/v2/authority/channels",
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    icon: Building2,
+    label: "Organizations",
+    path: "/v2/authority/organizations",
+    roles: ["SUPER_ADMIN", "ADMIN"],
   },
   {
     icon: Gauge,
@@ -207,6 +214,7 @@ export const MENU_ITEMS_V2: MenuItem[] = [
     path: "/v2/admin-consumer/dashboard",
     roles: ["CONSUMER"],
   },
+  // ── ADMIN CONSUMER menus — STRICT, cuma role CONSUMER yg lihat
   {
     icon: BookOpen,
     label: "Master Data",
@@ -335,6 +343,33 @@ export const PERMISSIONS_BY_ROLE: Record<AppRole, string[]> = {
     "domains.acknowledge",
     "reports.generate",
   ],
+  ADMIN: [
+    "catalog.view",
+    "catalog.manage",
+    "catalog.vocab",
+    "catalog.publish",
+    "datasets.manage",
+    "contracts.view",
+    "contracts.manage",
+    "agreements.view",
+    "agreements.approve",
+    "agreements.manage",
+    "participants.manage",
+    "mapping.manage",
+    "mapping.view:own",
+    "monitoring.view",
+    "monitoring.manage",
+    "transfer.view",
+    "transfer.view:own",
+    "transfer.manage",
+    "audit.view",
+    "audit.view:own",
+    "compliance.view",
+    "fulfilment.manage",
+    "reports.generate",
+    "domains.acknowledge",
+    "docs.view",
+  ],
   CONSUMER: [
     "catalog.view",
     "catalog.manage",
@@ -384,12 +419,18 @@ export const PERMISSIONS_BY_ROLE: Record<AppRole, string[]> = {
 
 export const MENU_ITEMS = MENU_ITEMS_V1;
 
-export const getMenuItems = (role: AppRole, isV2: boolean, permissions: string[] = []): MenuItem[] => {
+export const getMenuItems = (
+  role: AppRole,
+  isV2: boolean,
+  permissions: string[] = [],
+  _isRealSuperAdmin = false
+): MenuItem[] => {
   const items = isV2 ? MENU_ITEMS_V2 : MENU_ITEMS_V1;
+  // Strict per role — semua role (termasuk SUPER_ADMIN) tampil cuma menu yg
+  // role-nya match. Untuk eksplorasi cross-role, real super admin pakai
+  // RoleSwitcher widget (yg ngubah role, sidebar otomatis adapt).
   return items.filter((item) => {
-    // SUPER_ADMIN sees all V2 menus so they can inspect consumer/provider flows.
-    const roleAllowed = role === "SUPER_ADMIN" ? true : item.roles.includes(role);
-    if (!roleAllowed) return false;
+    if (!item.roles.includes(role)) return false;
     if (!isV2 || !item.requiredPermissions?.length) return true;
     return item.requiredPermissions.every((permission) => permissions.includes(permission));
   });
@@ -397,7 +438,7 @@ export const getMenuItems = (role: AppRole, isV2: boolean, permissions: string[]
 
 // Derive allowed routes per role from MENU_ITEMS + /settings (always accessible)
 const buildRoleRoutes = (): Record<AppRole, string[]> => {
-  const roles: AppRole[] = ["SUPER_ADMIN", "PROVIDER", "CONSUMER", "VIEWER"];
+  const roles: AppRole[] = ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER"];
   const result = {} as Record<AppRole, string[]>;
   for (const role of roles) {
     result[role] = [
@@ -411,7 +452,7 @@ const buildRoleRoutes = (): Record<AppRole, string[]> => {
 const ROLE_ROUTES = buildRoleRoutes();
 
 const buildV2RoleRoutes = (): Record<AppRole, string[]> => {
-  const roles: AppRole[] = ["SUPER_ADMIN", "PROVIDER", "CONSUMER", "VIEWER"];
+  const roles: AppRole[] = ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER"];
   const result = {} as Record<AppRole, string[]>;
   for (const role of roles) {
     result[role] = MENU_ITEMS_V2.filter((m) => m.roles.includes(role)).map((m) => m.path);
@@ -436,7 +477,8 @@ export const canAccess = (role: AppRole, path: string, isV2 = false): boolean =>
 
 /** Human-readable label for each role (used in UI badges). */
 export const ROLE_LABELS: Record<AppRole, string> = {
-  SUPER_ADMIN: "Admin",
+  SUPER_ADMIN: "Super Admin",
+  ADMIN: "Admin",
   PROVIDER: "Provider",
   CONSUMER: "Consumer",
   VIEWER: "Viewer",
@@ -444,6 +486,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 
 export const V2_ROLE_LABELS: Record<AppRole, string> = {
   SUPER_ADMIN: "Super Admin / Data Space Authority",
+  ADMIN: "Admin / Internal Operator",
   CONSUMER: "Admin Consumer / SKK Migas",
   PROVIDER: "Admin Provider / KKKS",
   VIEWER: "Viewer",

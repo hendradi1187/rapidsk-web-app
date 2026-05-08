@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { organizationsApi } from "../services";
+import { organizationsApi, domainsApi } from "../services";
 import {
   OrganizationCreateRequest,
   OrganizationUpdateRequest,
+  DomainCreateRequest,
+  DomainUpdateRequest,
   PaginationParams,
 } from "../types";
 
@@ -76,6 +78,54 @@ export function useDeleteOrganization() {
     mutationFn: (id: string) => organizationsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: organizationKeys.lists() });
+    },
+  });
+}
+
+// ============ DOMAIN hooks (org-scoped) ============
+
+export const domainKeys = {
+  all: ["domains"] as const,
+  list: (orgId: string, params?: PaginationParams) => [...domainKeys.all, "list", orgId, params] as const,
+};
+
+export function useDomains(organizationId: string, params?: PaginationParams) {
+  return useQuery({
+    queryKey: domainKeys.list(organizationId, params),
+    queryFn: () => domainsApi.list(organizationId, params),
+    enabled: !!organizationId,
+  });
+}
+
+export function useCreateDomain() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, data }: { organizationId: string; data: Omit<DomainCreateRequest, "organization_id"> }) =>
+      domainsApi.create(organizationId, data),
+    onSuccess: (_, { organizationId }) => {
+      queryClient.invalidateQueries({ queryKey: domainKeys.list(organizationId) });
+    },
+  });
+}
+
+export function useUpdateDomain() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, id, data }: { organizationId: string; id: string; data: DomainUpdateRequest }) =>
+      domainsApi.update(organizationId, id, data),
+    onSuccess: (_, { organizationId }) => {
+      queryClient.invalidateQueries({ queryKey: domainKeys.list(organizationId) });
+    },
+  });
+}
+
+export function useDeleteDomain() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, id }: { organizationId: string; id: string }) =>
+      domainsApi.delete(organizationId, id),
+    onSuccess: (_, { organizationId }) => {
+      queryClient.invalidateQueries({ queryKey: domainKeys.list(organizationId) });
     },
   });
 }

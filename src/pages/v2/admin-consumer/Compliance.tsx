@@ -45,6 +45,7 @@ import { toast } from "sonner";
 
 const STATUS_COLORS: Record<string, string> = {
   COMPLIANT: "border-emerald-500/40 text-emerald-500",
+  NON_COMPLIANT: "border-red-500/40 text-red-500",
   "NON-COMPLIANT": "border-red-500/40 text-red-500",
   IN_REVIEW: "border-amber-500/40 text-amber-500",
   NOT_APPLICABLE: "border-slate-400/40 text-slate-400",
@@ -235,7 +236,7 @@ const Compliance = () => {
         <MetricCard title="Active Controls" value={loadingControls ? "..." : controls.length} subtitle="Across frameworks" icon={Shield} trend="up" />
         <MetricCard title="Frameworks" value={loadingControls ? "..." : stats.frameworks} subtitle="Distinct frameworks" icon={Shield} trend="neutral" />
         <MetricCard title="Checklist Entries" value={loadingChecklists ? "..." : stats.total} subtitle="Per-participant assessments" icon={Shield} trend="up" />
-        <MetricCard title="Compliance Rate" value={`${stats.rate}%`} subtitle={`${stats.compliant} of ${stats.total} compliant`} icon={Checkbox as any} trend={stats.rate >= 70 ? "up" : "down"} />
+        <MetricCard title="Compliance Rate" value={`${stats.rate}%`} subtitle={`${stats.compliant} of ${stats.total} compliant`} icon={Shield} trend={stats.rate >= 70 ? "up" : "down"} />
       </div>
 
       <Tabs defaultValue="controls">
@@ -406,7 +407,7 @@ const Compliance = () => {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="COMPLIANT">COMPLIANT</SelectItem>
-                  <SelectItem value="NON-COMPLIANT">NON-COMPLIANT</SelectItem>
+                  <SelectItem value="NON_COMPLIANT">NON-COMPLIANT</SelectItem>
                   <SelectItem value="IN_REVIEW">IN_REVIEW</SelectItem>
                   <SelectItem value="NOT_APPLICABLE">NOT_APPLICABLE</SelectItem>
                 </SelectContent>

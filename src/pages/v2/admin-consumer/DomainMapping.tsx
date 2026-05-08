@@ -36,8 +36,8 @@ import { toast } from "sonner";
 const DomainMapping = () => {
   const { hasPermission } = useAuth();
   const { data: participantsData, isLoading: loadingParticipants } = useParticipants({ limit: 100 });
-  const { data: domainsData, isLoading: loadingDomains } = useAllDomains({ limit: 100 });
-  const participants = participantsData?.data ?? [];
+  const { data: domainsData, isLoading: loadingDomains } = useAllDomains({ limit: 1000 });
+  const participants = (participantsData?.data ?? []).filter((p) => p.organization_type === "ENTERPRISE");
   const domains = domainsData?.data ?? [];
 
   const [selectedParticipantId, setSelectedParticipantId] = useState("");
@@ -120,7 +120,7 @@ const DomainMapping = () => {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <MetricCard title="Participants" value={loadingParticipants ? "..." : participants.length} subtitle="Available for mapping" icon={Network} trend="neutral" />
+        <MetricCard title="Provider Participants" value={loadingParticipants ? "..." : participants.length} subtitle="ENTERPRISE (KKKS) only" icon={Network} trend="neutral" />
         <MetricCard title="Domains" value={loadingDomains ? "..." : domains.length} subtitle="Governance domains" icon={Layers} trend="neutral" />
         <MetricCard
           title="Active Mappings"
