@@ -1,0 +1,917 @@
+openapi: 3.0.3
+
+info:
+  title: SPEKTRUM Federated Dataspace Ecosystem API
+  version: 2.1.0
+  description: |
+    SPEKTRUM Federated Dataspace Ecosystem
+
+    GIS is positioned as:
+    Spatial Dataset Provider
+
+    NOT as core backend.
+
+servers:
+  - url: http://localhost:8000/api/v1
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+  - name: Participants
+  - name: Datasets
+  - name: Permissions
+  - name: GIS Federation
+  - name: Access Requests
+  - name: Consents
+  - name: Administration
+  - name: Audit
+
+paths:
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login participant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+
+      responses:
+        '200':
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh token
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+
+  /participants:
+    get:
+      tags:
+        - Participants
+      summary: Get participants
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+
+      responses:
+        '200':
+          description: Participant list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantListResponse'
+
+    post:
+      tags:
+        - Participants
+      summary: Register participant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantCreateRequest'
+
+      responses:
+        '201':
+          description: Participant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantDetailResponse'
+
+  /participants/{participantId}:
+    get:
+      tags:
+        - Participants
+      summary: Get participant detail
+      parameters:
+        - $ref: '#/components/parameters/ParticipantId'
+
+      responses:
+        '200':
+          description: Participant detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantDetailResponse'
+
+  /participants/{participantId}/activate:
+    post:
+      tags:
+        - Administration
+      summary: Activate participant
+      parameters:
+        - $ref: '#/components/parameters/ParticipantId'
+
+      responses:
+        '200':
+          description: Participant activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardSuccessResponse'
+
+  /datasets:
+    get:
+      tags:
+        - Datasets
+      summary: Get dataset catalog
+
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+
+      responses:
+        '200':
+          description: Dataset catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetListResponse'
+
+    post:
+      tags:
+        - Datasets
+      summary: Register dataset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasetCreateRequest'
+
+      responses:
+        '201':
+          description: Dataset created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetDetailResponse'
+
+  /datasets/{datasetId}:
+    get:
+      tags:
+        - Datasets
+      summary: Get dataset detail
+
+      parameters:
+        - $ref: '#/components/parameters/DatasetId'
+
+      responses:
+        '200':
+          description: Dataset detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetDetailResponse'
+
+  /datasets/{datasetId}/permissions:
+    get:
+      tags:
+        - Permissions
+      summary: Get dataset permissions
+
+      parameters:
+        - $ref: '#/components/parameters/DatasetId'
+
+      responses:
+        '200':
+          description: Dataset permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionListResponse'
+
+  /access-requests:
+    post:
+      tags:
+        - Access Requests
+      summary: Create access request
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessRequestCreateRequest'
+
+      responses:
+        '201':
+          description: Access request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRequestResponse'
+
+  /access-requests/{requestId}/approve:
+    post:
+      tags:
+        - Administration
+      summary: Approve access request
+
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+
+      responses:
+        '200':
+          description: Request approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardSuccessResponse'
+
+  /consents:
+    get:
+      tags:
+        - Consents
+      summary: Get consents
+
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+
+      responses:
+        '200':
+          description: Consent list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentListResponse'
+
+  /gis/query:
+    post:
+      tags:
+        - GIS Federation
+      summary: Federated GIS Query
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GISQueryRequest'
+
+      responses:
+        '200':
+          description: GIS query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GISQueryResponse'
+
+  /gis/spatial-query:
+    post:
+      tags:
+        - GIS Federation
+      summary: Spatial Query
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpatialQueryRequest'
+
+      responses:
+        '200':
+          description: Spatial query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GISQueryResponse'
+
+  /audit-logs:
+    get:
+      tags:
+        - Audit
+      summary: Get audit logs
+
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 20
+
+    ParticipantId:
+      name: participantId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    DatasetId:
+      name: datasetId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+
+    StandardSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Operation successful
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+
+    Metadata:
+      type: object
+      properties:
+        request_id:
+          type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+        data:
+          type: object
+          properties:
+
+            access_token:
+              type: string
+
+            refresh_token:
+              type: string
+
+            token_type:
+              type: string
+              example: bearer
+
+            expires_in:
+              type: integer
+
+            user:
+              $ref: '#/components/schemas/User'
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+
+    User:
+      type: object
+      properties:
+
+        user_id:
+          type: string
+
+        username:
+          type: string
+
+        full_name:
+          type: string
+
+        email:
+          type: string
+
+        participant:
+          $ref: '#/components/schemas/Participant'
+
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+              - SUPER_ADMIN
+              - ADMIN
+              - VIEWER
+              - AUDITOR
+              - GIS_ANALYST
+              - PROVIDER
+              - CONSUMER
+
+        permissions:
+          type: array
+          items:
+            type: string
+
+    Participant:
+      type: object
+      properties:
+
+        participant_id:
+          type: string
+
+        organization_name:
+          type: string
+
+        organization_type:
+          type: string
+
+        role_type:
+          type: string
+          enum:
+            - provider
+            - consumer
+
+        status:
+          type: string
+          enum:
+            - pending
+            - active
+            - suspended
+
+    ParticipantCreateRequest:
+      type: object
+      required:
+        - organization_name
+        - role_type
+      properties:
+
+        organization_name:
+          type: string
+
+        organization_type:
+          type: string
+
+        role_type:
+          type: string
+          enum:
+            - provider
+            - consumer
+
+    ParticipantDetailResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          $ref: '#/components/schemas/Participant'
+
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    ParticipantListResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Participant'
+
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    Dataset:
+      type: object
+      properties:
+
+        dataset_id:
+          type: string
+
+        dataset_name:
+          type: string
+
+        provider_id:
+          type: string
+
+        dataset_type:
+          type: string
+          example: spatial
+
+        service_type:
+          type: string
+          example: arcgis
+
+        classification:
+          type: string
+          enum:
+            - public
+            - internal
+            - restricted
+
+        geometry_type:
+          type: string
+          example: esriGeometryPolyline
+
+        spatial_reference:
+          type: string
+          example: EPSG:4326
+
+        bbox:
+          type: array
+          items:
+            type: number
+
+        supported_formats:
+          type: array
+          items:
+            type: string
+          example:
+            - geojson
+            - json
+            - pbf
+
+        capabilities:
+          type: array
+          items:
+            type: string
+          example:
+            - query
+            - spatial_filter
+            - export
+
+        max_record_count:
+          type: integer
+          example: 2000
+
+    DatasetCreateRequest:
+      type: object
+      required:
+        - dataset_name
+        - provider_id
+        - service_url
+
+      properties:
+
+        dataset_name:
+          type: string
+
+        provider_id:
+          type: string
+
+        service_url:
+          type: string
+
+        service_type:
+          type: string
+          example: arcgis
+
+    DatasetDetailResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          $ref: '#/components/schemas/Dataset'
+
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    DatasetListResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Dataset'
+
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    Permission:
+      type: object
+      properties:
+
+        permission_id:
+          type: string
+
+        participant_id:
+          type: string
+
+        dataset_id:
+          type: string
+
+        permission_name:
+          type: string
+          example: gis.query
+
+    PermissionListResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    AccessRequestCreateRequest:
+      type: object
+      required:
+        - dataset_id
+        - purpose
+
+      properties:
+
+        dataset_id:
+          type: string
+
+        purpose:
+          type: string
+
+    AccessRequestResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: object
+          properties:
+
+            request_id:
+              type: string
+
+            status:
+              type: string
+              enum:
+                - pending
+                - approved
+                - rejected
+
+    Consent:
+      type: object
+      properties:
+
+        consent_id:
+          type: string
+
+        provider_id:
+          type: string
+
+        consumer_id:
+          type: string
+
+        dataset_id:
+          type: string
+
+        status:
+          type: string
+          enum:
+            - granted
+            - revoked
+
+    ConsentListResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Consent'
+
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    GISQueryRequest:
+      type: object
+      required:
+        - dataset_id
+
+      properties:
+
+        dataset_id:
+          type: string
+
+        where:
+          type: string
+          example: "1=1"
+
+        out_fields:
+          type: string
+          example: "*"
+
+        format:
+          type: string
+          enum:
+            - geojson
+            - json
+            - pbf
+
+    SpatialQueryRequest:
+      type: object
+      required:
+        - dataset_id
+        - xmin
+        - ymin
+        - xmax
+        - ymax
+
+      properties:
+
+        dataset_id:
+          type: string
+
+        xmin:
+          type: number
+
+        ymin:
+          type: number
+
+        xmax:
+          type: number
+
+        ymax:
+          type: number
+
+        spatial_relation:
+          type: string
+          enum:
+            - intersects
+            - within
+            - contains
+            - nearest
+
+    GISQueryResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: object
+          properties:
+
+            type:
+              type: string
+              example: FeatureCollection
+
+            features:
+              type: array
+              items:
+                type: object
+
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    AuditLog:
+      type: object
+      properties:
+
+        audit_id:
+          type: string
+
+        participant_id:
+          type: string
+
+        activity:
+          type: string
+
+        created_at:
+          type: string
+          format: date-time
+
+    AuditLogListResponse:
+      type: object
+      properties:
+
+        success:
+          type: boolean
+
+        message:
+          type: string
+
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+
+        pagination:
+          $ref: '#/components/schemas/Pagination'

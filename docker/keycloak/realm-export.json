@@ -1,0 +1,282 @@
+{
+  "realm": "spektrum",
+  "displayName": "SPEKTRUM Federated Dataspace",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 3600,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "SUPER_ADMIN", "description": "Platform-level admin, full access" },
+      { "name": "ADMIN", "description": "Organization-level admin" },
+      { "name": "PROVIDER", "description": "Data provider participant" },
+      { "name": "CONSUMER", "description": "Data consumer participant" },
+      { "name": "VIEWER", "description": "Read-only user" },
+      { "name": "AUDITOR", "description": "Compliance/audit officer" },
+      { "name": "GIS_ANALYST", "description": "Spatial data power user" }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "spektrum-permissions",
+      "description": "SPEKTRUM granular permissions claim",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "permissions",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "permissions",
+            "claim.name": "permissions",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "participant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "participant_id",
+            "claim.name": "participant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "participant_organization_name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "organization_name",
+            "claim.name": "participant.organization_name",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "participant_role_type",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "role_type",
+            "claim.name": "participant.role_type",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "rapidsk-web",
+      "name": "rapiDSK Web App",
+      "description": "Frontend SPA for rapiDSK + SPEKTRUM coexistence",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8080/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://localhost:3000",
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "spektrum-permissions"
+      ],
+      "optionalClientScopes": ["address", "phone", "offline_access"]
+    }
+  ],
+  "users": [
+    {
+      "username": "superadmin",
+      "email": "superadmin@spektrum.local",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["SUPER_ADMIN"],
+      "attributes": {
+        "participant_id": ["part-platform-001"],
+        "organization_name": ["SPEKTRUM Platform"],
+        "role_type": ["provider"],
+        "permissions": [
+          "participant.register",
+          "participant.activate",
+          "dataset.register",
+          "dataset.view-permissions",
+          "access-request.create",
+          "access-request.approve",
+          "access-request.reject",
+          "consent.read",
+          "consent.revoke",
+          "gis.query",
+          "gis.export",
+          "audit.read"
+        ]
+      }
+    },
+    {
+      "username": "admin",
+      "email": "admin@phe.co.id",
+      "firstName": "Org",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["ADMIN"],
+      "attributes": {
+        "participant_id": ["part-001"],
+        "organization_name": ["PHE ONWJ"],
+        "role_type": ["provider"],
+        "permissions": [
+          "participant.register",
+          "participant.activate",
+          "dataset.register",
+          "dataset.view-permissions",
+          "access-request.approve",
+          "access-request.reject",
+          "consent.read",
+          "consent.revoke",
+          "audit.read"
+        ]
+      }
+    },
+    {
+      "username": "provider",
+      "email": "provider@phe.co.id",
+      "firstName": "Data",
+      "lastName": "Provider",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["PROVIDER"],
+      "attributes": {
+        "participant_id": ["part-001"],
+        "organization_name": ["PHE ONWJ"],
+        "role_type": ["provider"],
+        "permissions": [
+          "dataset.register",
+          "dataset.view-permissions",
+          "access-request.approve",
+          "access-request.reject",
+          "consent.read",
+          "consent.revoke"
+        ]
+      }
+    },
+    {
+      "username": "consumer",
+      "email": "consumer@regulator.go.id",
+      "firstName": "Data",
+      "lastName": "Consumer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["CONSUMER"],
+      "attributes": {
+        "participant_id": ["part-002"],
+        "organization_name": ["SKK Migas"],
+        "role_type": ["consumer"],
+        "permissions": [
+          "access-request.create",
+          "gis.query",
+          "gis.export"
+        ]
+      }
+    },
+    {
+      "username": "viewer",
+      "email": "viewer@spektrum.local",
+      "firstName": "Read",
+      "lastName": "Only",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["VIEWER"],
+      "attributes": {
+        "participant_id": ["part-003"],
+        "organization_name": ["Public Viewer"],
+        "role_type": ["consumer"],
+        "permissions": []
+      }
+    },
+    {
+      "username": "auditor",
+      "email": "auditor@spektrum.local",
+      "firstName": "Compliance",
+      "lastName": "Auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["AUDITOR"],
+      "attributes": {
+        "participant_id": ["part-004"],
+        "organization_name": ["SPEKTRUM Compliance"],
+        "role_type": ["consumer"],
+        "permissions": [
+          "audit.read",
+          "consent.read"
+        ]
+      }
+    },
+    {
+      "username": "gis_analyst",
+      "email": "gis@spektrum.local",
+      "firstName": "GIS",
+      "lastName": "Analyst",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["GIS_ANALYST", "CONSUMER"],
+      "attributes": {
+        "participant_id": ["part-005"],
+        "organization_name": ["SPEKTRUM Spatial Lab"],
+        "role_type": ["consumer"],
+        "permissions": [
+          "access-request.create",
+          "gis.query",
+          "gis.export"
+        ]
+      }
+    }
+  ]
+}

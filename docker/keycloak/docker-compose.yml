@@ -1,0 +1,78 @@
+version: "3.9"
+
+# ───────────────────────────────────────────────────────────────────
+#  SPEKTRUM Local IAM (Keycloak) — for development only
+#
+#  Run from project root:
+#    docker compose -f docker/keycloak/docker-compose.yml up -d
+#
+#  Stop:
+#    docker compose -f docker/keycloak/docker-compose.yml down
+#
+#  Reset (drop database):
+#    docker compose -f docker/keycloak/docker-compose.yml down -v
+# ───────────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: spektrum-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_dev_password
+    volumes:
+      - keycloak_pgdata:/var/lib/postgresql/data
+    networks:
+      - keycloak-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: spektrum-keycloak
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      # ─── Admin console credentials ─────────────────────
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+
+      # ─── Database ─────────────────────────────────────
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_dev_password
+
+      # ─── HTTP / hostname ──────────────────────────────
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+
+      # ─── Logging ─────────────────────────────────────
+      KC_LOG_LEVEL: INFO
+    ports:
+      - "8080:8080"     # Keycloak UI + token endpoint
+      - "9000:9000"     # health endpoint
+    volumes:
+      - ./realm-export.json:/opt/keycloak/data/import/spektrum-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - keycloak-net
+    restart: unless-stopped
+
+networks:
+  keycloak-net:
+    driver: bridge
+
+volumes:
+  keycloak_pgdata:
+    driver: local
