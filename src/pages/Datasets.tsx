@@ -10,22 +10,15 @@ import {
   Grid3X3,
   List,
   Database,
-  MapPin,
-  Calendar,
-  Building2,
-  ExternalLink,
-  X,
   Eye,
-  Trash2,
   MoreHorizontal,
   Loader2,
   AlertCircle,
   RefreshCw,
-  Layers,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { DatasetRegistrationForm } from "@/components/datasets/DatasetRegistrationForm";
 import {
   Popover,
   PopoverContent,
@@ -50,7 +43,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -59,188 +51,146 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useAllDomains } from "@/api/hooks/useDomains";
-import { useDatasets, useDeleteDataset } from "@/api/hooks/useDatasets";
-import { Dataset } from "@/api/types";
+import {
+  useDatasets,
+  useCreateDataset,
+} from "@/api/hooks/useDatasets";
+import type { Dataset } from "@/api/types/data-catalog";
+
+// ─── Helpers untuk badge style ────────────────────────────────────────
+// Classification & status sementara free string per spec — UI memberi style
+// default + fallback netral untuk value yang tidak dikenali.
+
+const CLASSIFICATION_STYLES: Record<string, string> = {
+  public: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  internal: "bg-blue-50 text-blue-700 border-blue-200",
+  restricted: "bg-amber-50 text-amber-700 border-amber-200",
+  confidential: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+const STATUS_STYLES: Record<string, string> = {
+  active: "badge-active",
+  published: "badge-active",
+  draft: "bg-slate-100 text-slate-700 border-slate-200",
+  archived: "bg-zinc-100 text-zinc-600 border-zinc-200",
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+};
+
+const classificationClass = (value: string) =>
+  CLASSIFICATION_STYLES[value?.toLowerCase()] ?? "bg-slate-50 text-slate-700 border-slate-200";
+
+const statusClass = (value: string) =>
+  STATUS_STYLES[value?.toLowerCase()] ?? "bg-slate-50 text-slate-700 border-slate-200";
 
 const Datasets = () => {
-  // Domain selection
-  const [selectedDomainId, setSelectedDomainId] = useState<string>("");
-
-  // State management
+  // State
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterFormat, setFilterFormat] = useState<string>("all");
+  const [filterClassification, setFilterClassification] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
-  // View dialog states
+  // Dialog states
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
 
+  // Form state
+  const [formData, setFormData] = useState({
+    dataset_name: "",
+    schema_name: "",
+    provider_id: "",
+  });
+
   // API hooks
-  const { data: domainsData, isLoading: isLoadingDomains } = useAllDomains({ limit: 100 });
   const {
-    data: datasetsData,
-    isLoading: isLoadingDatasets,
+    data: datasets,
+    isLoading,
     isError,
     error,
     refetch,
-  } = useDatasets(selectedDomainId, { limit: 100 });
-  const deleteMutation = useDeleteDataset();
+  } = useDatasets();
+
+  const createMutation = useCreateDataset();
 
   // Filter datasets
   const filteredDatasets = useMemo(() => {
-    if (!datasetsData?.data) return [];
-    return datasetsData.data.filter((dataset) => {
+    if (!datasets) return [];
+    const q = searchQuery.toLowerCase();
+    return datasets.filter((d) => {
       const matchesSearch =
-        dataset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        dataset.provider?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        dataset.endpoint?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFormat = filterFormat === "all" || dataset.format === filterFormat;
-      const matchesStatus = filterStatus === "all" || dataset.status === filterStatus;
-      return matchesSearch && matchesFormat && matchesStatus;
+        d.dataset_name?.toLowerCase().includes(q) ||
+        d.schema_name?.toLowerCase().includes(q) ||
+        d.provider_name?.toLowerCase().includes(q);
+      const matchesClassification =
+        filterClassification === "all" || d.classification === filterClassification;
+      const matchesStatus = filterStatus === "all" || d.status === filterStatus;
+      return matchesSearch && matchesClassification && matchesStatus;
     });
-  }, [datasetsData?.data, searchQuery, filterFormat, filterStatus]);
+  }, [datasets, searchQuery, filterClassification, filterStatus]);
 
-  // Check if any filter is active
-  const hasActiveFilters = filterFormat !== "all" || filterStatus !== "all";
-
-  // Clear all filters
+  const hasActiveFilters = filterClassification !== "all" || filterStatus !== "all";
   const clearFilters = () => {
-    setFilterFormat("all");
+    setFilterClassification("all");
     setFilterStatus("all");
   };
 
-  // Handle external link click
-  const handleExternalLink = (endpoint: string) => {
-    const url = endpoint.startsWith("http") ? endpoint : `https://${endpoint}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    toast.success("Opening endpoint in new tab");
+  // Distinct values for filter dropdowns
+  const distinctClassifications = useMemo(() => {
+    return Array.from(new Set(datasets?.map((d) => d.classification).filter(Boolean) ?? []));
+  }, [datasets]);
+
+  const distinctStatuses = useMemo(() => {
+    return Array.from(new Set(datasets?.map((d) => d.status).filter(Boolean) ?? []));
+  }, [datasets]);
+
+  const resetForm = () =>
+    setFormData({ dataset_name: "", schema_name: "", provider_id: "" });
+
+  const handleAddDataset = async () => {
+    if (!formData.dataset_name.trim()) {
+      toast.error("Dataset name is required");
+      return;
+    }
+    if (!formData.schema_name.trim()) {
+      toast.error("Schema name is required");
+      return;
+    }
+
+    try {
+      await createMutation.mutateAsync({
+        dataset_name: formData.dataset_name.trim(),
+        schema_name: formData.schema_name.trim(),
+        provider_id: formData.provider_id.trim() || undefined,
+      });
+      setIsAddDialogOpen(false);
+      resetForm();
+      toast.success("Dataset registered successfully");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to register dataset");
+    }
   };
 
-  // Handle view dataset
-  const handleViewDataset = (dataset: Dataset) => {
+  const openViewDialog = (dataset: Dataset) => {
     setSelectedDataset(dataset);
     setIsViewDialogOpen(true);
   };
 
-  // Handle delete dataset
-  const handleDeleteDataset = async () => {
-    if (!selectedDataset || !selectedDomainId) return;
-    try {
-      await deleteMutation.mutateAsync({
-        domainId: selectedDomainId,
-        id: String(selectedDataset.id),
-      });
-      setIsDeleteDialogOpen(false);
-      setSelectedDataset(null);
-      toast.success("Dataset deleted successfully");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to delete dataset");
-    }
-  };
-
-  // Format date
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
-
-  // No domain selected state
-  if (!selectedDomainId) {
-    return (
-      <div className="min-h-screen">
-        <Header
-          title="Dataset Catalog"
-          subtitle="Browse and manage registered datasets"
-        />
-        <div className="p-6 space-y-6">
-          {/* Domain Selector */}
-          <div className="bg-card rounded-xl border border-border p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Layers className="w-5 h-5 text-accent" />
-              <h3 className="font-semibold">Select Domain</h3>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Please select a domain to view and manage datasets.
-            </p>
-            <Select value={selectedDomainId} onValueChange={setSelectedDomainId}>
-              <SelectTrigger className="w-full md:w-96">
-                <SelectValue placeholder="Select a domain..." />
-              </SelectTrigger>
-              <SelectContent>
-                {isLoadingDomains ? (
-                  <div className="flex items-center justify-center p-4">
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Loading domains...
-                  </div>
-                ) : domainsData?.data?.length === 0 ? (
-                  <div className="p-4 text-center text-muted-foreground">
-                    No domains available. Please create a domain first.
-                  </div>
-                ) : (
-                  domainsData?.data?.map((domain) => (
-                    <SelectItem key={domain.id} value={domain.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{domain.name}</span>
-                        <Badge variant="outline" className="text-xs font-mono">
-                          {domain.code}
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Empty State */}
-          <div className="flex items-center justify-center h-[40vh]">
-            <div className="text-center">
-              <Database className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-lg font-medium text-muted-foreground">Select a domain to view datasets</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Datasets are organized by domain
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Loading state
-  if (isLoadingDatasets) {
+  if (isLoading) {
     return (
       <div className="min-h-screen">
         <Header
           title="Dataset Catalog"
           subtitle="Browse and manage registered datasets"
         />
-        <div className="p-6">
-          <div className="flex items-center justify-center h-[60vh]">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
-              <p className="mt-2 text-muted-foreground">Loading datasets...</p>
-            </div>
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
+            <p className="mt-2 text-muted-foreground">Loading datasets...</p>
           </div>
         </div>
       </div>
@@ -255,26 +205,24 @@ const Datasets = () => {
           title="Dataset Catalog"
           subtitle="Browse and manage registered datasets"
         />
-        <div className="p-6">
-          <div className="flex items-center justify-center h-[60vh]">
-            <div className="text-center">
-              <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
-              <p className="mt-2 text-lg font-medium">Failed to load datasets</p>
-              <p className="text-sm text-muted-foreground mb-4">
-                {(error as any)?.message || "An error occurred"}
-              </p>
-              <Button onClick={() => refetch()} variant="outline">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Try Again
-              </Button>
-            </div>
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
+            <p className="mt-2 text-lg font-medium">Failed to load datasets</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              {(error as any)?.message || "An error occurred"}
+            </p>
+            <Button onClick={() => refetch()} variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Try Again
+            </Button>
           </div>
         </div>
       </div>
     );
   }
 
-  const selectedDomain = domainsData?.data?.find((d) => d.id === selectedDomainId);
+  const totalCount = datasets?.length ?? 0;
 
   return (
     <div className="min-h-screen">
@@ -283,46 +231,6 @@ const Datasets = () => {
         subtitle="Browse and manage registered datasets"
       />
       <div className="p-6 space-y-6">
-        {/* Domain Selector */}
-        <div className="flex items-center gap-4 p-4 bg-card rounded-xl border border-border">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-accent" />
-            <span className="text-sm font-medium">Domain:</span>
-          </div>
-          <Select value={selectedDomainId} onValueChange={setSelectedDomainId}>
-            <SelectTrigger className="w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {domainsData?.data?.map((domain) => (
-                <SelectItem key={domain.id} value={domain.id}>
-                  <div className="flex items-center gap-2">
-                    <span>{domain.name}</span>
-                    <Badge variant="outline" className="text-xs font-mono">
-                      {domain.code}
-                    </Badge>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedDomain && (
-            <Badge className={selectedDomain.status === "ACTIVE" ? "badge-active" : "badge-inactive"}>
-              {selectedDomain.status}
-            </Badge>
-          )}
-          <div className="ml-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="stat-card">
@@ -331,8 +239,19 @@ const Datasets = () => {
                 <Database className="w-6 h-6 text-info" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{datasetsData?.total || 0}</p>
+                <p className="text-2xl font-bold">{totalCount}</p>
                 <p className="text-sm text-muted-foreground">Total Datasets</p>
+              </div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-accent/10">
+                <Database className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{filteredDatasets.length}</p>
+                <p className="text-sm text-muted-foreground">Showing Results</p>
               </div>
             </div>
           </div>
@@ -342,23 +261,8 @@ const Datasets = () => {
                 <Database className="w-6 h-6 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">
-                  {datasetsData?.data?.filter((d) => d.status === "published").length || 0}
-                </p>
-                <p className="text-sm text-muted-foreground">Published</p>
-              </div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-warning/10">
-                <Database className="w-6 h-6 text-warning" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {datasetsData?.data?.filter((d) => d.status === "draft").length || 0}
-                </p>
-                <p className="text-sm text-muted-foreground">Draft</p>
+                <p className="text-2xl font-bold">{distinctClassifications.length}</p>
+                <p className="text-sm text-muted-foreground">Classifications</p>
               </div>
             </div>
           </div>
@@ -366,91 +270,123 @@ const Datasets = () => {
 
         {/* Toolbar */}
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search datasets..."
-              className="pl-10"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2">
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn("rounded-none", viewMode === "grid" && "bg-muted")}
-                onClick={() => setViewMode("grid")}
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn("rounded-none", viewMode === "list" && "bg-muted")}
-                onClick={() => setViewMode("list")}
-              >
-                <List className="w-4 h-4" />
-              </Button>
+          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto md:flex-1 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search datasets, schemas, providers..."
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
+
+            {/* Filter popover */}
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={hasActiveFilters ? "border-accent" : ""}>
+                <Button variant="outline" size="sm" className="relative">
                   <Filter className="w-4 h-4 mr-2" />
                   Filter
                   {hasActiveFilters && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                      {[filterFormat !== "all", filterStatus !== "all"].filter(Boolean).length}
-                    </Badge>
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-accent" />
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80" align="end">
+              <PopoverContent className="w-72" align="end">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Filters</h4>
+                    <h4 className="text-sm font-semibold">Filters</h4>
                     {hasActiveFilters && (
-                      <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 px-2">
-                        <X className="w-3 h-3 mr-1" />
+                      <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="text-xs text-accent hover:underline flex items-center gap-1"
+                      >
+                        <X className="w-3 h-3" />
                         Clear
-                      </Button>
+                      </button>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label>Format</Label>
-                    <Select value={filterFormat} onValueChange={setFilterFormat}>
+                    <Label className="text-xs">Classification</Label>
+                    <Select value={filterClassification} onValueChange={setFilterClassification}>
                       <SelectTrigger>
-                        <SelectValue placeholder="All formats" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All formats</SelectItem>
-                        <SelectItem value="WMS">WMS</SelectItem>
-                        <SelectItem value="WFS">WFS</SelectItem>
-                        <SelectItem value="WCS">WCS</SelectItem>
+                        <SelectItem value="all">All classifications</SelectItem>
+                        {distinctClassifications.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Status</Label>
+                    <Label className="text-xs">Status</Label>
                     <Select value={filterStatus} onValueChange={setFilterStatus}>
                       <SelectTrigger>
-                        <SelectValue placeholder="All status" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All status</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
-                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        {distinctStatuses.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
               </PopoverContent>
             </Popover>
+          </div>
+
+          <div className="flex gap-2">
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-md border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                className={cn(
+                  "p-2 transition-colors",
+                  viewMode === "grid" ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+                )}
+                aria-label="Grid view"
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={cn(
+                  "p-2 transition-colors",
+                  viewMode === "list" ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+                )}
+                aria-label="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
             <Button
               size="sm"
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
-              onClick={() => setIsFormOpen(true)}
+              onClick={() => {
+                resetForm();
+                setIsAddDialogOpen(true);
+              }}
             >
               <Plus className="w-4 h-4 mr-2" />
               Register Dataset
@@ -458,181 +394,134 @@ const Datasets = () => {
           </div>
         </div>
 
-        {/* Dataset Grid/List */}
+        {/* Empty state */}
         {filteredDatasets.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Database className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <div className="bg-card rounded-xl border border-border p-12 text-center">
+            <Database className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
             <p className="text-lg font-medium">No datasets found</p>
-            <p className="text-sm">Try adjusting your search or filter criteria</p>
+            <p className="text-sm text-muted-foreground">
+              {searchQuery || hasActiveFilters
+                ? "Try adjusting your search or filters"
+                : "Register your first dataset to get started"}
+            </p>
           </div>
         ) : viewMode === "grid" ? (
+          // Grid view
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDatasets.map((dataset, index) => (
+            {filteredDatasets.map((dataset) => (
               <Card
-                key={dataset.id}
-                className="group hover:shadow-lg transition-all duration-300 hover:border-accent/50 animate-slide-up"
-                style={{ animationDelay: `${index * 50}ms` }}
+                key={dataset.dataset_id}
+                className="hover:border-accent/50 transition-colors cursor-pointer"
+                onClick={() => openViewDialog(dataset)}
               >
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="p-2 rounded-lg bg-accent/10">
-                      <Database className="w-5 h-5 text-accent" />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2 rounded-lg bg-accent/10 flex-shrink-0">
+                        <Database className="w-5 h-5 text-accent" />
+                      </div>
+                      <CardTitle className="text-base font-semibold truncate">
+                        {dataset.dataset_name}
+                      </CardTitle>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        className={
-                          dataset.status === "published"
-                            ? "badge-active"
-                            : "badge-pending"
-                        }
-                      >
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="flex-shrink-0">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openViewDialog(dataset)}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Schema</p>
+                    <p className="text-sm font-medium truncate">{dataset.schema_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Provider</p>
+                    <p className="text-sm font-medium truncate">{dataset.provider_name}</p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    {dataset.classification && (
+                      <Badge variant="outline" className={cn(classificationClass(dataset.classification))}>
+                        {dataset.classification}
+                      </Badge>
+                    )}
+                    {dataset.status && (
+                      <Badge variant="outline" className={cn(statusClass(dataset.status))}>
                         {dataset.status}
                       </Badge>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewDataset(dataset)}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExternalLink(dataset.endpoint)}>
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Open Endpoint
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedDataset(dataset);
-                              setIsDeleteDialogOpen(true);
-                            }}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Dataset
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                  <CardTitle className="text-base mt-3 group-hover:text-accent transition-colors">
-                    {dataset.name}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Building2 className="w-4 h-4" />
-                      <span>{dataset.provider || "Unknown provider"}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="w-4 h-4" />
-                      <span className="truncate">{dataset.endpoint}</span>
-                    </div>
-                    {dataset.created_at && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-4 h-4" />
-                        <span>{formatDate(dataset.created_at)}</span>
-                      </div>
                     )}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <div className="flex gap-2">
-                      <Badge variant="outline">{dataset.format}</Badge>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-accent"
-                      onClick={() => handleExternalLink(dataset.endpoint)}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : (
-          /* List View */
+          // List view (table)
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="table-header">
                   <TableHead>Dataset</TableHead>
+                  <TableHead>Schema</TableHead>
                   <TableHead>Provider</TableHead>
-                  <TableHead>Format</TableHead>
+                  <TableHead>Classification</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDatasets.map((dataset) => (
-                  <TableRow key={dataset.id} className="hover:bg-muted/50">
+                  <TableRow
+                    key={dataset.dataset_id}
+                    className="hover:bg-muted/50 cursor-pointer"
+                    onClick={() => openViewDialog(dataset)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-accent/10">
+                        <div className="p-2 rounded-lg bg-accent/10 flex-shrink-0">
                           <Database className="w-4 h-4 text-accent" />
                         </div>
-                        <div>
-                          <span className="font-medium">{dataset.name}</span>
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {dataset.endpoint}
-                          </p>
-                        </div>
+                        <span className="font-medium">{dataset.dataset_name}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{dataset.provider || "-"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{dataset.format}</Badge>
+                      <span className="font-mono text-sm">{dataset.schema_name}</span>
+                    </TableCell>
+                    <TableCell>{dataset.provider_name}</TableCell>
+                    <TableCell>
+                      {dataset.classification && (
+                        <Badge variant="outline" className={cn(classificationClass(dataset.classification))}>
+                          {dataset.classification}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        className={
-                          dataset.status === "published"
-                            ? "badge-active"
-                            : "badge-pending"
-                        }
-                      >
-                        {dataset.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {dataset.created_at ? formatDate(dataset.created_at) : "-"}
-                      </span>
+                      {dataset.status && (
+                        <Badge variant="outline" className={cn(statusClass(dataset.status))}>
+                          {dataset.status}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon">
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewDataset(dataset)}>
+                          <DropdownMenuItem onClick={() => openViewDialog(dataset)}>
                             <Eye className="w-4 h-4 mr-2" />
                             View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExternalLink(dataset.endpoint)}>
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Open Endpoint
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedDataset(dataset);
-                              setIsDeleteDialogOpen(true);
-                            }}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Dataset
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -643,117 +532,135 @@ const Datasets = () => {
             </Table>
           </div>
         )}
+      </div>
 
-        {/* Registration Form Modal */}
-        <DatasetRegistrationForm
-          open={isFormOpen}
-          onOpenChange={setIsFormOpen}
-          domainId={selectedDomainId}
-        />
+      {/* Register Dataset Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Register New Dataset</DialogTitle>
+            <DialogDescription>
+              Add a dataset to the rapiDSK Enterprise catalog.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="dataset_name">Dataset Name *</Label>
+              <Input
+                id="dataset_name"
+                placeholder="e.g. Well Production Q4 2025"
+                value={formData.dataset_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, dataset_name: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schema_name">Schema Name *</Label>
+              <Input
+                id="schema_name"
+                placeholder="e.g. well-production-v1"
+                value={formData.schema_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, schema_name: e.target.value })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Reference ke schema yang sudah didaftarkan di catalog.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="provider_id">Provider ID</Label>
+              <Input
+                id="provider_id"
+                placeholder="UUID dari /providers (opsional)"
+                value={formData.provider_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, provider_id: e.target.value })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Phase 5 akan ganti jadi dropdown dari /providers list.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddDataset}
+              className="bg-accent hover:bg-accent/90"
+              disabled={createMutation.isPending}
+            >
+              {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Register Dataset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        {/* View Dataset Dialog */}
-        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>Dataset Details</DialogTitle>
-            </DialogHeader>
-            {selectedDataset && (
-              <div className="space-y-4 py-4">
-                <div className="flex items-start gap-4">
-                  <div className="p-3 rounded-xl bg-accent/10">
-                    <Database className="w-8 h-8 text-accent" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold">{selectedDataset.name}</h3>
-                    <p className="text-sm text-muted-foreground">{selectedDataset.provider}</p>
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant="outline">{selectedDataset.format}</Badge>
+      {/* View Dataset Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Dataset Details</DialogTitle>
+          </DialogHeader>
+          {selectedDataset && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-start gap-4">
+                <div className="p-3 rounded-xl bg-accent/10 flex-shrink-0">
+                  <Database className="w-8 h-8 text-accent" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-semibold">{selectedDataset.dataset_name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedDataset.provider_name}</p>
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {selectedDataset.classification && (
                       <Badge
-                        className={
-                          selectedDataset.status === "published"
-                            ? "badge-active"
-                            : "badge-pending"
-                        }
+                        variant="outline"
+                        className={cn(classificationClass(selectedDataset.classification))}
+                      >
+                        {selectedDataset.classification}
+                      </Badge>
+                    )}
+                    {selectedDataset.status && (
+                      <Badge
+                        variant="outline"
+                        className={cn(statusClass(selectedDataset.status))}
                       >
                         {selectedDataset.status}
                       </Badge>
-                    </div>
+                    )}
                   </div>
-                </div>
-
-                {selectedDataset.description && (
-                  <div className="pt-4 border-t">
-                    <p className="text-sm text-muted-foreground mb-1">Description</p>
-                    <p className="text-sm">{selectedDataset.description}</p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Endpoint</p>
-                    <p className="font-medium text-sm truncate">{selectedDataset.endpoint}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Version</p>
-                    <p className="font-medium">{selectedDataset.version || "-"}</p>
-                  </div>
-                  {selectedDataset.created_at && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Created At</p>
-                      <p className="font-medium">{formatDate(selectedDataset.created_at)}</p>
-                    </div>
-                  )}
-                  {selectedDataset.updated_at && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Updated At</p>
-                      <p className="font-medium">{formatDate(selectedDataset.updated_at)}</p>
-                    </div>
-                  )}
                 </div>
               </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-                Close
-              </Button>
-              <Button
-                className="bg-accent hover:bg-accent/90"
-                onClick={() => {
-                  if (selectedDataset) {
-                    handleExternalLink(selectedDataset.endpoint);
-                  }
-                }}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Open Endpoint
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Dataset</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete "{selectedDataset?.name}"? This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteDataset}
-                className="bg-destructive hover:bg-destructive/90"
-                disabled={deleteMutation.isPending}
-              >
-                {deleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
+              <div className="grid grid-cols-1 gap-3 pt-4 border-t">
+                <div>
+                  <p className="text-sm text-muted-foreground">Dataset ID</p>
+                  <p className="font-mono text-xs break-all">
+                    {selectedDataset.dataset_id}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Schema</p>
+                  <p className="font-mono text-sm">{selectedDataset.schema_name}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Provider</p>
+                  <p className="font-medium">{selectedDataset.provider_name}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

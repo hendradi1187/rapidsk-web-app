@@ -17,8 +17,6 @@ import {
   MoreHorizontal,
   Building2,
   Eye,
-  Pencil,
-  Trash2,
   Loader2,
   AlertCircle,
   RefreshCw,
@@ -36,72 +34,52 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   useOrganizations,
   useCreateOrganization,
-  useUpdateOrganization,
-  useDeleteOrganization,
 } from "@/api/hooks/useOrganizations";
-import { Organization } from "@/api/types";
+import type { Organization } from "@/api/types/governance";
 
 const Organizations = () => {
   // State management
   const [searchQuery, setSearchQuery] = useState("");
-  const [page, setPage] = useState(0);
-  const pageSize = 20;
 
   // Dialog states
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
 
-  // Form state
+  // Form state — schema rapiDSK Enterprise: organization_name (required) + organization_type
   const [formData, setFormData] = useState({
-    name: "",
-    code: "",
-    description: "",
+    organization_name: "",
+    organization_type: "",
   });
 
   // API hooks
   const {
-    data: organizationsData,
+    data: organizations,
     isLoading,
     isError,
     error,
     refetch,
-  } = useOrganizations({ limit: pageSize, offset: page * pageSize });
+  } = useOrganizations();
 
   const createMutation = useCreateOrganization();
-  const updateMutation = useUpdateOrganization();
-  const deleteMutation = useDeleteOrganization();
 
-  // Filter organizations based on search
+  // Filter organizations based on search (client-side — spec belum support filter param)
   const filteredOrganizations = useMemo(() => {
-    if (!organizationsData?.data) return [];
-    return organizationsData.data.filter((org) =>
-      org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.description.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!organizations) return [];
+    const q = searchQuery.toLowerCase();
+    return organizations.filter(
+      (org) =>
+        org.organization_name.toLowerCase().includes(q) ||
+        (org.organization_type ?? "").toLowerCase().includes(q),
     );
-  }, [organizationsData?.data, searchQuery]);
+  }, [organizations, searchQuery]);
 
   // Generate avatar from name
   const getAvatar = (name: string) => {
@@ -113,48 +91,25 @@ const Organizations = () => {
       .toUpperCase();
   };
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
-
   // Reset form
   const resetForm = () => {
     setFormData({
-      name: "",
-      code: "",
-      description: "",
+      organization_name: "",
+      organization_type: "",
     });
   };
 
   // Handle add organization
   const handleAddOrganization = async () => {
-    if (!formData.name.trim()) {
+    if (!formData.organization_name.trim()) {
       toast.error("Organization name is required");
-      return;
-    }
-    if (!formData.code.trim()) {
-      toast.error("Organization code is required");
-      return;
-    }
-    if (formData.code.length < 2 || formData.code.length > 20) {
-      toast.error("Code must be between 2-20 characters");
-      return;
-    }
-    if (!formData.description.trim() || formData.description.length < 10) {
-      toast.error("Description must be at least 10 characters");
       return;
     }
 
     try {
       await createMutation.mutateAsync({
-        name: formData.name,
-        code: formData.code.toUpperCase(),
-        description: formData.description,
+        organization_name: formData.organization_name.trim(),
+        organization_type: formData.organization_type.trim() || undefined,
       });
       setIsAddDialogOpen(false);
       resetForm();
@@ -164,71 +119,10 @@ const Organizations = () => {
     }
   };
 
-  // Handle edit organization
-  const handleEditOrganization = async () => {
-    if (!selectedOrganization) return;
-
-    if (!formData.name.trim()) {
-      toast.error("Organization name is required");
-      return;
-    }
-    if (!formData.description.trim() || formData.description.length < 10) {
-      toast.error("Description must be at least 10 characters");
-      return;
-    }
-
-    try {
-      await updateMutation.mutateAsync({
-        id: selectedOrganization.id,
-        data: {
-          name: formData.name,
-          description: formData.description,
-        },
-      });
-      setIsEditDialogOpen(false);
-      setSelectedOrganization(null);
-      resetForm();
-      toast.success("Organization updated successfully");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to update organization");
-    }
-  };
-
-  // Handle delete organization
-  const handleDeleteOrganization = async () => {
-    if (!selectedOrganization) return;
-
-    try {
-      await deleteMutation.mutateAsync(selectedOrganization.id);
-      setIsDeleteDialogOpen(false);
-      setSelectedOrganization(null);
-      toast.success("Organization deleted successfully");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to delete organization");
-    }
-  };
-
-  // Open edit dialog
-  const openEditDialog = (org: Organization) => {
-    setSelectedOrganization(org);
-    setFormData({
-      name: org.name,
-      code: org.code,
-      description: org.description,
-    });
-    setIsEditDialogOpen(true);
-  };
-
   // Open view dialog
   const openViewDialog = (org: Organization) => {
     setSelectedOrganization(org);
     setIsViewDialogOpen(true);
-  };
-
-  // Open delete dialog
-  const openDeleteDialog = (org: Organization) => {
-    setSelectedOrganization(org);
-    setIsDeleteDialogOpen(true);
   };
 
   // Loading state
@@ -274,6 +168,8 @@ const Organizations = () => {
     );
   }
 
+  const totalCount = organizations?.length ?? 0;
+
   return (
     <div className="min-h-screen">
       <Header
@@ -289,7 +185,7 @@ const Organizations = () => {
                 <Building2 className="w-6 h-6 text-info" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{organizationsData?.total || 0}</p>
+                <p className="text-2xl font-bold">{totalCount}</p>
                 <p className="text-sm text-muted-foreground">Total Organizations</p>
               </div>
             </div>
@@ -311,8 +207,10 @@ const Organizations = () => {
                 <Building2 className="w-6 h-6 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{pageSize}</p>
-                <p className="text-sm text-muted-foreground">Per Page</p>
+                <p className="text-2xl font-bold">
+                  {new Set(organizations?.map((o) => o.organization_type).filter(Boolean)).size}
+                </p>
+                <p className="text-sm text-muted-foreground">Organization Types</p>
               </div>
             </div>
           </div>
@@ -359,17 +257,15 @@ const Organizations = () => {
             <TableHeader>
               <TableRow className="table-header">
                 <TableHead>Organization</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Updated</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>ID</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredOrganizations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                     <Building2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p className="text-lg font-medium">No organizations found</p>
                     <p className="text-sm">
@@ -379,35 +275,29 @@ const Organizations = () => {
                 </TableRow>
               ) : (
                 filteredOrganizations.map((org) => (
-                  <TableRow key={org.id} className="hover:bg-muted/50">
+                  <TableRow key={org.organization_id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="w-9 h-9">
                           <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                            {getAvatar(org.name)}
+                            {getAvatar(org.organization_name)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="font-medium">{org.name}</span>
+                        <span className="font-medium">{org.organization_name}</span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono">
-                        {org.code}
-                      </Badge>
+                      {org.organization_type ? (
+                        <Badge variant="outline" className="font-mono">
+                          {org.organization_type}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">unspecified</span>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <span className="text-muted-foreground line-clamp-1 max-w-[300px]">
-                        {org.description}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {formatDate(org.created_at)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {formatDate(org.updated_at)}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {org.organization_id}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -422,18 +312,6 @@ const Organizations = () => {
                             <Eye className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditDialog(org)}>
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Edit Organization
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => openDeleteDialog(org)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Organization
-                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -443,35 +321,6 @@ const Organizations = () => {
             </TableBody>
           </Table>
         </div>
-
-        {/* Pagination Info */}
-        {organizationsData && organizationsData.total > 0 && (
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              Showing {page * pageSize + 1} to{" "}
-              {Math.min((page + 1) * pageSize, organizationsData.total)} of{" "}
-              {organizationsData.total} organizations
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={(page + 1) * pageSize >= organizationsData.total}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Add Organization Dialog */}
@@ -485,36 +334,29 @@ const Organizations = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Organization Name *</Label>
+              <Label htmlFor="organization_name">Organization Name *</Label>
               <Input
-                id="name"
-                placeholder="Enter organization name (min 3 characters)"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                id="organization_name"
+                placeholder="Enter organization name"
+                value={formData.organization_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, organization_name: e.target.value })
+                }
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="code">Organization Code *</Label>
+              <Label htmlFor="organization_type">Organization Type</Label>
               <Input
-                id="code"
-                placeholder="Unique code (2-20 characters, e.g., SKK)"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                maxLength={20}
+                id="organization_type"
+                placeholder="e.g. KKKS, REGULATOR, PLATFORM"
+                value={formData.organization_type}
+                onChange={(e) =>
+                  setFormData({ ...formData, organization_type: e.target.value })
+                }
               />
               <p className="text-xs text-muted-foreground">
-                This code must be unique and will be used as identifier
+                Optional. Backend may later restrict to a fixed enum.
               </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description *</Label>
-              <Textarea
-                id="description"
-                placeholder="Enter description (min 10 characters)"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-              />
             </div>
           </div>
           <DialogFooter>
@@ -533,64 +375,6 @@ const Organizations = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Organization Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Organization</DialogTitle>
-            <DialogDescription>
-              Update organization details. Code cannot be changed.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Organization Name *</Label>
-              <Input
-                id="edit-name"
-                placeholder="Enter organization name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-code">Organization Code</Label>
-              <Input
-                id="edit-code"
-                value={formData.code}
-                disabled
-                className="bg-muted"
-              />
-              <p className="text-xs text-muted-foreground">
-                Code cannot be changed after creation
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Description *</Label>
-              <Textarea
-                id="edit-description"
-                placeholder="Enter description (min 10 characters)"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleEditOrganization}
-              className="bg-accent hover:bg-accent/90"
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* View Organization Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
@@ -602,38 +386,35 @@ const Organizations = () => {
               <div className="flex items-center gap-4">
                 <Avatar className="w-16 h-16">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xl font-semibold">
-                    {getAvatar(selectedOrganization.name)}
+                    {getAvatar(selectedOrganization.organization_name)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h3 className="text-lg font-semibold">{selectedOrganization.name}</h3>
-                  <Badge variant="outline" className="font-mono mt-1">
-                    {selectedOrganization.code}
-                  </Badge>
+                  <h3 className="text-lg font-semibold">
+                    {selectedOrganization.organization_name}
+                  </h3>
+                  {selectedOrganization.organization_type && (
+                    <Badge variant="outline" className="font-mono mt-1">
+                      {selectedOrganization.organization_type}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground mb-1">Description</p>
-                <p className="text-sm">{selectedOrganization.description}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div className="grid grid-cols-1 gap-3 pt-4 border-t">
                 <div>
-                  <p className="text-sm text-muted-foreground">Created At</p>
-                  <p className="font-medium">{formatDate(selectedOrganization.created_at)}</p>
+                  <p className="text-sm text-muted-foreground">Organization ID</p>
+                  <p className="font-mono text-xs break-all">
+                    {selectedOrganization.organization_id}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Updated At</p>
-                  <p className="font-medium">{formatDate(selectedOrganization.updated_at)}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-sm text-muted-foreground">Created By</p>
-                  <p className="font-medium">{selectedOrganization.created_by || "System"}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-sm text-muted-foreground">ID</p>
-                  <p className="font-mono text-xs text-muted-foreground">{selectedOrganization.id}</p>
+                  <p className="text-sm text-muted-foreground">Type</p>
+                  <p className="font-medium">
+                    {selectedOrganization.organization_type ?? (
+                      <span className="text-xs text-muted-foreground italic">unspecified</span>
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
@@ -642,41 +423,9 @@ const Organizations = () => {
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
               Close
             </Button>
-            <Button
-              onClick={() => {
-                setIsViewDialogOpen(false);
-                if (selectedOrganization) openEditDialog(selectedOrganization);
-              }}
-              className="bg-accent hover:bg-accent/90"
-            >
-              Edit Organization
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Organization</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{selectedOrganization?.name}"? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteOrganization}
-              className="bg-destructive hover:bg-destructive/90"
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

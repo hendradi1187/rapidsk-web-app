@@ -1,4 +1,9 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
+import {
+  ensureValidToken,
+  getKeycloakToken,
+  isKeycloakConfigured,
+} from "@/auth/keycloak";
 
 // API Base URL - can be configured via environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8181";
@@ -14,9 +19,23 @@ export const apiClient: AxiosInstance = axios.create({
 
 // Request interceptor for adding auth token, logging, etc.
 apiClient.interceptors.request.use(
-  (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem("auth_token");
+  async (config) => {
+    // ─── Token resolution ──────────────────────────────────────────────
+    // Priority 1: Keycloak (Phase 1B) — single JWT untuk dua backend.
+    // Priority 2: localStorage `auth_token` (legacy rapiDSK login fallback).
+    let token: string | null = null;
+
+    if (isKeycloakConfigured) {
+      const refreshed = await ensureValidToken(30);
+      if (refreshed) {
+        token = getKeycloakToken();
+      }
+    }
+
+    if (!token) {
+      token = localStorage.getItem("auth_token");
+    }
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

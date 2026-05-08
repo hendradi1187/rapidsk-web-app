@@ -16,7 +16,10 @@ import type { ApiCategory } from "@/components/api-docs";
 import { useOpenApiSpec } from "@/hooks/use-openapi-spec";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8181";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+
+// FastAPI exposes /docs and /openapi.json at root (bukan di bawah /api/v1).
+const API_ROOT_URL = API_BASE_URL.replace(/\/api\/v\d+\/?$/, "");
 
 export default function ApiDocs() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,7 +67,7 @@ export default function ApiDocs() {
   const checkConnection = async () => {
     setIsChecking(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/openapi.json`, {
+      const response = await fetch(`${API_ROOT_URL}/openapi.json`, {
         method: "HEAD",
         mode: "cors",
         signal: AbortSignal.timeout(5000),
@@ -107,7 +110,7 @@ export default function ApiDocs() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.open(`${API_BASE_URL}/docs`, "_blank")}
+            onClick={() => window.open(`${API_ROOT_URL}/docs`, "_blank")}
           >
             <ExternalLink className="h-4 w-4 mr-2" />
             Swagger UI

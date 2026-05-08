@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Silent SSO Check</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <!--
+      Iframe target untuk Keycloak silent SSO check.
+      Keycloak adapter (init dengan onLoad: "check-sso") load page ini di
+      hidden iframe untuk cek apakah user sudah punya sesi aktif di IdP.
+      Saat sesi terdeteksi, parent.postMessage akan trigger token retrieval.
+    -->
+    <script>
+      parent.postMessage(location.href, location.origin);
+    </script>
+  </body>
+</html>

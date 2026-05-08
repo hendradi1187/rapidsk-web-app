@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useLogout } from "@/api/hooks/useUsers";
+import { useLogout } from "@/api/hooks/useAuth";
 import { useAuth, type AppRole } from "@/context/AuthContext";
 import { ROLE_LABELS } from "@/config/rbac";
 import { cn } from "@/lib/utils";
@@ -24,9 +24,12 @@ interface HeaderProps {
 
 const ROLE_BADGE_CLASS: Record<AppRole, string> = {
   SUPER_ADMIN: "border-primary text-primary",
+  ADMIN: "border-primary/70 text-primary/90",
   PROVIDER: "border-accent text-accent",
   CONSUMER: "border-blue-500 text-blue-500",
   VIEWER: "border-muted-foreground text-muted-foreground",
+  AUDITOR: "border-amber-500 text-amber-500",
+  GIS_ANALYST: "border-emerald-500 text-emerald-500",
 };
 
 export const Header = ({ title, subtitle }: HeaderProps) => {

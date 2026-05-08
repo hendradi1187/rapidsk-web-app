@@ -1,54 +1,26 @@
-import { PaginatedResponse } from "./common";
-
 // ============ AUDIT LOG ============
-// Based on UI data from Audit.tsx
-
-export type AuditAction =
-  | "DATA_ACCESS"
-  | "CONTRACT_SIGNED"
-  | "DATASET_REGISTERED"
-  | "DATA_TRANSFER"
-  | "ACCESS_DENIED"
-  | "POLICY_UPDATED"
-  | "USER_LOGIN"
-  | "USER_LOGOUT"
-  | "CONFIG_CHANGED";
-
-export type AuditStatus = "success" | "failed" | "warning";
+// Based on rapiDSK Enterprise OpenAPI spec /audit/logs
+//
+// Spec sangat minim — hanya 4 field. Backend mungkin extend di masa depan
+// dengan target/purpose/ip_address/session_id/details. Frontend siap menerima
+// extra field opsional (lihat Q-E, Q-F di plan doc).
 
 export interface AuditLog {
-  id: number;
-  timestamp: string;
-  action: AuditAction;
-  actor: string;
-  target: string;
-  provider: string;
-  purpose: string;
-  status: AuditStatus;
-  ipAddress: string;
-  // Extended fields
-  details?: Record<string, unknown>;
-  userAgent?: string;
-  sessionId?: string;
-  domain_id?: string;
-  created_at?: string;
+  audit_id: string;
+  action: string;             // Free string per spec; kemungkinan enum di backend (Q-E)
+  performed_by: string;
+  timestamp: string;          // ISO 8601 date-time
+
+  // Reserved untuk future extension oleh backend (Q-F):
+  target?: string;
+  purpose?: string;
+  status?: string;
+  ip_address?: string;
+  session_id?: string;
+  details?: string;
 }
 
-export interface AuditLogFilter {
-  startDate?: string;
-  endDate?: string;
-  action?: AuditAction;
-  actor?: string;
-  status?: AuditStatus;
-  provider?: string;
-}
-
-export interface AuditStats {
-  todayEvents: number;
-  dataAccesses: number;
-  transfers: number;
-  deniedAttempts: number;
-}
-
-export type AuditLogListResponse = PaginatedResponse<AuditLog>;
-export type AuditLogResponse = AuditLog;
+/**
+ * `GET /audit/logs` returns plain `AuditLog[]` (no pagination wrapper di spec).
+ */
+export type AuditLogListResponse = AuditLog[];

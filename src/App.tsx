@@ -9,15 +9,15 @@ import { ProtectedRoute, PublicRoute } from "@/components/auth/ProtectedRoute";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Onboarding from "./pages/Onboarding";
 import Organizations from "./pages/Organizations";
-import Domains from "./pages/Domains";
-import ParticipantsPage from "./pages/Participants";
+import Providers from "./pages/Providers";
 import Datasets from "./pages/Datasets";
-import Contracts from "./pages/Contracts";
-import DataTransfer from "./pages/DataTransfer";
+import Schemas from "./pages/Schemas";
+import Vocabularies from "./pages/Vocabularies";
+import Mapping from "./pages/Mapping";
+import ArcGISServices from "./pages/ArcGISServices";
+import Policies from "./pages/Policies";
 import Audit from "./pages/Audit";
-import Compliance from "./pages/Compliance";
 import ApiDocs from "./pages/ApiDocs";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -51,15 +51,15 @@ const App = () => (
                     <RoleGuard>
                       <Routes>
                         <Route path="/" element={<Dashboard />} />
-                        <Route path="/onboarding" element={<Onboarding />} />
                         <Route path="/organizations" element={<Organizations />} />
-                        <Route path="/domains" element={<Domains />} />
-                        <Route path="/participants" element={<ParticipantsPage />} />
+                        <Route path="/providers" element={<Providers />} />
                         <Route path="/datasets" element={<Datasets />} />
-                        <Route path="/contracts" element={<Contracts />} />
-                        <Route path="/transfer" element={<DataTransfer />} />
+                        <Route path="/schemas" element={<Schemas />} />
+                        <Route path="/vocabularies" element={<Vocabularies />} />
+                        <Route path="/mapping" element={<Mapping />} />
+                        <Route path="/arcgis" element={<ArcGISServices />} />
+                        <Route path="/policies" element={<Policies />} />
                         <Route path="/audit" element={<Audit />} />
-                        <Route path="/compliance" element={<Compliance />} />
                         <Route path="/api-docs" element={<ApiDocs />} />
                         <Route path="/settings" element={<Settings />} />
                         <Route path="*" element={<NotFound />} />

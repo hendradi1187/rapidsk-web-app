@@ -1,71 +1,27 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useLogin } from "@/api/hooks/useUsers";
-import { Loader2, Eye, EyeOff, AlertCircle, Key, Lock, FileText, ShieldCheck } from "lucide-react";
+import { Loader2, Key, Lock, FileText, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { isKeycloakConfigured, loginWithKeycloak } from "@/auth/keycloak";
 
 const Login = () => {
-  const navigate = useNavigate();
   const location = useLocation();
-  const loginMutation = useLogin();
+  const [redirecting, setRedirecting] = useState(false);
 
   const from = (location.state as any)?.from?.pathname || "/";
 
-  const [formData, setFormData] = useState({ username: "", password: "" });
-  const [rememberMe, setRememberMe] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
-
-  const validateForm = () => {
-    const newErrors: { username?: string; password?: string } = {};
-    if (!formData.username.trim()) {
-      newErrors.username = "Username is required";
-    } else if (formData.username.length < 3) {
-      newErrors.username = "Username must be at least 3 characters";
-    }
-    if (!formData.password) {
-      newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    try {
-      await loginMutation.mutateAsync({
-        username: formData.username,
-        password: formData.password,
+  const handleSsoLogin = () => {
+    if (!isKeycloakConfigured) {
+      toast.info("SSO not configured", {
+        description:
+          "Set VITE_KEYCLOAK_URL, VITE_KEYCLOAK_REALM, VITE_KEYCLOAK_CLIENT_ID in .env",
       });
-
-      if (rememberMe) {
-        localStorage.setItem("remember_username", formData.username);
-      } else {
-        localStorage.removeItem("remember_username");
-      }
-
-      setTimeout(() => navigate(from, { replace: true }), 500);
-    } catch (error: any) {
-      console.error("Login failed:", error);
+      return;
     }
+    setRedirecting(true);
+    loginWithKeycloak(window.location.origin + from);
   };
-
-  // Load remembered username on mount
-  useState(() => {
-    const remembered = localStorage.getItem("remember_username");
-    if (remembered) {
-      setFormData((prev) => ({ ...prev, username: remembered }));
-      setRememberMe(true);
-    }
-  });
 
   return (
     // ── Root: full viewport, side-by-side panels ──
@@ -83,7 +39,7 @@ const Login = () => {
       >
         {/* Scrollable inner area, vertically centered */}
         <div className="flex-1 flex flex-col items-center justify-center px-10 py-12">
-          <div className="w-full max-w-[340px] flex flex-col gap-5">
+          <div className="w-full max-w-[340px] flex flex-col gap-6">
 
             {/* Logo — identik dengan Sidebar */}
             <div className="flex items-center gap-3 mb-2">
@@ -100,177 +56,51 @@ const Login = () => {
               </div>
             </div>
 
-            {/* SSO Button */}
-            <button
-              type="button"
-              onClick={() => toast.info("SSO integration coming soon")}
-              disabled={loginMutation.isPending}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
-              style={{
-                backgroundColor: "#16213a",
-                border: "1px solid #2a3a54",
-                color: "#a0aec0",
-              }}
-            >
-              <Key className="w-4 h-4" />
-              Sign in with Enterprise SSO (Keycloak)
-            </button>
-
-            {/* OR CREDENTIALS divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px" style={{ backgroundColor: "#1e2d44" }} />
-              <span
-                className="text-xs uppercase tracking-widest font-medium whitespace-nowrap"
-                style={{ color: "#4a5a72" }}
+            {/* SSO heading */}
+            <div className="flex flex-col gap-1.5">
+              <label
+                className="text-xs uppercase tracking-wider font-semibold"
+                style={{ color: "#5a6a82" }}
               >
-                OR CREDENTIALS
-              </span>
-              <div className="flex-1 h-px" style={{ backgroundColor: "#1e2d44" }} />
+                Single Sign-On
+              </label>
+              <p className="text-sm" style={{ color: "#94a3b8" }}>
+                Sign in with your enterprise identity provider to access the platform.
+              </p>
             </div>
 
-            {/* Credentials Form */}
-            <form onSubmit={handleLogin} className="flex flex-col gap-4">
-
-              {/* Email / Username */}
-              <div className="flex flex-col gap-1.5">
-                <label
-                  className="text-xs uppercase tracking-wider font-semibold"
-                  style={{ color: "#5a6a82" }}
-                >
-                  Email Address
-                </label>
-                <Input
-                  type="text"
-                  placeholder="user@organization.com"
-                  value={formData.username}
-                  onChange={(e) => {
-                    setFormData({ ...formData, username: e.target.value });
-                    setErrors({ ...errors, username: undefined });
-                  }}
-                  className="h-11 text-sm"
-                  style={{
-                    backgroundColor: "#16213a",
-                    borderColor: errors.username ? "#ef4444" : "#2a3a54",
-                    color: "#e2e8f0",
-                  }}
-                  disabled={loginMutation.isPending}
-                  autoComplete="username"
-                  autoFocus
-                />
-                {errors.username && (
-                  <p className="text-xs text-red-400">{errors.username}</p>
-                )}
-              </div>
-
-              {/* Password */}
-              <div className="flex flex-col gap-1.5">
-                <label
-                  className="text-xs uppercase tracking-wider font-semibold"
-                  style={{ color: "#5a6a82" }}
-                >
-                  Password
-                </label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter password"
-                    value={formData.password}
-                    onChange={(e) => {
-                      setFormData({ ...formData, password: e.target.value });
-                      setErrors({ ...errors, password: undefined });
-                    }}
-                    className="h-11 pr-10 text-sm"
-                    style={{
-                      backgroundColor: "#16213a",
-                      borderColor: errors.password ? "#ef4444" : "#2a3a54",
-                      color: "#e2e8f0",
-                    }}
-                    disabled={loginMutation.isPending}
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                    style={{ color: "#4a5a72" }}
-                    onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
-                  >
-                    {showPassword
-                      ? <EyeOff className="w-4 h-4" />
-                      : <Eye className="w-4 h-4" />
-                    }
-                  </button>
-                </div>
-                {errors.password && (
-                  <p className="text-xs text-red-400">{errors.password}</p>
-                )}
-              </div>
-
-              {/* Remember me + Forgot password */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="remember"
-                    checked={rememberMe}
-                    onCheckedChange={(v) => setRememberMe(v as boolean)}
-                    disabled={loginMutation.isPending}
-                    className="border-[#2a3a54] data-[state=checked]:bg-amber-400 data-[state=checked]:border-amber-400"
-                  />
-                  <label
-                    htmlFor="remember"
-                    className="text-sm cursor-pointer select-none"
-                    style={{ color: "#5a6a82" }}
-                  >
-                    Remember this device
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  className="text-sm hover:opacity-75 transition-opacity"
-                  style={{ color: "#f59e0b" }}
-                  onClick={() => toast.info("Contact your administrator to reset password")}
-                >
-                  Forgot password?
-                </button>
-              </div>
-
-              {/* Error alert */}
-              {loginMutation.isError && (
-                <Alert
-                  className="border"
-                  style={{
-                    backgroundColor: "rgba(239,68,68,0.08)",
-                    borderColor: "rgba(239,68,68,0.25)",
-                  }}
-                >
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                  <AlertDescription className="text-red-400 text-sm">
-                    {(loginMutation.error as any)?.response?.data?.detail ||
-                      "Invalid credentials. Please try again."}
-                  </AlertDescription>
-                </Alert>
+            {/* SSO Button (primary amber) */}
+            <Button
+              type="button"
+              onClick={handleSsoLogin}
+              disabled={redirecting}
+              className="w-full h-12 font-bold text-base text-black hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: "#f59e0b" }}
+            >
+              {redirecting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Redirecting to SSO...
+                </>
+              ) : (
+                <>
+                  <Key className="w-4 h-4 mr-2" />
+                  Sign in with Enterprise SSO
+                </>
               )}
+            </Button>
 
-              {/* Sign In button */}
-              <Button
-                type="submit"
-                className="w-full h-12 font-bold text-base text-black hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: "#f59e0b" }}
-                disabled={loginMutation.isPending}
-              >
-                {loginMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  "Sign In"
-                )}
-              </Button>
-            </form>
+            {/* Provider hint */}
+            <p
+              className="text-xs text-center"
+              style={{ color: "#4a5a72" }}
+            >
+              You will be redirected to{" "}
+              <span style={{ color: "#94a3b8" }}>Keycloak</span> to authenticate.
+            </p>
 
             {/* Trust badges */}
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-2">
               {[
                 { icon: Lock, label: "SECURE ACCESS" },
                 { icon: FileText, label: "AUDIT READY" },

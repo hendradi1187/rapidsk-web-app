@@ -24,9 +24,10 @@ import {
   Clock,
   X,
   Shield,
-  Globe,
   Copy,
-  CheckCircle2,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -56,257 +57,163 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useAuditLogs } from "@/api/hooks/useAuditLogs";
+import type { AuditLog } from "@/api/types/audit";
 
-interface AuditLog {
-  id: number;
-  timestamp: string;
-  action: string;
-  actor: string;
-  target: string;
-  provider: string;
-  purpose: string;
-  status: string;
-  ipAddress: string;
-  userAgent?: string;
-  sessionId?: string;
-  details?: string;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────
 
-const initialAuditLogs: AuditLog[] = [
-  {
-    id: 1,
-    timestamp: "2025-12-30 14:32:15",
-    action: "DATA_ACCESS",
-    actor: "SKK Migas - Monitoring Team",
-    target: "Well Production Q4 2025",
-    provider: "PHE ONWJ",
-    purpose: "Monthly Report Generation",
-    status: "success",
-    ipAddress: "10.10.45.128",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
-    sessionId: "sess_abc123def456",
-    details: "Accessed 45 records from Well Production dataset for monthly compliance report generation.",
-  },
-  {
-    id: 2,
-    timestamp: "2025-12-30 14:28:42",
-    action: "CONTRACT_SIGNED",
-    actor: "Chevron Indonesia",
-    target: "Daily Production Stream Agreement",
-    provider: "Chevron Indonesia",
-    purpose: "Contract Execution",
-    status: "success",
-    ipAddress: "10.10.32.55",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/121.0",
-    sessionId: "sess_xyz789abc012",
-    details: "Digital signature applied to contract ID CTR-2025-0042. Contract duration: 12 months.",
-  },
-  {
-    id: 3,
-    timestamp: "2025-12-30 14:15:03",
-    action: "DATASET_REGISTERED",
-    actor: "PHE ONWJ - Data Admin",
-    target: "Seismic Survey Block A",
-    provider: "PHE ONWJ",
-    purpose: "Dataset Registration",
-    status: "success",
-    ipAddress: "10.10.22.89",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/17.2",
-    sessionId: "sess_phe456xyz789",
-    details: "New dataset registered with WCS endpoint. Format: GeoTIFF, Size: 2.4GB, Coverage: Block A offshore area.",
-  },
-  {
-    id: 4,
-    timestamp: "2025-12-30 13:58:21",
-    action: "DATA_TRANSFER",
-    actor: "System",
-    target: "Lifting Data Batch Transfer",
-    provider: "Pertamina Hulu Energi",
-    purpose: "Scheduled Sync",
-    status: "success",
-    ipAddress: "10.10.10.1",
-    userAgent: "RapiDSK-Connector/1.0",
-    sessionId: "sys_batch_20251230",
-    details: "Automated batch transfer completed. Records transferred: 1,248. Duration: 45 seconds.",
-  },
-  {
-    id: 5,
-    timestamp: "2025-12-30 13:45:00",
-    action: "ACCESS_DENIED",
-    actor: "Unknown User",
-    target: "Reservoir Pressure Data",
-    provider: "Medco E&P",
-    purpose: "Unauthorized Access Attempt",
-    status: "failed",
-    ipAddress: "192.168.1.105",
-    userAgent: "curl/7.81.0",
-    sessionId: "N/A",
-    details: "Access attempt blocked. Reason: Invalid credentials. IP flagged for monitoring.",
-  },
-  {
-    id: 6,
-    timestamp: "2025-12-30 12:30:15",
-    action: "POLICY_UPDATED",
-    actor: "SKK Migas - Admin",
-    target: "Real-time Access Policy",
-    provider: "System",
-    purpose: "Policy Modification",
-    status: "success",
-    ipAddress: "10.10.45.12",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
-    sessionId: "sess_admin_skk01",
-    details: "Policy latency requirement updated from 2 hours to 1 hour. Effective immediately.",
-  },
-  {
-    id: 7,
-    timestamp: "2025-12-29 16:45:30",
-    action: "DATA_ACCESS",
-    actor: "Kementerian ESDM - Analyst",
-    target: "Monthly Production Summary",
-    provider: "Multiple",
-    purpose: "National Report Compilation",
-    status: "success",
-    ipAddress: "10.10.50.22",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/120.0.0.0",
-    sessionId: "sess_esdm_rpt01",
-    details: "Aggregated data from 5 providers for national oil & gas production report.",
-  },
-  {
-    id: 8,
-    timestamp: "2025-12-29 10:15:00",
-    action: "USER_LOGIN",
-    actor: "PHE ONWJ - Data Admin",
-    target: "Admin Portal",
-    provider: "System",
-    purpose: "Authentication",
-    status: "success",
-    ipAddress: "10.10.22.89",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/17.2",
-    sessionId: "sess_phe456xyz789",
-    details: "Successful login via Keycloak SSO. 2FA verification completed.",
-  },
-];
-
-const actionTypes = [
-  "DATA_ACCESS",
-  "CONTRACT_SIGNED",
-  "DATASET_REGISTERED",
-  "DATA_TRANSFER",
-  "ACCESS_DENIED",
-  "POLICY_UPDATED",
-  "USER_LOGIN",
-];
-
+/**
+ * Pick a sensible icon for an action string. Mengikuti pattern umum
+ * (DATA_*, USER_*, DATASET_*, dll). Default ke FileText untuk yang tidak
+ * dikenali. Tidak ada hardcoded enum — adapt ke whatever backend kasih.
+ */
 const getActionIcon = (action: string) => {
-  switch (action) {
-    case "DATA_ACCESS":
-      return <Eye className="w-4 h-4" />;
-    case "DATASET_REGISTERED":
-      return <Database className="w-4 h-4" />;
-    case "CONTRACT_SIGNED":
-      return <FileText className="w-4 h-4" />;
-    case "DATA_TRANSFER":
-      return <ArrowRightLeft className="w-4 h-4" />;
-    case "ACCESS_DENIED":
-      return <Shield className="w-4 h-4" />;
-    case "POLICY_UPDATED":
-      return <FileText className="w-4 h-4" />;
-    case "USER_LOGIN":
-      return <User className="w-4 h-4" />;
-    default:
-      return <FileText className="w-4 h-4" />;
+  const a = (action || "").toUpperCase();
+  if (a.includes("DATA_ACCESS") || a.includes("ACCESS")) return <Eye className="w-4 h-4" />;
+  if (a.includes("DATASET")) return <Database className="w-4 h-4" />;
+  if (a.includes("CONTRACT")) return <FileText className="w-4 h-4" />;
+  if (a.includes("TRANSFER") || a.includes("DATA_TRANSFER")) return <ArrowRightLeft className="w-4 h-4" />;
+  if (a.includes("DENIED") || a.includes("FAILED") || a.includes("BLOCK")) return <Shield className="w-4 h-4" />;
+  if (a.includes("LOGIN") || a.includes("LOGOUT") || a.includes("AUTH")) return <User className="w-4 h-4" />;
+  if (a.includes("POLICY")) return <FileText className="w-4 h-4" />;
+  return <FileText className="w-4 h-4" />;
+};
+
+/**
+ * Format timestamp untuk display di table (date + time, locale-aware).
+ */
+const formatTimestamp = (iso: string): string => {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d
+      .toISOString()
+      .replace("T", " ")
+      .replace(/\.\d{3}Z$/, "")
+      .slice(0, 19);
+  } catch {
+    return iso;
+  }
+};
+
+/**
+ * Extract YYYY-MM-DD prefix dari ISO timestamp untuk client-side filter by date.
+ */
+const datePrefix = (iso: string): string => {
+  if (!iso) return "";
+  const idx = iso.indexOf("T");
+  if (idx === 10) return iso.slice(0, 10);
+  // Coba parse jadi Date kalau format lain
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.slice(0, 10);
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return iso.slice(0, 10);
   }
 };
 
 const Audit = () => {
-  // State management
-  const [auditLogs] = useState<AuditLog[]>(initialAuditLogs);
+  // State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDate, setSelectedDate] = useState("2025-12-30");
+  const [selectedDate, setSelectedDate] = useState<string>(""); // YYYY-MM-DD; empty = all
   const [filterAction, setFilterAction] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   // Dialog states
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  // Filter logs
+  // API
+  const {
+    data: auditLogs,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useAuditLogs();
+
+  const logs = auditLogs ?? [];
+
+  // Distinct action types for filter dropdown
+  const distinctActions = useMemo(() => {
+    return Array.from(new Set(logs.map((l) => l.action).filter(Boolean))).sort();
+  }, [logs]);
+
+  // Filter
   const filteredLogs = useMemo(() => {
-    return auditLogs.filter((log) => {
+    const q = searchQuery.toLowerCase();
+    return logs.filter((log) => {
       const matchesSearch =
-        log.actor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.target.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.purpose.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDate = log.timestamp.startsWith(selectedDate);
+        log.action?.toLowerCase().includes(q) ||
+        log.performed_by?.toLowerCase().includes(q) ||
+        log.audit_id?.toLowerCase().includes(q);
+      const matchesDate = !selectedDate || datePrefix(log.timestamp) === selectedDate;
       const matchesAction = filterAction === "all" || log.action === filterAction;
-      const matchesStatus = filterStatus === "all" || log.status === filterStatus;
-      return matchesSearch && matchesDate && matchesAction && matchesStatus;
+      return matchesSearch && matchesDate && matchesAction;
     });
-  }, [auditLogs, searchQuery, selectedDate, filterAction, filterStatus]);
+  }, [logs, searchQuery, selectedDate, filterAction]);
 
-  // Calculate stats dynamically
+  // Stats — generalized (spec tidak punya status/category breakdown)
   const stats = useMemo(() => {
-    const todayLogs = auditLogs.filter((log) => log.timestamp.startsWith(selectedDate));
+    const todayPrefix = selectedDate || new Date().toISOString().slice(0, 10);
+    const todayLogs = logs.filter((l) => datePrefix(l.timestamp) === todayPrefix);
+    const distinctPerformers = new Set(logs.map((l) => l.performed_by).filter(Boolean));
     return {
-      totalEvents: todayLogs.length,
-      dataAccesses: todayLogs.filter((log) => log.action === "DATA_ACCESS").length,
-      transfers: todayLogs.filter((log) => log.action === "DATA_TRANSFER").length,
-      deniedAttempts: todayLogs.filter((log) => log.status === "failed").length,
+      totalEvents: logs.length,
+      todayEvents: todayLogs.length,
+      actionTypes: distinctActions.length,
+      performers: distinctPerformers.size,
     };
-  }, [auditLogs, selectedDate]);
+  }, [logs, selectedDate, distinctActions]);
 
-  // Check if any filter is active
-  const hasActiveFilters = filterAction !== "all" || filterStatus !== "all";
-
-  // Clear filters
+  const hasActiveFilters = filterAction !== "all" || !!selectedDate;
   const clearFilters = () => {
     setFilterAction("all");
-    setFilterStatus("all");
+    setSelectedDate("");
   };
 
-  // Handle view log
   const handleViewLog = (log: AuditLog) => {
     setSelectedLog(log);
     setIsViewDialogOpen(true);
   };
 
-  // Handle copy to clipboard
   const handleCopyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
   };
 
-  // Handle export
+  // Export filtered logs as CSV / JSON
   const handleExport = (format: "csv" | "json") => {
+    if (filteredLogs.length === 0) {
+      toast.error("No logs to export");
+      return;
+    }
+
     const dataToExport = filteredLogs.map((log) => ({
+      audit_id: log.audit_id,
       timestamp: log.timestamp,
       action: log.action,
-      actor: log.actor,
-      target: log.target,
-      provider: log.provider,
-      purpose: log.purpose,
-      status: log.status,
-      ipAddress: log.ipAddress,
+      performed_by: log.performed_by,
     }));
 
     let content: string;
     let filename: string;
     let mimeType: string;
+    const dateStr = selectedDate || new Date().toISOString().slice(0, 10);
 
     if (format === "csv") {
       const headers = Object.keys(dataToExport[0]).join(",");
       const rows = dataToExport.map((row) =>
         Object.values(row)
-          .map((val) => `"${val}"`)
-          .join(",")
+          .map((val) => `"${String(val ?? "").replace(/"/g, '""')}"`)
+          .join(","),
       );
       content = [headers, ...rows].join("\n");
-      filename = `audit_logs_${selectedDate}.csv`;
+      filename = `audit_logs_${dateStr}.csv`;
       mimeType = "text/csv";
     } else {
       content = JSON.stringify(dataToExport, null, 2);
-      filename = `audit_logs_${selectedDate}.json`;
+      filename = `audit_logs_${dateStr}.json`;
       mimeType = "application/json";
     }
 
@@ -322,6 +229,49 @@ const Audit = () => {
 
     toast.success(`Exported ${filteredLogs.length} logs as ${format.toUpperCase()}`);
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Audit Trail"
+          subtitle="Complete audit log for compliance and monitoring"
+        />
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
+            <p className="mt-2 text-muted-foreground">Loading audit logs...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Audit Trail"
+          subtitle="Complete audit log for compliance and monitoring"
+        />
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
+            <p className="mt-2 text-lg font-medium">Failed to load audit logs</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              {(error as any)?.message || "An error occurred"}
+            </p>
+            <Button onClick={() => refetch()} variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -340,7 +290,7 @@ const Audit = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.totalEvents}</p>
-                  <p className="text-sm text-muted-foreground">Today's Events</p>
+                  <p className="text-sm text-muted-foreground">Total Events</p>
                 </div>
               </div>
             </CardContent>
@@ -349,11 +299,13 @@ const Audit = () => {
             <CardContent className="p-0">
               <div className="flex items-center gap-4">
                 <div className="p-3 rounded-xl bg-success/10">
-                  <Database className="w-6 h-6 text-success" />
+                  <Calendar className="w-6 h-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.dataAccesses}</p>
-                  <p className="text-sm text-muted-foreground">Data Accesses</p>
+                  <p className="text-2xl font-bold">{stats.todayEvents}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedDate ? "Selected Date" : "Today's Events"}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -362,11 +314,11 @@ const Audit = () => {
             <CardContent className="p-0">
               <div className="flex items-center gap-4">
                 <div className="p-3 rounded-xl bg-accent/10">
-                  <ArrowRightLeft className="w-6 h-6 text-accent" />
+                  <FileText className="w-6 h-6 text-accent" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.transfers}</p>
-                  <p className="text-sm text-muted-foreground">Transfers</p>
+                  <p className="text-2xl font-bold">{stats.actionTypes}</p>
+                  <p className="text-sm text-muted-foreground">Action Types</p>
                 </div>
               </div>
             </CardContent>
@@ -374,12 +326,12 @@ const Audit = () => {
           <Card className="stat-card">
             <CardContent className="p-0">
               <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-destructive/10">
-                  <Shield className="w-6 h-6 text-destructive" />
+                <div className="p-3 rounded-xl bg-purple-100">
+                  <User className="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.deniedAttempts}</p>
-                  <p className="text-sm text-muted-foreground">Denied Attempts</p>
+                  <p className="text-2xl font-bold">{stats.performers}</p>
+                  <p className="text-sm text-muted-foreground">Distinct Performers</p>
                 </div>
               </div>
             </CardContent>
@@ -409,6 +361,15 @@ const Audit = () => {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={hasActiveFilters ? "border-accent" : ""}>
@@ -416,7 +377,7 @@ const Audit = () => {
                   Filter
                   {hasActiveFilters && (
                     <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                      {[filterAction !== "all", filterStatus !== "all"].filter(Boolean).length}
+                      {[filterAction !== "all", !!selectedDate].filter(Boolean).length}
                     </Badge>
                   )}
                 </Button>
@@ -440,24 +401,11 @@ const Audit = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All actions</SelectItem>
-                        {actionTypes.map((action) => (
+                        {distinctActions.map((action) => (
                           <SelectItem key={action} value={action}>
                             {action.replace(/_/g, " ")}
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select value={filterStatus} onValueChange={setFilterStatus}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All status</SelectItem>
-                        <SelectItem value="success">Success</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -492,17 +440,15 @@ const Audit = () => {
               <TableRow className="table-header">
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Action</TableHead>
-                <TableHead>Actor</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Purpose</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Performed By</TableHead>
+                <TableHead>Audit ID</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p className="text-lg font-medium">No audit logs found</p>
                     <p className="text-sm">Try adjusting your search or filter criteria</p>
@@ -510,11 +456,15 @@ const Audit = () => {
                 </TableRow>
               ) : (
                 filteredLogs.map((log) => (
-                  <TableRow key={log.id} className="hover:bg-muted/50">
+                  <TableRow
+                    key={log.audit_id}
+                    className="hover:bg-muted/50 cursor-pointer"
+                    onClick={() => handleViewLog(log)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-2 text-sm">
                         <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-mono">{log.timestamp}</span>
+                        <span className="font-mono">{formatTimestamp(log.timestamp)}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -528,27 +478,20 @@ const Audit = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{log.actor}</span>
+                      <span className="font-medium">{log.performed_by}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-muted-foreground">{log.target}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{log.audit_id}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">{log.purpose}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          log.status === "success"
-                            ? "badge-active"
-                            : "bg-destructive/10 text-destructive border-destructive/30"
-                        }
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewLog(log);
+                        }}
                       >
-                        {log.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => handleViewLog(log)}>
                         <Eye className="w-4 h-4" />
                       </Button>
                     </TableCell>
@@ -561,7 +504,7 @@ const Audit = () => {
 
         {/* Results count */}
         <div className="text-sm text-muted-foreground">
-          Showing {filteredLogs.length} of {auditLogs.length} logs
+          Showing {filteredLogs.length} of {logs.length} logs
         </div>
 
         {/* View Log Dialog */}
@@ -585,96 +528,84 @@ const Audit = () => {
                       <Badge variant="outline" className="font-mono">
                         {selectedLog.action}
                       </Badge>
-                      <Badge
-                        className={
-                          selectedLog.status === "success"
-                            ? "badge-active"
-                            : "bg-destructive/10 text-destructive border-destructive/30"
-                        }
-                      >
-                        {selectedLog.status}
-                      </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
                       <Clock className="w-3 h-3 inline mr-1" />
-                      {selectedLog.timestamp}
+                      {formatTimestamp(selectedLog.timestamp)}
                     </p>
                   </div>
                 </div>
 
-                {/* Details grid */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Core details */}
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase">Actor</p>
-                    <p className="font-medium">{selectedLog.actor}</p>
+                    <p className="text-xs text-muted-foreground uppercase">Performed By</p>
+                    <p className="font-medium">{selectedLog.performed_by}</p>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase">Target</p>
-                    <p className="font-medium">{selectedLog.target}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase">Provider</p>
-                    <p className="font-medium">{selectedLog.provider}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase">Purpose</p>
-                    <p className="font-medium">{selectedLog.purpose}</p>
-                  </div>
-                </div>
-
-                {/* Technical details */}
-                <div className="pt-4 border-t space-y-3">
                   <div className="flex items-center justify-between p-2 rounded bg-muted/50">
                     <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm">IP Address</span>
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm">Audit ID</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <code className="text-sm font-mono">{selectedLog.ipAddress}</code>
+                      <code className="text-xs font-mono break-all">{selectedLog.audit_id}</code>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
-                        onClick={() => handleCopyToClipboard(selectedLog.ipAddress, "IP Address")}
+                        className="h-6 w-6 flex-shrink-0"
+                        onClick={() => handleCopyToClipboard(selectedLog.audit_id, "Audit ID")}
                       >
                         <Copy className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
-
-                  {selectedLog.sessionId && (
-                    <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm">Session ID</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <code className="text-sm font-mono">{selectedLog.sessionId}</code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => handleCopyToClipboard(selectedLog.sessionId || "", "Session ID")}
-                        >
-                          <Copy className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedLog.userAgent && (
-                    <div className="p-2 rounded bg-muted/50">
-                      <p className="text-xs text-muted-foreground uppercase mb-1">User Agent</p>
-                      <code className="text-xs font-mono break-all">{selectedLog.userAgent}</code>
-                    </div>
-                  )}
                 </div>
 
-                {/* Additional details */}
-                {selectedLog.details && (
-                  <div className="pt-4 border-t">
-                    <p className="text-xs text-muted-foreground uppercase mb-2">Details</p>
-                    <p className="text-sm bg-muted/50 p-3 rounded">{selectedLog.details}</p>
+                {/* Optional extended fields (kalau backend kasih) */}
+                {(selectedLog.target ||
+                  selectedLog.purpose ||
+                  selectedLog.status ||
+                  selectedLog.ip_address ||
+                  selectedLog.session_id ||
+                  selectedLog.details) && (
+                  <div className="pt-4 border-t space-y-3">
+                    <p className="text-xs text-muted-foreground uppercase">Additional Context</p>
+                    {selectedLog.target && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Target</p>
+                        <p className="text-sm">{selectedLog.target}</p>
+                      </div>
+                    )}
+                    {selectedLog.purpose && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Purpose</p>
+                        <p className="text-sm">{selectedLog.purpose}</p>
+                      </div>
+                    )}
+                    {selectedLog.status && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Status</p>
+                        <Badge variant="outline">{selectedLog.status}</Badge>
+                      </div>
+                    )}
+                    {selectedLog.ip_address && (
+                      <div className="flex items-center justify-between p-2 rounded bg-muted/50">
+                        <span className="text-sm">IP Address</span>
+                        <code className="text-sm font-mono">{selectedLog.ip_address}</code>
+                      </div>
+                    )}
+                    {selectedLog.session_id && (
+                      <div className="flex items-center justify-between p-2 rounded bg-muted/50">
+                        <span className="text-sm">Session ID</span>
+                        <code className="text-sm font-mono">{selectedLog.session_id}</code>
+                      </div>
+                    )}
+                    {selectedLog.details && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Details</p>
+                        <p className="text-sm bg-muted/50 p-3 rounded">{selectedLog.details}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

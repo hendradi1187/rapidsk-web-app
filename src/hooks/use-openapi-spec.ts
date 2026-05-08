@@ -3,7 +3,7 @@ import { parseOpenApiSpec } from "@/components/api-docs/openapi-parser";
 import type { ApiCategory } from "@/components/api-docs/api-endpoints";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8181";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
 
 export interface OpenApiSpecResult {
   categories: ApiCategory[];
@@ -11,12 +11,21 @@ export interface OpenApiSpecResult {
   info?: { title: string; version: string };
 }
 
+/**
+ * FastAPI default expose `/openapi.json` di root (bukan di bawah /api/v1).
+ * Strip suffix /api/v1 (kalau ada) supaya fetch ke `${root}/openapi.json` benar.
+ */
+function deriveRootUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/api\/v\d+\/?$/, "");
+}
+
 async function fetchOpenApiSpec(): Promise<OpenApiSpecResult> {
   let spec: Record<string, unknown>;
   let source: "backend" | "local" = "backend";
 
   try {
-    const response = await fetch(`${API_BASE_URL}/openapi.json`, {
+    const rootUrl = deriveRootUrl(API_BASE_URL);
+    const response = await fetch(`${rootUrl}/openapi.json`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
