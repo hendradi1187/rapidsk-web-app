@@ -132,12 +132,32 @@ const buildUserFromKeycloak = (): AuthUser | null => {
   const t = keycloak.tokenParsed as Record<string, unknown> | undefined;
   if (!t) return null;
 
-  // Realm roles dari `realm_access.roles` (Keycloak default location)
-  const realmRolesRaw = (t.realm_access as { roles?: string[] } | undefined)
-    ?.roles ?? [];
+  // ─── Defensive role extraction ──────────────────────────────────────
+  // Coba multiple lokasi (urutan probability):
+  //   1. realm_access.roles                (standard Keycloak default)
+  //   2. roles                              (custom mapper di top-level)
+  //   3. resource_access.{client}.roles     (resource-level roles)
+  const realmRoles =
+    (t.realm_access as { roles?: string[] } | undefined)?.roles ?? [];
+  const topLevelRoles = Array.isArray(t.roles) ? (t.roles as string[]) : [];
+  const resourceAccess = t.resource_access as
+    | Record<string, { roles?: string[] }>
+    | undefined;
+  const clientRoles =
+    resourceAccess && resourceAccess[(t.azp as string) ?? ""]?.roles
+      ? (resourceAccess[t.azp as string].roles as string[])
+      : [];
 
-  // Filter ke canonical roles only
-  const canonicalRoles: AppRole[] = realmRolesRaw.filter(isCanonicalRole);
+  const allRolesRaw = [...realmRoles, ...topLevelRoles, ...clientRoles];
+
+  // Normalize uppercase + dedupe + filter ke canonical 7
+  const canonicalRoles: AppRole[] = Array.from(
+    new Set(
+      allRolesRaw
+        .map((r) => (typeof r === "string" ? r.toUpperCase() : r))
+        .filter(isCanonicalRole),
+    ),
+  );
 
   // Permissions claim (custom mapper di Keycloak realm)
   const permissionsRaw = t.permissions;
@@ -154,11 +174,29 @@ const buildUserFromKeycloak = (): AuthUser | null => {
     | undefined;
   const orgName = participantRaw?.organization_name ?? "";
 
+  // Dev-only: log parsed role mapping untuk diagnose RBAC issue.
+  // Split per-line supaya copy-paste console output easy (no need to expand).
+  if (import.meta.env.DEV) {
+    console.log("[Auth] === JWT parse debug ===");
+    console.log("[Auth] realm_access.roles =", JSON.stringify(realmRoles));
+    console.log("[Auth] top-level roles =", JSON.stringify(topLevelRoles));
+    console.log("[Auth] resource_access roles =", JSON.stringify(clientRoles));
+    console.log("[Auth] canonical_roles parsed =", JSON.stringify(canonicalRoles));
+    console.log("[Auth] primary role =", primary);
+    console.log("[Auth] permissions =", JSON.stringify(permissions));
+    console.log("[Auth] name =", t.name, "| preferred_username =", t.preferred_username);
+    console.log("[Auth] FULL tokenParsed =", JSON.stringify(t, null, 2));
+    console.log("[Auth] ======================");
+  }
+
   return {
     id: (t.sub as string) ?? "",
     email: (t.email as string) ?? "",
     full_name:
-      (t.name as string) ?? (t.preferred_username as string) ?? "User",
+      (t.name as string) ??
+      (t.preferred_username as string) ??
+      (t.given_name as string) ??
+      "User",
     role: primary,
     roles: canonicalRoles.length > 0 ? canonicalRoles : ["VIEWER"],
     permissions,
