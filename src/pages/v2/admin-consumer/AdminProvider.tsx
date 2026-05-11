@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Users2, Plus, Building2, Pencil, Trash2, MailCheck, Badge as BadgeIcon } from "lucide-react";
+import { Users2, Plus, Building2, Pencil, Trash2, MailCheck, Badge as BadgeIcon, RefreshCw, Eye, EyeOff } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { V2PageShell, MetricCard, DataTable } from "../V2PageShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,23 +17,15 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   useParticipants,
   useCreateParticipant,
   useDeleteParticipant,
   useUpdateParticipant,
 } from "@/api/hooks/useParticipants";
+import { formatParticipantDeleteConflict } from "@/api/hooks/useParticipantDeleteGuard";
 import { useUsers } from "@/api/hooks/useUsers";
-import { apiClient } from "@/api/client";
+import { usersService } from "@/api/services/identity-provider";
+import { ParticipantDeleteDialog } from "@/components/participants/ParticipantDeleteDialog";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
@@ -44,7 +37,22 @@ const emptyForm = {
   contact_phone: "",
 };
 
+const getErrorDescription = (error: any) => {
+  const data = error?.response?.data;
+  if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.error === "string") return data.error;
+  if (typeof data?.message === "string") return data.message;
+  if (Array.isArray(data?.errors)) {
+    return data.errors
+      .map((item: any) => `${item.loc?.join(".") || item.field || "field"}: ${item.msg || item.message || "Invalid value"}`)
+      .join(" | ");
+  }
+  return error?.message || "Unexpected error";
+};
+
 const AdminProvider = () => {
+  const [params] = useSearchParams();
+  const tokenFromUrl = (params.get("token") || "").trim();
   const { hasPermission } = useAuth();
   const { data: participantsData, isLoading } = useParticipants({ limit: 50 });
   const { data: usersData, refetch: refetchUsers } = useUsers({ limit: 100 });
@@ -54,40 +62,94 @@ const AdminProvider = () => {
   const [open, setOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<any | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleteConflict, setDeleteConflict] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+
   const participants = participantsData?.data ?? [];
   const users = usersData?.data ?? [];
   const providers = participants.filter((participant) => participant.organization_type === "ENTERPRISE");
 
-  // Map participant → matching IDP user (by email)
   const userByParticipantEmail = (email?: string) => {
     if (!email) return undefined;
-    return users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    return users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
   };
 
-  // Confirm-email dialog state — admin paste activation token
   const [confirmTarget, setConfirmTarget] = useState<{ user_email: string; org_name: string } | null>(null);
-  const [confirmToken, setConfirmToken] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmPasswordRepeat, setConfirmPasswordRepeat] = useState("");
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [inlineResendEmail, setInlineResendEmail] = useState<string | null>(null);
+
+  const resetConfirmState = () => {
+    setConfirmTarget(null);
+    setConfirmPassword("");
+    setConfirmPasswordRepeat("");
+    setShowConfirmPassword(false);
+  };
 
   const submitConfirm = async () => {
-    if (!confirmToken.trim()) { toast.error("Token wajib"); return; }
+    if (!tokenFromUrl) {
+      toast.error("Token URL wajib");
+      return;
+    }
+    if (!confirmPassword.trim() || confirmPassword.length < 8) {
+      toast.error("Password aktivasi minimal 8 karakter");
+      return;
+    }
+    if (confirmPassword !== confirmPasswordRepeat) {
+      toast.error("Confirm password tidak sama");
+      return;
+    }
+
     setConfirming(true);
     try {
-      await apiClient.post(`/api/v1/identity-provider/users/confirm-email`, { token: confirmToken.trim() });
-      toast.success(`Email ${confirmTarget?.user_email} confirmed — provider bisa login sekarang`);
-      setConfirmTarget(null);
-      setConfirmToken("");
+      await usersService.confirmEmail({
+        token: tokenFromUrl,
+        password: confirmPassword,
+      });
+      toast.success(`Email ${confirmTarget?.user_email} confirmed`);
+      resetConfirmState();
       refetchUsers();
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const detail = err?.response?.data?.detail || err?.response?.data?.error || err?.message;
+    } catch (error: any) {
+      const status = error?.response?.status;
       toast.error(`Confirm failed (HTTP ${status})`, {
-        description: status === 404 ? "Token invalid / expired / used" : detail,
+        description: getErrorDescription(error),
         duration: 7000,
       });
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const resendConfirmation = async (email?: string | null, fromDialog = false) => {
+    if (!email) {
+      toast.error("Email user tidak tersedia");
+      return;
+    }
+
+    if (fromDialog) {
+      setResending(true);
+    } else {
+      setInlineResendEmail(email);
+    }
+
+    try {
+      await usersService.resendEmailConfirmation({ email });
+      toast.success(`Activation email dikirim ulang ke ${email}`);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      toast.error(`Resend failed (HTTP ${status})`, {
+        description: getErrorDescription(error),
+        duration: 7000,
+      });
+    } finally {
+      if (fromDialog) {
+        setResending(false);
+      } else {
+        setInlineResendEmail(null);
+      }
     }
   };
 
@@ -102,11 +164,11 @@ const AdminProvider = () => {
       return;
     }
     if (!form.address || form.address.length < 3) {
-      toast.error("Address is required (min 3 chars — backend rule)");
+      toast.error("Address is required (min 3 chars)");
       return;
     }
     if (!form.contact_name || !form.contact_phone) {
-      toast.error("Contact person name & phone are required");
+      toast.error("Contact person name and phone are required");
       return;
     }
 
@@ -162,6 +224,15 @@ const AdminProvider = () => {
       onSuccess: () => {
         toast.success("Provider removed successfully");
         setDeleteTarget(null);
+        setDeleteConflict(null);
+      },
+      onError: (error: any) => {
+        const message = formatParticipantDeleteConflict(error, []);
+        setDeleteConflict(message);
+        toast.error("Failed to delete provider participant", {
+          description: message,
+          duration: 9000,
+        });
       },
     });
   };
@@ -171,10 +242,8 @@ const AdminProvider = () => {
       <div className="rounded-xl border border-border/40 bg-muted/20 p-4 text-sm">
         <p className="font-medium">Who fills this form?</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          This page is operated by the <strong>Admin Consumer (SKK Migas)</strong>. Each entry here registers an
-          <strong> external KKKS provider organization</strong> — not your own organization. The KKKS itself does
-          not self-register on this page; their own admin only logs in <em>after</em> the consumer creates them and
-          assigns domains in <code className="rounded bg-muted px-1">Domain Mapping</code>.
+          This page is operated by the <strong>Admin Consumer (SKK Migas)</strong>. It registers an <strong>external KKKS provider participant</strong>.
+          After participant creation, linked login creation and activation should continue through onboarding and identity-provider user flows.
         </p>
       </div>
 
@@ -241,102 +310,166 @@ const AdminProvider = () => {
           </Dialog>
         </CardHeader>
         <CardContent>
-          <DataTable headers={["Organization", "Contact", "Email", "Login Status", "Created", "Actions"]} isLoading={isLoading}>
+          <DataTable headers={["Organization", "Contact", "Email", "Login Status", "Created", "Updated", "Actions"]} isLoading={isLoading}>
             {providers.length > 0 ? providers.map((provider) => {
               const matchedUser = userByParticipantEmail(provider.contact_person?.email);
+              const verified = matchedUser ? ((matchedUser as any).is_verified ?? matchedUser.is_email_confirmed) : false;
+
               return (
-              <tr key={provider.id} className="transition-colors hover:bg-muted/20">
-                <td className="px-4 py-3 text-sm font-medium">{provider.organization_name}</td>
-                <td className="px-4 py-3 text-sm">{provider.contact_person?.name || "-"}</td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">{provider.contact_person?.email || "-"}</td>
-                <td className="px-4 py-3">
-                  {!matchedUser ? (
-                    <Badge variant="outline" className="border-slate-400/40 text-slate-400 text-[10px]">No login account</Badge>
-                  ) : ((matchedUser as any).is_verified ?? matchedUser.is_email_confirmed) ? (
-                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 text-[10px]">Active ({matchedUser.username})</Badge>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-amber-500/40 text-amber-500 text-[10px]">Pending</Badge>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 gap-1 border-emerald-500/40 text-emerald-500 text-[10px] px-2"
-                        title="Activate provider via POST /confirm-email — paste activation token"
-                        onClick={() => { setConfirmTarget({ user_email: matchedUser.email, org_name: provider.organization_name }); setConfirmToken(""); }}
-                      >
-                        <MailCheck className="h-3 w-3" />Activate
+                <tr key={provider.id} className="transition-colors hover:bg-muted/20">
+                  <td className="px-4 py-3 text-sm font-medium">{provider.organization_name}</td>
+                  <td className="px-4 py-3 text-sm">{provider.contact_person?.name || "-"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">{provider.contact_person?.email || "-"}</td>
+                  <td className="px-4 py-3">
+                    {!matchedUser ? (
+                      <Badge variant="outline" className="border-slate-400/40 text-[10px] text-slate-400">No login account</Badge>
+                    ) : verified ? (
+                      <Badge variant="outline" className="border-emerald-500/40 text-[10px] text-emerald-500">Active ({matchedUser.username})</Badge>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="border-amber-500/40 text-[10px] text-amber-500">Pending</Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 gap-1 border-emerald-500/40 px-2 text-[10px] text-emerald-500"
+                          title="Activate provider via POST /confirm-email { token, password }"
+                          onClick={() => {
+                            setConfirmTarget({ user_email: matchedUser.email, org_name: provider.organization_name });
+                            setConfirmPassword("");
+                            setConfirmPasswordRepeat("");
+                          }}
+                        >
+                          <MailCheck className="h-3 w-3" />
+                          Activate
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 gap-1 px-2 text-[10px]"
+                          disabled={inlineResendEmail === matchedUser.email}
+                          title="Resend activation email"
+                          onClick={() => resendConfirmation(matchedUser.email)}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          {inlineResendEmail === matchedUser.email ? "Sending..." : "Resend"}
+                        </Button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">{provider.created_at ? new Date(provider.created_at).toLocaleString() : "-"}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">{provider.updated_at ? new Date(provider.updated_at).toLocaleString() : "-"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="gap-2" disabled={!hasPermission("participants.manage")} onClick={() => handleEdit(provider)}>
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-2 border-destructive/40 text-destructive" disabled={!hasPermission("participants.manage")} onClick={() => setDeleteTarget(provider)}>
+                        <Trash2 className="h-4 w-4" />
+                        Delete
                       </Button>
                     </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(provider.created_at).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="gap-2" disabled={!hasPermission("participants.manage")} onClick={() => handleEdit(provider)}>
-                      <Pencil className="h-4 w-4" />
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="outline" className="gap-2 border-destructive/40 text-destructive" disabled={!hasPermission("participants.manage")} onClick={() => setDeleteTarget(provider)}>
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                </tr>
               );
             }) : (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">No provider participants registered yet</td></tr>
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">No provider participants registered yet</td></tr>
             )}
           </DataTable>
         </CardContent>
       </Card>
 
-      {/* Activate provider dialog — POST /users/confirm-email */}
-      <Dialog open={!!confirmTarget} onOpenChange={(o) => { if (!o) { setConfirmTarget(null); setConfirmToken(""); } }}>
+      <Dialog
+        open={!!confirmTarget}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) resetConfirmState();
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Activate {confirmTarget?.org_name}</DialogTitle>
             <DialogDescription>
-              Provider <strong>{confirmTarget?.user_email}</strong> belum activate. Paste activation token dari email user / backend log → POST /confirm-email.
+              Provider <strong>{confirmTarget?.user_email}</strong> belum activate. Backend sekarang minta <code className="rounded bg-muted px-1 text-xs">{`{ token, password }`}</code> saat confirm email, dan token diambil dari URL query.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="grid gap-2">
-              <Label>Activation Token</Label>
-              <Input value={confirmToken} onChange={(e) => setConfirmToken(e.target.value)} placeholder="paste token disini" autoFocus />
+              <Label>Activation Token Source</Label>
+              <Input
+                value={tokenFromUrl ? `Token loaded from URL: ${tokenFromUrl.slice(0, 4)}••••${tokenFromUrl.slice(-4)}` : "Token missing in URL query"}
+                readOnly
+                className="text-xs"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Password Baru</Label>
+              <div className="relative">
+                <Input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Minimal 8 karakter"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Confirm Password</Label>
+              <div className="relative">
+                <Input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPasswordRepeat}
+                  onChange={(event) => setConfirmPasswordRepeat(event.target.value)}
+                  placeholder="Ulangi password"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <div className="rounded-lg border border-border/50 bg-muted/20 p-3 text-xs space-y-1">
-              <p className="font-medium">Cara dapatin token kalau user belum dapat email:</p>
-              <p>1. Minta backend dev: <code className="rounded bg-muted px-1">SELECT activation_token FROM users WHERE email = '{confirmTarget?.user_email}'</code></p>
-              <p>2. Atau cek <code className="rounded bg-muted px-1">docker logs &lt;backend&gt;</code> saat user di-create</p>
-              <p>3. Atau backend dev langsung run <code className="rounded bg-muted px-1">UPDATE users SET is_email_confirmed=true WHERE email='{confirmTarget?.user_email}'</code></p>
+              <p className="font-medium">Kalau token expired atau email belum masuk:</p>
+              <p>Pakai tombol resend untuk hit endpoint <code className="rounded bg-muted px-1">/users/resend-email-confirmation</code> dengan email provider ini.</p>
             </div>
+            {!tokenFromUrl && (
+              <p className="text-xs text-red-500">Token URL tidak ada. Buka halaman ini pakai activation link user, atau resend email dulu.</p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfirmTarget(null); setConfirmToken(""); }}>Cancel</Button>
-            <Button onClick={submitConfirm} disabled={confirming || !confirmToken.trim()}>
+            <Button variant="outline" onClick={() => resendConfirmation(confirmTarget?.user_email, true)} disabled={resending || !confirmTarget?.user_email}>
+              {resending ? "Resending..." : "Resend Email"}
+            </Button>
+            <Button variant="outline" onClick={resetConfirmState}>Cancel</Button>
+            <Button onClick={submitConfirm} disabled={confirming || !tokenFromUrl || !confirmPassword.trim() || !confirmPasswordRepeat.trim()}>
               {confirming ? "Activating..." : "Activate"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(nextOpen) => !nextOpen && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Provider?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes <strong>{deleteTarget?.organization_name || "the selected provider"}</strong> from onboarding. Any downstream domain mapping or provider-side testing linked to it can stop working.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ParticipantDeleteDialog
+        participant={deleteTarget}
+        open={!!deleteTarget}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setDeleteTarget(null);
+            setDeleteConflict(null);
+          }
+        }}
+        onConfirm={handleDelete}
+        isDeleting={deleteParticipant.isPending}
+        serverConflict={deleteConflict}
+      />
     </V2PageShell>
   );
 };

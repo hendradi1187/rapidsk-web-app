@@ -11,3 +11,4 @@ export * from "./useConnectionPools";
 export * from "./useAgreements";
 export * from "./useMonitorings";
 export * from "./useTransferRuntime";
+export * from "./useParticipantDeleteGuard";

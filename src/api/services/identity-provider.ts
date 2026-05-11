@@ -3,8 +3,10 @@
 import { apiClient } from "../client";
 import type { PaginationParams } from "../client";
 import type {
+  ConfirmEmailRequest,
   LoginRequest,
   LoginResponse,
+  ResendEmailConfirmationRequest,
   User,
   UserCreateRequest,
   UserListResponse,
@@ -164,6 +166,22 @@ export const usersService = {
    */
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`${IDP_BASE_PATH}/users/${id}`);
+  },
+
+  confirmEmail: async (data: ConfirmEmailRequest): Promise<User> => {
+    const response = await apiClient.post<User>(
+      `${IDP_BASE_PATH}/users/confirm-email`,
+      data
+    );
+    return response.data;
+  },
+
+  resendEmailConfirmation: async (data: ResendEmailConfirmationRequest): Promise<User> => {
+    const response = await apiClient.post<User>(
+      `${IDP_BASE_PATH}/users/resend-email-confirmation`,
+      data
+    );
+    return response.data;
   },
 };
 
