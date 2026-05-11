@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { RuntimeCapabilityNotice, RuntimeExecutionLogPanel } from "@/components/runtime/RuntimeSupport";
 import { createRuntimeExecutionLog, runtimeCapabilities, type RuntimeExecutionLogEntry } from "@/lib/runtime-capabilities";
 import { getApiErrorSummary } from "@/lib/provider-flow-diagnostics";
+import { TransferPreviewDialog } from "@/components/transfer/TransferPreviewDialog";
 
 const TransferMonitor = () => {
   const { data: domainsData, isLoading: loadingDomains } = useAllDomains({ limit: 1000 });
@@ -57,6 +58,20 @@ const TransferMonitor = () => {
   const [runtimeLogs, setRuntimeLogs] = useState<RuntimeExecutionLogEntry[]>([]);
   const pushLog = (entry: RuntimeExecutionLogEntry) => setRuntimeLogs((prev) => [entry, ...prev].slice(0, 10));
 
+  // ── Transfer preview dialog state ─────────────────────────────────
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<unknown>(null);
+  const [previewTitle, setPreviewTitle] = useState("");
+  const [previewEndpoint, setPreviewEndpoint] = useState("");
+  const [previewDuration, setPreviewDuration] = useState(0);
+  const openPreview = (title: string, endpoint: string, data: unknown, duration: number) => {
+    setPreviewTitle(title);
+    setPreviewEndpoint(endpoint);
+    setPreviewData(data);
+    setPreviewDuration(duration);
+    setPreviewOpen(true);
+  };
+
   const [initOpen, setInitOpen] = useState(false);
   const [initForm, setInitForm] = useState({
     agreement_id: "",
@@ -82,8 +97,9 @@ const TransferMonitor = () => {
   };
 
   const initiateTransfer = useMutation({
-    mutationFn: () =>
-      transferProcessMutationsApi.initiate(domainId, {
+    mutationFn: () => {
+      (initiateTransfer as any)._t0 = performance.now();
+      return transferProcessMutationsApi.initiate(domainId, {
         agreement_id: initForm.agreement_id,
         data_asset_ids: initForm.data_asset_ids.split(",").map((item) => item.trim()).filter(Boolean),
         transfer_protocol: initForm.transfer_protocol,
@@ -92,12 +108,15 @@ const TransferMonitor = () => {
         receiver_id: initForm.receiver_id,
         ...(initForm.chunk_size ? { chunk_size: Number(initForm.chunk_size) } : {}),
         ...(initForm.total_size ? { total_size: Number(initForm.total_size) } : {}),
-      }),
-    onSuccess: () => {
+      });
+    },
+    onSuccess: (data) => {
+      const dur = Math.round(performance.now() - ((initiateTransfer as any)._t0 || 0));
       qc.invalidateQueries({ queryKey: ["transfer-processes"] });
       pushLog(createRuntimeExecutionLog(runtimeCapabilities.transferProcessMutations, "Initiate transfer process", "success", "Transfer process initiated successfully."));
       toast.success("Transfer process initiated");
       setInitOpen(false);
+      openPreview("Initiate Transfer Result", `POST /${domainId}/transfer-processes`, data, dur);
     },
     onError: (error: any) => {
       const summary = getApiErrorSummary(error, "Initiate failed");
@@ -108,10 +127,11 @@ const TransferMonitor = () => {
 
   const negotiate = useMutation({
     mutationFn: (id: string) => transferProcessMutationsApi.negotiate(domainId, id),
-    onSuccess: () => {
+    onSuccess: (data, id) => {
       qc.invalidateQueries({ queryKey: ["transfer-processes"] });
       pushLog(createRuntimeExecutionLog(runtimeCapabilities.transferProcessMutations, "Negotiate transfer process", "success", "Transfer process negotiated."));
       toast.success("Transfer process negotiated");
+      openPreview("Negotiate Result", `PUT /${domainId}/transfer-processes/${id}/negotiate`, data, 0);
     },
     onError: (error: any) => {
       const summary = getApiErrorSummary(error, "Negotiate failed");
@@ -122,10 +142,11 @@ const TransferMonitor = () => {
 
   const execute = useMutation({
     mutationFn: (id: string) => transferProcessMutationsApi.execute(domainId, id),
-    onSuccess: () => {
+    onSuccess: (data, id) => {
       qc.invalidateQueries({ queryKey: ["transfer-processes"] });
       pushLog(createRuntimeExecutionLog(runtimeCapabilities.transferProcessMutations, "Execute transfer process", "success", "Transfer process executed."));
       toast.success("Transfer process executed");
+      openPreview("Execute Result", `PUT /${domainId}/transfer-processes/${id}/execute`, data, 0);
     },
     onError: (error: any) => {
       const summary = getApiErrorSummary(error, "Execute failed");
@@ -136,10 +157,11 @@ const TransferMonitor = () => {
 
   const completeProcess = useMutation({
     mutationFn: (id: string) => transferProcessMutationsApi.complete(domainId, id),
-    onSuccess: () => {
+    onSuccess: (data, id) => {
       qc.invalidateQueries({ queryKey: ["transfer-processes"] });
       pushLog(createRuntimeExecutionLog(runtimeCapabilities.transferProcessMutations, "Complete transfer process", "success", "Transfer process completed."));
       toast.success("Transfer process completed");
+      openPreview("Complete Result", `PUT /${domainId}/transfer-processes/${id}/complete`, data, 0);
     },
     onError: (error: any) => {
       const summary = getApiErrorSummary(error, "Complete failed");
@@ -164,10 +186,11 @@ const TransferMonitor = () => {
 
   const startChunk = useMutation({
     mutationFn: (id: string) => dataTransferMutationsApi.start(domainId, id),
-    onSuccess: () => {
+    onSuccess: (data, id) => {
       qc.invalidateQueries({ queryKey: ["data-transfer-runtime"] });
       pushLog(createRuntimeExecutionLog(runtimeCapabilities.dataTransferMutations, "Start data transfer", "success", "Data transfer started."));
       toast.success("Chunk transfer started");
+      openPreview("Start Chunk Result", `PUT /${domainId}/data-transfers/${id}/start`, data, 0);
     },
     onError: (error: any) => {
       const summary = getApiErrorSummary(error, "Start failed");
@@ -178,10 +201,11 @@ const TransferMonitor = () => {
 
   const completeChunk = useMutation({
     mutationFn: (id: string) => dataTransferMutationsApi.complete(domainId, id),
-    onSuccess: () => {
+    onSuccess: (data, id) => {
       qc.invalidateQueries({ queryKey: ["data-transfer-runtime"] });
       pushLog(createRuntimeExecutionLog(runtimeCapabilities.dataTransferMutations, "Complete data transfer", "success", "Data transfer completed."));
       toast.success("Chunk transfer completed");
+      openPreview("Complete Chunk Result", `PUT /${domainId}/data-transfers/${id}/complete`, data, 0);
     },
     onError: (error: any) => {
       const summary = getApiErrorSummary(error, "Complete failed");
@@ -471,6 +495,16 @@ const TransferMonitor = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TransferPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={previewTitle}
+        description="Response dari backend setelah aksi transfer."
+        endpoint={previewEndpoint}
+        duration={previewDuration}
+        data={previewData}
+      />
     </V2PageShell>
   );
 };

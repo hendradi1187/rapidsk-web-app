@@ -14,6 +14,7 @@ import { useDatasets } from "@/api/hooks/useDatasets";
 import { useContracts } from "@/api/hooks/useContracts";
 import { useAgreements } from "@/api/hooks/useAgreements";
 import { useDataTransfers } from "@/api/hooks/useDataTransfers";
+import { useCurrentSessionParticipant, useParticipantDomains } from "@/api/hooks/useParticipants";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { countAgreementIssues, countContractIssues, countTransferIssues, getApiErrorSummary } from "@/lib/provider-flow-diagnostics";
@@ -55,9 +56,24 @@ const formatDateTime = (value?: string | null) => {
 };
 
 const FulfilmentReports = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  const isProvider = user?.role === "PROVIDER";
   const { data: domainsData, isLoading: loadingDomains, error: domainsError } = useAllDomains({ limit: 1000 });
-  const domains = domainsData?.data ?? [];
+
+  // Resolve provider's assigned domains — PROVIDER sees only their own, SUPER_ADMIN sees all
+  const { participant: providerParticipant } = useCurrentSessionParticipant({ limit: 50 }, "forceProvider");
+  const { data: assignedMappingsData } = useParticipantDomains(
+    isProvider ? (providerParticipant?.id ?? "") : "",
+    { limit: 100 }
+  );
+  const assignedDomainIds = useMemo(
+    () => new Set((assignedMappingsData?.data ?? []).map((m) => m.domain_id)),
+    [assignedMappingsData]
+  );
+  const allDomains = domainsData?.data ?? [];
+  const domains = isProvider && assignedDomainIds.size > 0
+    ? allDomains.filter((d) => assignedDomainIds.has(d.id))
+    : allDomains;
   const [selectedDomain, setSelectedDomain] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const domainId = selectedDomain || domains[0]?.id || "";

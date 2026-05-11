@@ -37,6 +37,7 @@ import { normalizeContractDatasets, normalizeContractPolicyIds } from "@/api/typ
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { countAgreementIssues, countContractIssues, countDatasetIssues, getApiErrorSummary } from "@/lib/provider-flow-diagnostics";
+import { TransferPreviewDialog } from "@/components/transfer/TransferPreviewDialog";
 
 const emptyRegisterForm = {
   name: "",
@@ -120,7 +121,10 @@ const ContractFulfilment = () => {
   const activeError = domainsError || contractsError || datasetsError || agreementsError || contractPoliciesError || datasetPoliciesError || schemasError;
   const errorSummary = activeError ? getApiErrorSummary(activeError, "Contract fulfilment backend error") : null;
 
-  const [provideResult, setProvideResult] = useState("");
+  const [provideResult, setProvideResult] = useState<unknown>(null);
+  const [providePreviewOpen, setProvidePreviewOpen] = useState(false);
+  const [provideEndpoint, setProvideEndpoint] = useState("");
+  const [provideDuration, setProvideDuration] = useState(0);
   const provideMutation = useMutation({
     mutationFn: (agreementId: string) => providerApi.provide(domainId, agreementId),
   });
@@ -404,11 +408,17 @@ const ContractFulfilment = () => {
   };
 
   const handleProvide = async (agreementId: string) => {
+    const endpoint = `GET /api/v1/provider/${domainId}/provide/${agreementId}`;
+    setProvideEndpoint(endpoint);
+    const t0 = performance.now();
     try {
       const response = await provideMutation.mutateAsync(agreementId);
-      setProvideResult(JSON.stringify(response, null, 2));
-      toast.success("Provider fulfilment endpoint executed");
+      setProvideDuration(Math.round(performance.now() - t0));
+      setProvideResult(response);
+      setProvidePreviewOpen(true);
+      toast.success("Provider fulfilment endpoint executed — lihat preview data");
     } catch (error: any) {
+      setProvideDuration(Math.round(performance.now() - t0));
       toast.error("Provider fulfilment failed", {
         description: error?.response?.data?.error || error?.response?.data?.detail || "Unexpected error",
       });
@@ -550,17 +560,15 @@ const ContractFulfilment = () => {
         </CardContent>
       </Card>
 
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="text-base">Latest Provider Result</CardTitle>
-          <CardDescription>Raw response from the provider fulfilment endpoint</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <pre className="max-h-80 overflow-auto rounded-lg border border-border/50 bg-muted/30 p-4 text-xs text-muted-foreground">
-            {provideResult || "No provider fulfilment has been triggered from this page yet."}
-          </pre>
-        </CardContent>
-      </Card>
+      <TransferPreviewDialog
+        open={providePreviewOpen}
+        onOpenChange={setProvidePreviewOpen}
+        title="Provider Transfer Result"
+        description="Data yang di-push ke consumer connector setelah trigger provide."
+        endpoint={provideEndpoint}
+        duration={provideDuration}
+        data={provideResult}
+      />
 
       {/* ── Fulfilment Dialog ────────────────────────────────────────────── */}
       <Dialog open={fulfilDialog} onOpenChange={(o) => { setFulfilDialog(o); if (!o) { setActiveContract(null); setLoadingDetail(false); } }}>

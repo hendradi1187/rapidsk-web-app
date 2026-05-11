@@ -99,6 +99,14 @@ export function useParticipantDomains(participantId: string, params?: Pagination
     queryKey: participantDomainKeys.list(participantId, params),
     queryFn: () => participantDomainsApi.list(participantId, params),
     enabled: !!participantId,
+    // WORKAROUND: Backend GET /participants/{id}/domains ignores the
+    // participant_id path param and returns ALL domain mappings globally.
+    // Filter client-side so callers only see mappings for this participant.
+    select: (data) => {
+      if (!data?.data) return data;
+      const filtered = data.data.filter((m: any) => m.participant_id === participantId);
+      return { ...data, data: filtered, total: filtered.length };
+    },
   });
 }
 
