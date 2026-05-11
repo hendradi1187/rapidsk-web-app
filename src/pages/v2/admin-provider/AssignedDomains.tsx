@@ -68,6 +68,11 @@ const AssignedDomains = () => {
         <code className="mx-1 rounded bg-emerald-500/10 px-1">/onboarding/participants/{"{participant_id}"}/domains</code>.
         Di modul ini belum ada gap endpoint yang blokir view.
       </div>
+      <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4 text-xs text-blue-800">
+        Data source aktif: participant <code className="rounded bg-blue-500/10 px-1">{myParticipant?.id || "not resolved"}</code> dengan mapping count{" "}
+        <code className="rounded bg-blue-500/10 px-1">{loadingMappings ? "..." : mappings.length}</code>.
+        Jika domain langsung muncul, itu karena mapping backend sudah ada sebelumnya, bukan auto dari create participant.
+      </div>
       {errorSummary && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />

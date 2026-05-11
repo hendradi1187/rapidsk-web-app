@@ -72,6 +72,15 @@ export interface UserUpdateRequest {
   group_id?: string | null;
 }
 
+export interface ConfirmEmailRequest {
+  token: string;
+  password: string;
+}
+
+export interface ResendEmailConfirmationRequest {
+  email: string;
+}
+
 export type UserListResponse = PaginatedResponse<UserResponse>;
 export type UserCategoryListResponse = PaginatedResponse<UserCategory>;
 export type UserGroupListResponse = PaginatedResponse<UserGroup>;

@@ -9,12 +9,11 @@ import { getDefaultV2RouteForRole } from "@/lib/dataspace-version";
 
 // Lazy-load all V2 pages for code splitting
 const AuthorityDashboard = lazy(() => import("./authority/AuthorityDashboard"));
+const ParticipantRegistration = lazy(() => import("./authority/ParticipantRegistration"));
 const RegisterAdminConsumer = lazy(() => import("./authority/RegisterAdminConsumer"));
 const RoleSetup = lazy(() => import("./authority/RoleSetup"));
 const ActivationEmailPreview = lazy(() => import("./authority/ActivationEmailPreview"));
-const UserProvisioning = lazy(() => import("./authority/UserProvisioning"));
 const ActivationLifecycle = lazy(() => import("./authority/ActivationLifecycle"));
-const PermissionCatalog = lazy(() => import("./authority/PermissionCatalog"));
 const GatewayMonitor = lazy(() => import("./authority/GatewayMonitor"));
 const Channels = lazy(() => import("./authority/Channels"));
 const Organizations = lazy(() => import("./authority/Organizations"));
@@ -76,12 +75,13 @@ const V2Router = () => {
       <Routes>
         {/* Authority (SUPER_ADMIN) */}
         <Route path="authority/dashboard" element={<AuthorityDashboard />} />
+        <Route path="authority/participant-registration" element={<ParticipantRegistration />} />
         <Route path="authority/register-admin-consumer" element={<RegisterAdminConsumer />} />
         <Route path="authority/role-setup" element={<RoleSetup />} />
         <Route path="authority/activation-email" element={<ActivationEmailPreview />} />
         <Route path="authority/activation" element={<ActivationLifecycle />} />
-        <Route path="authority/user-provisioning" element={<UserProvisioning />} />
-        <Route path="authority/permissions" element={<PermissionCatalog />} />
+        <Route path="authority/user-provisioning" element={<Navigate to="/v2/authority/register-admin-consumer" replace />} />
+        <Route path="authority/permissions" element={<Navigate to="/v2/authority/role-setup" replace />} />
         <Route path="authority/gateway" element={<GatewayMonitor />} />
         <Route path="authority/channels" element={<Channels />} />
         <Route path="authority/organizations" element={<Organizations />} />

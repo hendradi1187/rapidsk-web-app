@@ -24,23 +24,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   useParticipants,
   useCreateParticipant,
   useUpdateParticipant,
   useDeleteParticipant,
 } from "@/api/hooks/useParticipants";
+import { formatParticipantDeleteConflict } from "@/api/hooks/useParticipantDeleteGuard";
 import { Participant, ParticipantCreateRequest } from "@/api/types";
 import { ParticipantForm } from "@/components/participants/ParticipantForm";
+import { ParticipantDeleteDialog } from "@/components/participants/ParticipantDeleteDialog";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -49,6 +41,7 @@ export const ParticipantsPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | undefined>(undefined);
+  const [deleteConflict, setDeleteConflict] = useState<string | null>(null);
 
   const { data: participantsData, isLoading, refetch } = useParticipants();
   const createMutation = useCreateParticipant();
@@ -67,6 +60,7 @@ export const ParticipantsPage = () => {
 
   const handleDelete = (participant: Participant) => {
     setSelectedParticipant(participant);
+    setDeleteConflict(null);
     setDeleteDialogOpen(true);
   };
 
@@ -86,12 +80,22 @@ export const ParticipantsPage = () => {
   
   const onConfirmDelete = () => {
     if (selectedParticipant) {
-      toast.promise(deleteMutation.mutateAsync(selectedParticipant.id), {
-        loading: `Menghapus participant...`,
-        success: `Participant berhasil dihapus!`,
-        error: `Gagal menghapus participant.`,
-      });
-      setDeleteDialogOpen(false);
+      deleteMutation
+        .mutateAsync(selectedParticipant.id)
+        .then(() => {
+          toast.success("Participant berhasil dihapus!");
+          setDeleteDialogOpen(false);
+          setSelectedParticipant(undefined);
+          setDeleteConflict(null);
+        })
+        .catch((error: any) => {
+          const message = formatParticipantDeleteConflict(error, []);
+          setDeleteConflict(message);
+          toast.error("Gagal menghapus participant", {
+            description: message,
+            duration: 9000,
+          });
+        });
     }
   };
 
@@ -232,23 +236,19 @@ export const ParticipantsPage = () => {
         </DialogContent>
       </Dialog>
       
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the participant
-              "{selectedParticipant?.organization_name}".
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirmDelete} className="bg-destructive hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ParticipantDeleteDialog
+        participant={selectedParticipant}
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDeleteConflict(null);
+          }
+        }}
+        onConfirm={onConfirmDelete}
+        isDeleting={deleteMutation.isPending}
+        serverConflict={deleteConflict}
+      />
     </div>
   );
 };

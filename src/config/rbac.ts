@@ -10,8 +10,6 @@ import {
   KeyRound,
   Layers,
   LayoutDashboard,
-  Mail,
-  UserPlus,
   Network,
   RadioTower,
   Rocket,
@@ -145,12 +143,19 @@ export const MENU_ITEMS_V2: MenuItem[] = [
   // Per sequence diagram Phase 1 & 2: register participant, role mgmt,
   // email activation, monitoring, gateway, channels.
   // ADMIN sees everything visible here EXCEPT items requiring users.manage
-  // (Register Admin Login + User Provisioning + Permission Catalog).
+  // (Register Admin Login).
   {
     icon: Gauge,
     label: "Dashboard Authority",
     path: "/v2/authority/dashboard",
     roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    icon: Users2,
+    label: "Onboarding Registration",
+    path: "/v2/authority/participant-registration",
+    roles: ["SUPER_ADMIN"],
+    requiredPermissions: ["participants.manage", "users.manage"],
   },
   {
     icon: Users2,
@@ -166,30 +171,9 @@ export const MENU_ITEMS_V2: MenuItem[] = [
     roles: ["SUPER_ADMIN", "ADMIN"],
     requiredPermissions: ["participants.manage"],
   },
-  {
-    icon: Mail,
-    label: "Activation Email Preview",
-    path: "/v2/authority/activation-email",
-    roles: ["SUPER_ADMIN", "ADMIN"],
-    requiredPermissions: ["participants.manage"],
-  },
   // Activation Lifecycle (stub localStorage page) dihapus dari menu — bingungin.
   // Real activation flow ada di "Activation Email Preview" (/v2/authority/activation-email)
   // yang bisa POST /confirm-email beneran.
-  {
-    icon: UserPlus,
-    label: "User Provisioning",
-    path: "/v2/authority/user-provisioning",
-    roles: ["SUPER_ADMIN"], // ADMIN tidak bisa provision user
-    requiredPermissions: ["users.manage"],
-  },
-  {
-    icon: Shield,
-    label: "Permission Catalog",
-    path: "/v2/authority/permissions",
-    roles: ["SUPER_ADMIN"], // SUPER_ADMIN only — sensitive
-    requiredPermissions: ["users.manage"],
-  },
   {
     icon: RadioTower,
     label: "Gateway Monitor",
@@ -247,7 +231,7 @@ export const MENU_ITEMS_V2: MenuItem[] = [
     icon: Network,
     label: "Domain Mapping",
     path: "/v2/admin-consumer/domain-mapping",
-    roles: ["CONSUMER"],
+    roles: ["SUPER_ADMIN", "CONSUMER"],
     requiredPermissions: ["mapping.manage"],
   },
   {
@@ -491,3 +475,4 @@ export const V2_ROLE_LABELS: Record<AppRole, string> = {
   PROVIDER: "Admin Provider / KKKS",
   VIEWER: "Viewer",
 };
+
