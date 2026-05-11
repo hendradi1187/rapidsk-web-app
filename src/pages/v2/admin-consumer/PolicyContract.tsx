@@ -54,6 +54,7 @@ import { consumerApi } from "@/api/services/connector";
 import { normalizeContractDatasets, normalizeContractPolicyIds } from "@/api/types";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
+import { TransferPreviewDialog } from "@/components/transfer/TransferPreviewDialog";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "border-slate-400/30 text-slate-400",
@@ -94,12 +95,26 @@ const emptyContractForm = {
   contract_policies: [] as string[],
   datasets: [] as { dataset_id: string; dataset_policy_id: string }[],
 };
+// Auto-generate date defaults: from = today, to = +1 year (date only, time auto-appended on submit)
+const todayDate = () => new Date().toISOString().slice(0, 10);
+const oneYearLaterDate = () => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+};
+const addDays = (dateStr: string, days: number) => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
 
 const emptyContractPolicyForm = {
   name: "",
   data_clasification: "INTERNAL",
-  effective_from: "",
-  effective_to: "",
+  effective_from: todayDate(),
+  effective_to: oneYearLaterDate(),
   description: "",
 };
 
@@ -609,8 +624,8 @@ const PolicyContract = () => {
       setCPolicyForm({
         name: record.name || "",
         data_clasification: record.data_clasification || "INTERNAL",
-        effective_from: record.effective_from ? record.effective_from.slice(0, 16) : "",
-        effective_to: record.effective_to ? record.effective_to.slice(0, 16) : "",
+        effective_from: record.effective_from ? record.effective_from.slice(0, 10) : todayDate(),
+        effective_to: record.effective_to ? record.effective_to.slice(0, 10) : oneYearLaterDate(),
         description: record.description || "",
       });
     } else {
@@ -628,8 +643,9 @@ const PolicyContract = () => {
     if (!cPolicyForm.effective_from || !cPolicyForm.effective_to) {
       toast.error("Effective from/to required"); return;
     }
-    const efFrom = new Date(cPolicyForm.effective_from);
-    const efTo = new Date(cPolicyForm.effective_to);
+    // Time auto-generated: from gets 00:00:00, to gets 23:59:59
+    const efFrom = new Date(`${cPolicyForm.effective_from}T00:00:00`);
+    const efTo = new Date(`${cPolicyForm.effective_to}T23:59:59`);
     if (Number.isNaN(efFrom.getTime()) || Number.isNaN(efTo.getTime())) {
       toast.error("Tanggal effective tidak valid"); return;
     }
@@ -671,24 +687,27 @@ const PolicyContract = () => {
   const [editingAgreement, setEditingAgreement] = useState<any | null>(null);
   const [agreementForm, setAgreementForm] = useState({
     contract_id: "",
-    effective_from: "",
-    effective_to: "",
+    effective_from: todayDate(),
+    effective_to: oneYearLaterDate(),
     status: "REQUESTED" as "REQUESTED" | "APPROVED" | "REJECTED" | "ACTIVE",
   });
-  const [transferResult, setTransferResult] = useState<string>("");
+  const [transferResult, setTransferResult] = useState<unknown>(null);
+  const [consumePreviewOpen, setConsumePreviewOpen] = useState(false);
+  const [consumeEndpoint, setConsumeEndpoint] = useState("");
+  const [consumeDuration, setConsumeDuration] = useState(0);
 
   const openAgreement = (record?: any) => {
     if (record) {
       setEditingAgreement(record);
       setAgreementForm({
         contract_id: record.contract_id || "",
-        effective_from: record.effective_from ? record.effective_from.slice(0, 16) : "",
-        effective_to: record.effective_to ? record.effective_to.slice(0, 16) : "",
+        effective_from: record.effective_from ? record.effective_from.slice(0, 10) : todayDate(),
+        effective_to: record.effective_to ? record.effective_to.slice(0, 10) : oneYearLaterDate(),
         status: record.status || "REQUESTED",
       });
     } else {
       setEditingAgreement(null);
-      setAgreementForm({ contract_id: "", effective_from: "", effective_to: "", status: "REQUESTED" });
+      setAgreementForm({ contract_id: "", effective_from: todayDate(), effective_to: oneYearLaterDate(), status: "REQUESTED" });
     }
     setAgreementDialogOpen(true);
   };
@@ -697,8 +716,9 @@ const PolicyContract = () => {
     if (!domainId) { toast.error("Pilih domain dulu"); return; }
     if (!agreementForm.contract_id) { toast.error("Pilih contract dulu"); return; }
     if (!agreementForm.effective_from || !agreementForm.effective_to) { toast.error("Effective dates required"); return; }
-    const ef = new Date(agreementForm.effective_from);
-    const et = new Date(agreementForm.effective_to);
+    // Time auto-generated: from gets 00:00:00, to gets 23:59:59
+    const ef = new Date(`${agreementForm.effective_from}T00:00:00`);
+    const et = new Date(`${agreementForm.effective_to}T23:59:59`);
     if (Number.isNaN(ef.getTime()) || Number.isNaN(et.getTime())) { toast.error("Tanggal tidak valid"); return; }
     if (et.getTime() <= ef.getTime()) { toast.error("Effective To harus setelah Effective From"); return; }
     try {
@@ -728,7 +748,7 @@ const PolicyContract = () => {
       }
       setAgreementDialogOpen(false);
       setEditingAgreement(null);
-      setAgreementForm({ contract_id: "", effective_from: "", effective_to: "", status: "REQUESTED" });
+      setAgreementForm({ contract_id: "", effective_from: todayDate(), effective_to: oneYearLaterDate(), status: "REQUESTED" });
     } catch (error: any) {
       toast.error("Failed to save agreement", {
         description: error?.response?.data?.detail || error?.message || "Unexpected error",
@@ -737,11 +757,17 @@ const PolicyContract = () => {
   };
 
   const handleStartConsumerTransfer = async (agreementId: string) => {
+    const endpoint = `GET /api/v1/consumer/${domainId}/consume/${agreementId}`;
+    setConsumeEndpoint(endpoint);
+    const t0 = performance.now();
     try {
       const response = await consumeMutation.mutateAsync(agreementId);
-      setTransferResult(JSON.stringify(response, null, 2));
-      toast.success("Consumer transfer endpoint executed");
+      setConsumeDuration(Math.round(performance.now() - t0));
+      setTransferResult(response);
+      setConsumePreviewOpen(true);
+      toast.success("Consumer transfer executed — lihat preview data");
     } catch (error: any) {
+      setConsumeDuration(Math.round(performance.now() - t0));
       toast.error("Consumer transfer failed", {
         description: error?.response?.data?.error || error?.response?.data?.detail || "Unexpected error",
       });
@@ -1115,17 +1141,15 @@ const PolicyContract = () => {
               </DataTable>
             </CardContent>
           </Card>
-          <Card className="border-border/50 mt-6">
-            <CardHeader>
-              <CardTitle className="text-base">Latest Transfer Trigger Result</CardTitle>
-              <CardDescription>Response payload from <code className="rounded bg-muted px-1.5 py-0.5 text-xs">GET /api/v1/consumer/{"{domain_id}"}/consume/{"{agreement_id}"}</code></CardDescription>
-            </CardHeader>
-            <CardContent>
-              <pre className="max-h-80 overflow-auto rounded-lg border border-border/50 bg-muted/30 p-4 text-xs text-muted-foreground">
-                {transferResult || "No transfer has been triggered from this page yet."}
-              </pre>
-            </CardContent>
-          </Card>
+          <TransferPreviewDialog
+            open={consumePreviewOpen}
+            onOpenChange={setConsumePreviewOpen}
+            title="Consumer Transfer Result"
+            description="Data yang di-tarik dari provider connector setelah trigger consume."
+            endpoint={consumeEndpoint}
+            duration={consumeDuration}
+            data={transferResult}
+          />
         </TabsContent>
       </Tabs>
 
@@ -1391,14 +1415,11 @@ const PolicyContract = () => {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Effective From *</Label>
-                <Input type="datetime-local" value={cPolicyForm.effective_from} onChange={(e) => setCPolicyForm((p) => ({ ...p, effective_from: e.target.value }))} />
+                <Input type="date" value={cPolicyForm.effective_from} max={addDays(cPolicyForm.effective_to, -1) || undefined} onChange={(e) => setCPolicyForm((p) => ({ ...p, effective_from: e.target.value }))} />
               </div>
               <div className="grid gap-2">
                 <Label>Effective To *</Label>
-                <Input type="datetime-local" value={cPolicyForm.effective_to} onChange={(e) => setCPolicyForm((p) => ({ ...p, effective_to: e.target.value }))} />
-                {cPolicyForm.effective_from && cPolicyForm.effective_to && new Date(cPolicyForm.effective_to) <= new Date(cPolicyForm.effective_from) && (
-                  <p className="text-xs text-red-500">Harus setelah Effective From</p>
-                )}
+                <Input type="date" value={cPolicyForm.effective_to} min={addDays(cPolicyForm.effective_from, 1) || undefined} onChange={(e) => setCPolicyForm((p) => ({ ...p, effective_to: e.target.value }))} />
               </div>
             </div>
             <div className="grid gap-2">
@@ -1439,11 +1460,11 @@ const PolicyContract = () => {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Effective From *</Label>
-                <Input type="datetime-local" value={agreementForm.effective_from} onChange={(event) => setAgreementForm((prev) => ({ ...prev, effective_from: event.target.value }))} />
+                <Input type="date" value={agreementForm.effective_from} max={addDays(agreementForm.effective_to, -1) || undefined} onChange={(event) => setAgreementForm((prev) => ({ ...prev, effective_from: event.target.value }))} />
               </div>
               <div className="grid gap-2">
                 <Label>Effective To *</Label>
-                <Input type="datetime-local" value={agreementForm.effective_to} onChange={(event) => setAgreementForm((prev) => ({ ...prev, effective_to: event.target.value }))} />
+                <Input type="date" value={agreementForm.effective_to} min={addDays(agreementForm.effective_from, 1) || undefined} onChange={(event) => setAgreementForm((prev) => ({ ...prev, effective_to: event.target.value }))} />
               </div>
             </div>
             {editingAgreement && (

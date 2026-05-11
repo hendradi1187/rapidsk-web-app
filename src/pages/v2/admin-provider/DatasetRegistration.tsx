@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAllDomains } from "@/api/hooks/useDomains";
 import { useDatasets, useCreateDataset, useDeleteDataset, useUpdateDataset } from "@/api/hooks/useDatasets";
-import { useCurrentSessionParticipant, useParticipants } from "@/api/hooks/useParticipants";
+import { useCurrentSessionParticipant, useParticipants, useParticipantDomains } from "@/api/hooks/useParticipants";
 import { schemasApi } from "@/api/services/data-catalog";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -47,10 +47,8 @@ const emptyForm = {
 const DatasetRegistration = () => {
   const { hasPermission, user } = useAuth();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isProvider = user?.role === "PROVIDER";
   const { data: domainsData, isLoading: loadingDomains, error: domainsError } = useAllDomains({ limit: 1000 });
-  const domains = domainsData?.data ?? [];
-  const [selectedDomain, setSelectedDomain] = useState<string>("");
-  const domainId = selectedDomain || domains[0]?.id || "";
   const { participant: sessionProvider } = useCurrentSessionParticipant({ limit: 50 }, "forceProvider");
   const { data: allParticipantsData } = useParticipants({ limit: 100 });
   const enterpriseParticipants = (allParticipantsData?.data ?? []).filter((participant) => participant.organization_type === "ENTERPRISE");
@@ -58,6 +56,22 @@ const DatasetRegistration = () => {
   const providerParticipant = isSuperAdmin
     ? enterpriseParticipants.find((participant) => participant.id === actAsProviderId) || enterpriseParticipants[0]
     : sessionProvider;
+
+  // Resolve provider's assigned domains — PROVIDER sees only their own, SUPER_ADMIN sees all
+  const { data: assignedMappingsData } = useParticipantDomains(
+    isProvider ? (providerParticipant?.id ?? "") : "",
+    { limit: 100 }
+  );
+  const assignedDomainIds = useMemo(
+    () => new Set((assignedMappingsData?.data ?? []).map((m) => m.domain_id)),
+    [assignedMappingsData]
+  );
+  const allDomains = domainsData?.data ?? [];
+  const domains = isProvider && assignedDomainIds.size > 0
+    ? allDomains.filter((d) => assignedDomainIds.has(d.id))
+    : allDomains;
+  const [selectedDomain, setSelectedDomain] = useState<string>("");
+  const domainId = selectedDomain || domains[0]?.id || "";
 
   const { data: datasetsData, isLoading: loadingDatasets, error: datasetsError } = useDatasets(domainId, { limit: 50 });
   const { data: schemasData, isLoading: loadingSchemas, error: schemasError } = useQuery({
