@@ -53,7 +53,7 @@ import { useAgreements, useCreateAgreement, useDeleteAgreement, useUpdateAgreeme
 import { DatasetPolicyType, DatasetPolicyStatusEnum, RuleOperator, POLICY_TYPES, RULE_OPERATORS, POLICY_STATUSES, DATA_CLASSIFICATIONS } from "@/api/services/policy";
 import { addDays } from "date-fns";
 
-const mockTransferCache = new Map<string, any>();
+import { transferCache } from "@/lib/transferCache";
 import { normalizeContractDatasets, normalizeContractPolicyIds } from "@/api/types";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -554,11 +554,12 @@ const PolicyContract = () => {
       setContractSaveError(`Description harus 3-255 char (sekarang ${contractForm.description.length} char)`); return;
     }
 
-    const partialRow = contractForm.datasets.find((d) => (d.dataset_id && !d.dataset_policy_id) || (!d.dataset_id && d.dataset_policy_id));
-    if (partialRow) {
-      setContractSaveError("Ada dataset row parsial — lengkapi atau hapus"); return;
+    const partialRows = contractForm.datasets.filter((d) => (!d.dataset_id && d.dataset_policy_id));
+    if (partialRows.length > 0) {
+      setContractSaveError("Ada row yang pilih policy tapi belum pilih dataset — hapus atau lengkapi dulu"); return;
     }
     const cleanDatasets = contractForm.datasets.filter((d) => d.dataset_id && d.dataset_policy_id);
+    const skippedDatasets = contractForm.datasets.filter((d) => d.dataset_id && !d.dataset_policy_id);
 
     try {
       if (editingContract) {
@@ -575,10 +576,10 @@ const PolicyContract = () => {
           datasets: cleanDatasets,
         };
         const result = await updateContract.mutateAsync({ domainId, id: editingContract.id, data: patchPayload });
-        // Show what backend returned so user can see if datasets/policies were accepted
         const retDs = normalizeContractDatasets((result as any)?.datasets).length;
         const retCp = normalizeContractPolicyIds((result as any)?.contract_policies).length;
-        toast.success(`Contract updated — backend returned: ${retDs} datasets, ${retCp} contract_policies`);
+        const skippedMsg = skippedDatasets.length > 0 ? ` (${skippedDatasets.length} dataset tanpa policy di-skip)` : "";
+        toast.success(`Contract updated — backend returned: ${retDs} datasets, ${retCp} contract_policies${skippedMsg}`);
       } else {
         if (!contractForm.consumer_id) {
           setContractSaveError("consumer_id kosong — participant akun ini belum terdaftar"); return;
@@ -765,22 +766,17 @@ const PolicyContract = () => {
     setConsumeEndpoint(endpoint);
     const t0 = performance.now();
 
-    // IDEMPOTENT LOGIC: Use in-memory cache instead of localStorage due to 5MB quota (e.g. 94k GeoJSON features)
     const storageKey = `cts_saved_consume_${agreementId}`;
-    const savedData = mockTransferCache.get(storageKey);
+    const savedData = await transferCache.get(storageKey);
 
     if (savedData) {
-      try {
-        setConsumeDuration(Math.round(performance.now() - t0));
-        setTransferResult(savedData);
-        setConsumePreviewOpen(true);
-        toast.success("Loaded from Memory Cache", {
-          description: "Data ini diload dari in-memory cache lokal (tidak hit EDC backend lagi)."
-        });
-        return;
-      } catch (e) {
-        // Fallback to fetch
-      }
+      setConsumeDuration(Math.round(performance.now() - t0));
+      setTransferResult(savedData);
+      setConsumePreviewOpen(true);
+      toast.success("Loaded from IndexedDB Cache", {
+        description: "Data diload dari cache lokal (tidak hit backend lagi).",
+      });
+      return;
     }
 
     try {
@@ -788,18 +784,11 @@ const PolicyContract = () => {
       setConsumeDuration(Math.round(performance.now() - t0));
       setTransferResult(response);
       setConsumePreviewOpen(true);
-      
-      // Save the consumed data to memory cache (Mocking CTS Storage)
-      try {
-        mockTransferCache.set(storageKey, response);
-        toast.success("Consumer transfer executed & cached", {
-          description: "Data berhasil ditarik dan disave ke memory cache."
-        });
-      } catch (e) {
-        toast.warning("Transfer OK, tapi gagal di-save", {
-          description: "Gagal menyimpan payload."
-        });
-      }
+
+      await transferCache.set(storageKey, response);
+      toast.success("Consumer transfer executed & cached", {
+        description: "Data berhasil ditarik dan disave ke IndexedDB (persist antar session).",
+      });
     } catch (error: any) {
       setConsumeDuration(Math.round(performance.now() - t0));
       toast.error("Consumer transfer failed", {
@@ -1479,6 +1468,12 @@ const PolicyContract = () => {
               policies=<code>{contractForm.contract_policies.length}</code>
             </p>
           </div>
+          {contractForm.datasets.some(d => d.dataset_id && !d.dataset_policy_id) && !contractHydrating && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 space-y-0.5">
+              <p className="font-semibold">Dataset tanpa policy ({contractForm.datasets.filter(d => d.dataset_id && !d.dataset_policy_id).length} row)</p>
+              <p>Backend tidak return dataset_policy_id — pilih policy untuk setiap dataset, atau biarkan (row akan di-skip saat save).</p>
+            </div>
+          )}
           {contractSaveError && (
             <div className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2 text-xs text-red-500 break-all whitespace-pre-wrap">
               <span className="font-semibold">Error: </span>{contractSaveError}

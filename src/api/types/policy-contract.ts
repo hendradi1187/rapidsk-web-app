@@ -110,6 +110,16 @@ function hasNonEmptyRelations<T>(rows: T[] | undefined): rows is T[] {
   return Array.isArray(rows) && rows.length > 0;
 }
 
+function mergeDatasetRows(existing: ContractDataset[], incoming: ContractDataset[]): ContractDataset[] {
+  if (incoming.length === 0) return existing;
+  const existingPolicyMap = new Map(existing.map((d) => [d.dataset_id, d.dataset_policy_id]));
+  return incoming.map((d) => ({
+    dataset_id: d.dataset_id,
+    // Keep cached dataset_policy_id when server returns null/empty
+    dataset_policy_id: d.dataset_policy_id || existingPolicyMap.get(d.dataset_id) || "",
+  }));
+}
+
 export function mergeContractSnapshot(
   existing: Partial<Contract> | null | undefined,
   incoming: Partial<Contract> | null | undefined,
@@ -130,9 +140,10 @@ export function mergeContractSnapshot(
   const normalizedExistingPolicies = normalizeContractPolicyRefs(base.contract_policies);
   const normalizedIncomingPolicies = normalizeContractPolicyRefs(next.contract_policies);
 
-  const datasets =
-    hasIncomingDatasets && (authoritativeRelations || hasNonEmptyRelations(normalizedIncomingDatasets))
-      ? normalizedIncomingDatasets
+  const datasets = authoritativeRelations
+    ? (hasIncomingDatasets ? normalizedIncomingDatasets : normalizedExistingDatasets)
+    : hasIncomingDatasets
+      ? mergeDatasetRows(normalizedExistingDatasets, normalizedIncomingDatasets)
       : normalizedExistingDatasets;
 
   const contract_policies =
