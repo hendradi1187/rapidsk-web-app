@@ -25,6 +25,7 @@ const PolicyContract = lazy(() => import("./admin-consumer/PolicyContract"));
 const SystemSetup = lazy(() => import("./admin-consumer/SystemSetup"));
 const AdminProvider = lazy(() => import("./admin-consumer/AdminProvider"));
 const DomainMapping = lazy(() => import("./admin-consumer/DomainMapping"));
+const GeoServerSettings = lazy(() => import("./admin-consumer/GeoServerSettings"));
 const TransferMonitor = lazy(() => import("./admin-consumer/TransferMonitor"));
 const AuditLog = lazy(() => import("./admin-consumer/AuditLog"));
 const Compliance = lazy(() => import("./admin-consumer/Compliance"));
@@ -95,6 +96,7 @@ const V2Router = () => {
         <Route path="admin-consumer/system-setup" element={<SystemSetup />} />
         <Route path="admin-consumer/admin-provider" element={<AdminProvider />} />
         <Route path="admin-consumer/domain-mapping" element={<DomainMapping />} />
+        <Route path="admin-consumer/geoserver" element={<GeoServerSettings />} />
         <Route path="admin-consumer/transfer-monitor" element={<TransferMonitor />} />
         <Route path="admin-consumer/audit" element={<AuditLog />} />
         <Route path="admin-consumer/compliance" element={<Compliance />} />

@@ -21,6 +21,7 @@ import {
   BookOpen,
   Users2,
   Save,
+  Map,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
@@ -233,6 +234,13 @@ export const MENU_ITEMS_V2: MenuItem[] = [
     path: "/v2/admin-consumer/admin-provider",
     roles: ["CONSUMER"],
     requiredPermissions: ["participants.manage"],
+  },
+  {
+    icon: Map,
+    label: "GeoServer Settings",
+    path: "/v2/admin-consumer/geoserver",
+    roles: ["SUPER_ADMIN", "CONSUMER"],
+    requiredPermissions: ["mapping.manage"],
   },
   {
     icon: Network,
