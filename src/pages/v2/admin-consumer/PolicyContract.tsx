@@ -50,7 +50,10 @@ import {
   hydrateContractSnapshot,
 } from "@/api/hooks/useContracts";
 import { useAgreements, useCreateAgreement, useDeleteAgreement, useUpdateAgreement } from "@/api/hooks/useAgreements";
-import { consumerApi } from "@/api/services/connector";
+import { DatasetPolicyType, DatasetPolicyStatusEnum, RuleOperator, POLICY_TYPES, RULE_OPERATORS, POLICY_STATUSES, DATA_CLASSIFICATIONS } from "@/api/services/policy";
+import { addDays } from "date-fns";
+
+const mockTransferCache = new Map<string, any>();
 import { normalizeContractDatasets, normalizeContractPolicyIds } from "@/api/types";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -451,7 +454,6 @@ const PolicyContract = () => {
           },
         });
         toast.success("Dataset policy updated");
-        setEditingContract(result);
       } else {
         await createDatasetPolicy.mutateAsync({
           domainId,
@@ -475,6 +477,7 @@ const PolicyContract = () => {
 
   // ── Contract state ──────────────────────────────────────────────────────
   const [contractDialog, setContractDialog] = useState(false);
+  const [contractHydrating, setContractHydrating] = useState(false);
   const [editingContract, setEditingContract] = useState<any | null>(null);
   const [contractForm, setContractForm] = useState(emptyContractForm);
   const [contractDelete, setContractDelete] = useState<any | null>(null);
@@ -516,15 +519,14 @@ const PolicyContract = () => {
   const openContract = async (record?: any) => {
     setContractSaveError(null);
     if (record) {
+      setContractHydrating(true);
       setContractDialog(true);
-      // Fetch full detail — list endpoint is summary-only (no datasets / contract_policies arrays)
       let full = record;
       try {
-        full = await hydrateContractSnapshot(queryClient, domainId, record, true);
+        full = await hydrateContractSnapshot(queryClient, domainId, record, true) ?? record;
       } catch {
         full = record;
       }
-      if (!full) full = record;
       setEditingContract(full);
       setContractForm({
         name: full.name || "",
@@ -534,9 +536,9 @@ const PolicyContract = () => {
         contract_policies: normalizeContractPolicyIds(full.contract_policies),
         datasets: normalizeContractDatasets(full.datasets),
       });
+      setContractHydrating(false);
     } else {
       setEditingContract(null);
-      // consumer_id otomatis dari sesi — tidak bisa dipilih manual
       setContractForm({ ...emptyContractForm, contract_policies: [], datasets: [], consumer_id: myConsumerId });
       setContractDialog(true);
     }
@@ -763,22 +765,21 @@ const PolicyContract = () => {
     setConsumeEndpoint(endpoint);
     const t0 = performance.now();
 
-    // IDEMPOTENT LOGIC: Check if we have saved data in localStorage (Mock CTS Storage)
+    // IDEMPOTENT LOGIC: Use in-memory cache instead of localStorage due to 5MB quota (e.g. 94k GeoJSON features)
     const storageKey = `cts_saved_consume_${agreementId}`;
-    const savedData = localStorage.getItem(storageKey);
+    const savedData = mockTransferCache.get(storageKey);
 
     if (savedData) {
       try {
-        const parsed = JSON.parse(savedData);
         setConsumeDuration(Math.round(performance.now() - t0));
-        setTransferResult(parsed);
+        setTransferResult(savedData);
         setConsumePreviewOpen(true);
-        toast.success("Loaded from Storage", {
-          description: "Data ini diload dari storage lokal (tidak hit EDC backend lagi)."
+        toast.success("Loaded from Memory Cache", {
+          description: "Data ini diload dari in-memory cache lokal (tidak hit EDC backend lagi)."
         });
         return;
       } catch (e) {
-        // Fallback to fetch if parse fails
+        // Fallback to fetch
       }
     }
 
@@ -788,15 +789,15 @@ const PolicyContract = () => {
       setTransferResult(response);
       setConsumePreviewOpen(true);
       
-      // Save the consumed data to LocalStorage (Mocking CTS Storage)
+      // Save the consumed data to memory cache (Mocking CTS Storage)
       try {
-        localStorage.setItem(storageKey, JSON.stringify(response));
-        toast.success("Consumer transfer executed & saved", {
-          description: "Data berhasil ditarik dan disave ke Storage."
+        mockTransferCache.set(storageKey, response);
+        toast.success("Consumer transfer executed & cached", {
+          description: "Data berhasil ditarik dan disave ke memory cache."
         });
       } catch (e) {
-        toast.warning("Transfer OK, tapi gagal di-save ke Storage", {
-          description: "Mungkin ukuran payload GeoJSON terlalu besar untuk LocalStorage."
+        toast.warning("Transfer OK, tapi gagal di-save", {
+          description: "Gagal menyimpan payload."
         });
       }
     } catch (error: any) {
@@ -1046,7 +1047,11 @@ const PolicyContract = () => {
                               });
                             }}>Activate</Button>
                         )}
-                        <Button size="sm" variant="outline" className="gap-1" onClick={() => setViewTarget({ kind: "contract", data: c })}>
+                        <Button size="sm" variant="outline" className="gap-1" onClick={async () => {
+                          let full: any = c;
+                          try { full = await hydrateContractSnapshot(queryClient, domainId, c, true) ?? c; } catch {}
+                          setViewTarget({ kind: "contract", data: full });
+                        }}>
                           <Eye className="h-3.5 w-3.5" />View
                         </Button>
                         <Button size="sm" variant="outline" className="gap-1" disabled={!canManageContracts} onClick={() => openContract(c)}>
@@ -1328,12 +1333,18 @@ const PolicyContract = () => {
       </Dialog>
 
       {/* ── Contract Dialog ─────────────────────────────────────────────── */}
-      <Dialog open={contractDialog} onOpenChange={setContractDialog}>
+      <Dialog open={contractDialog} onOpenChange={(o) => { setContractDialog(o); if (!o) setContractHydrating(false); }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingContract ? "Edit Contract" : "Create Contract"}</DialogTitle>
             <DialogDescription>Bind a consumer to a provider, attach contract policies, and (optionally) bind datasets with their dataset policies.</DialogDescription>
           </DialogHeader>
+          {contractHydrating && (
+            <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              Loading contract detail…
+            </div>
+          )}
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label>Name * (3-255 chars)</Label>
@@ -1479,8 +1490,8 @@ const PolicyContract = () => {
               title: editingContract ? "Update Contract" : "Create Contract",
               description: "Are you sure you want to save this contract? Note that Contract status will be 'REQUESTED'.",
               onConfirm: handleSaveContract
-            })} disabled={createContract.isPending || updateContract.isPending}>
-              {createContract.isPending || updateContract.isPending ? "Menyimpan..." : editingContract ? "Save Changes" : "Create"}
+            })} disabled={createContract.isPending || updateContract.isPending || contractHydrating}>
+              {contractHydrating ? "Loading…" : createContract.isPending || updateContract.isPending ? "Menyimpan..." : editingContract ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1784,11 +1795,17 @@ const PolicyContract = () => {
                 ) },
                 { label: "Datasets bound", span: 2, value: (d.datasets || []).length === 0 ? <span className="text-muted-foreground italic">none</span> : (
                   <table className="w-full text-xs border border-border/50 rounded">
-                    <thead className="bg-muted/30"><tr><th className="px-2 py-1 text-left">Dataset</th><th className="px-2 py-1 text-left">Dataset Policy</th></tr></thead>
+                    <thead className="bg-muted/30"><tr><th className="px-2 py-1 text-left">Dataset</th><th className="px-2 py-1 text-left">Dataset Policy</th><th className="px-2 py-1 text-left">Endpoint URL</th></tr></thead>
                     <tbody>{(d.datasets || []).map((ds: any, i: number) => {
                       const dataset = datasets.find((x: any) => x.id === ds.dataset_id);
                       const pol = policies.find((x: any) => x.id === ds.dataset_policy_id);
-                      return <tr key={i} className="border-t border-border/40"><td className="px-2 py-1">{dataset?.name || String(ds.dataset_id).slice(0, 8)}...</td><td className="px-2 py-1">{pol?.name || String(ds.dataset_policy_id).slice(0, 8)}...</td></tr>;
+                      return (
+                        <tr key={i} className="border-t border-border/40">
+                          <td className="px-2 py-1">{dataset?.name ?? (ds.dataset_id ? ds.dataset_id.slice(0, 8) + "…" : "—")}</td>
+                          <td className="px-2 py-1">{pol?.name ?? (ds.dataset_policy_id ? ds.dataset_policy_id.slice(0, 8) + "…" : <span className="text-amber-500 italic">no policy</span>)}</td>
+                          <td className="px-2 py-1 font-mono text-[10px] text-blue-500 break-all">{dataset?.endpoint?.url || "—"}</td>
+                        </tr>
+                      );
                     })}</tbody>
                   </table>
                 ) },

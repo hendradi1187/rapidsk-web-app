@@ -259,6 +259,8 @@ export function useUpdateContract() {
         authoritativeRelations: true,
         authoritativeParties: true,
       });
+      queryClient.invalidateQueries({ queryKey: contractKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: contractKeys.detail(domainId, updated.id) });
     },
   });
 }

@@ -211,16 +211,6 @@ export const TransferPreviewDialog = ({
                 </TabsTrigger>
               </TabsList>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleInject} disabled={injectMutation.isPending || injected} className={`gap-1.5 text-xs ${injected ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-blue-600 text-white hover:bg-blue-700"}`}>
-                  {injectMutation.isPending ? (
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  ) : injected ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <Send className="h-3.5 w-3.5" />
-                  )}
-                  {injectMutation.isPending ? "Injecting..." : injected ? "Injected" : "Inject to GeoServer"}
-                </Button>
                 <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={handleDownload}>
                   <Download className="h-3.5 w-3.5" />
                   Download
@@ -276,12 +266,28 @@ export const TransferPreviewDialog = ({
                 </div>
 
                 {!injected ? (
-                  <div className="relative z-10 flex flex-col items-center gap-3 p-6 bg-slate-900/80 backdrop-blur-sm border border-slate-700 rounded-xl max-w-sm text-center">
-                    <Map className="w-10 h-10 text-slate-400" />
-                    <h3 className="text-sm font-medium text-slate-200">Map Preview Unavailable</h3>
-                    <p className="text-xs text-slate-400">
-                      Data features haven't been injected to GeoServer yet. Click the <strong>Inject to GeoServer</strong> button above to publish this layer and view the WMS stream.
-                    </p>
+                  <div className="relative z-10 flex flex-col items-center gap-4 p-8 bg-slate-900/80 backdrop-blur-sm border border-slate-700 rounded-xl max-w-sm text-center shadow-2xl">
+                    <div className="w-16 h-16 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                      <Map className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-200">Map Preview Unavailable</h3>
+                      <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                        Data features haven't been injected to GeoServer yet. Publish this data to view the WMS stream.
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={handleInject} 
+                      disabled={injectMutation.isPending} 
+                      className="w-full gap-2 mt-2 bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20"
+                    >
+                      {injectMutation.isPending ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      {injectMutation.isPending ? "Injecting Data..." : "Inject to GeoServer"}
+                    </Button>
                   </div>
                 ) : (
                   <>
