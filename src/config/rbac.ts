@@ -20,6 +20,7 @@ import {
   UserCog,
   BookOpen,
   Users2,
+  Save,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
@@ -179,6 +180,12 @@ export const MENU_ITEMS_V2: MenuItem[] = [
     label: "Gateway Monitor",
     path: "/v2/authority/gateway",
     roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    icon: Save, // Import Save manually if needed, wait, we need to import Save icon
+    label: "Storage Config",
+    path: "/v2/authority/storage-config",
+    roles: ["SUPER_ADMIN"],
   },
   {
     icon: Network,

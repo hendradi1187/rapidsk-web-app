@@ -716,6 +716,8 @@ const PolicyContract = () => {
     if (!domainId) { toast.error("Pilih domain dulu"); return; }
     if (!agreementForm.contract_id) { toast.error("Pilih contract dulu"); return; }
     if (!agreementForm.effective_from || !agreementForm.effective_to) { toast.error("Effective dates required"); return; }
+    const selectedContract = contracts.find((c: any) => c.id === agreementForm.contract_id);
+    if (!selectedContract || selectedContract.status !== "ACTIVE") { toast.error("Contract harus berstatus ACTIVE untuk membuat Agreement."); return; }
     // Time auto-generated: from gets 00:00:00, to gets 23:59:59
     const ef = new Date(`${agreementForm.effective_from}T00:00:00`);
     const et = new Date(`${agreementForm.effective_to}T23:59:59`);
@@ -760,12 +762,43 @@ const PolicyContract = () => {
     const endpoint = `GET /api/v1/consumer/${domainId}/consume/${agreementId}`;
     setConsumeEndpoint(endpoint);
     const t0 = performance.now();
+
+    // IDEMPOTENT LOGIC: Check if we have saved data in localStorage (Mock CTS Storage)
+    const storageKey = `cts_saved_consume_${agreementId}`;
+    const savedData = localStorage.getItem(storageKey);
+
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        setConsumeDuration(Math.round(performance.now() - t0));
+        setTransferResult(parsed);
+        setConsumePreviewOpen(true);
+        toast.success("Loaded from Storage", {
+          description: "Data ini diload dari storage lokal (tidak hit EDC backend lagi)."
+        });
+        return;
+      } catch (e) {
+        // Fallback to fetch if parse fails
+      }
+    }
+
     try {
       const response = await consumeMutation.mutateAsync(agreementId);
       setConsumeDuration(Math.round(performance.now() - t0));
       setTransferResult(response);
       setConsumePreviewOpen(true);
-      toast.success("Consumer transfer executed — lihat preview data");
+      
+      // Save the consumed data to LocalStorage (Mocking CTS Storage)
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(response));
+        toast.success("Consumer transfer executed & saved", {
+          description: "Data berhasil ditarik dan disave ke Storage."
+        });
+      } catch (e) {
+        toast.warning("Transfer OK, tapi gagal di-save ke Storage", {
+          description: "Mungkin ukuran payload GeoJSON terlalu besar untuk LocalStorage."
+        });
+      }
     } catch (error: any) {
       setConsumeDuration(Math.round(performance.now() - t0));
       toast.error("Consumer transfer failed", {
@@ -779,6 +812,9 @@ const PolicyContract = () => {
 
   // ── View detail state ──────────────────────────────────────────────────
   const [viewTarget, setViewTarget] = useState<{ kind: "datasetPolicy" | "contract" | "contractPolicy" | "agreement"; data: any } | null>(null);
+
+  // ── Confirm Action State ───────────────────────────────────────────────
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: React.ReactNode; onConfirm: () => void; destructive?: boolean } | null>(null);
 
   return (
     <V2PageShell title="Policy & Contract" subtitle="Group D — Dataset policies, contract policies, contracts, dan agreements (full CRUD, payload aligned ke OpenAPI)." status="Live API">
@@ -965,30 +1001,49 @@ const PolicyContract = () => {
                           <>
                             <Button size="sm" variant="outline" className="border-emerald-500/40 text-emerald-500"
                               disabled={!canManageContracts || updateContract.isPending}
-                              onClick={async () => {
-                                try {
-                                  await updateContract.mutateAsync({ domainId, id: c.id, data: { consumer_id: c.consumer_id, provider_id: c.provider_id, name: c.name, status: "APPROVED" } });
-                                  toast.success(`Contract "${c.name}" disetujui`);
-                                } catch (e: any) { toast.error("Gagal approve", { description: e?.response?.data?.detail || e?.message }); }
-                              }}>Approve</Button>
+                              onClick={() => setConfirmAction({
+                                title: "Approve Contract",
+                                description: `Are you sure you want to approve contract "${c.name}"?`,
+                                onConfirm: async () => {
+                                  try {
+                                    await updateContract.mutateAsync({ domainId, id: c.id, data: { consumer_id: c.consumer_id, provider_id: c.provider_id, name: c.name, status: "APPROVED" } });
+                                    toast.success(`Contract "${c.name}" disetujui`);
+                                  } catch (e: any) { toast.error("Gagal approve", { description: e?.response?.data?.detail || e?.message }); }
+                                }
+                              })}>Approve</Button>
                             <Button size="sm" variant="outline" className="border-red-500/40 text-red-500"
                               disabled={!canManageContracts || updateContract.isPending}
-                              onClick={async () => {
-                                try {
-                                  await updateContract.mutateAsync({ domainId, id: c.id, data: { consumer_id: c.consumer_id, provider_id: c.provider_id, name: c.name, status: "REJECTED" } });
-                                  toast.success(`Contract "${c.name}" ditolak`);
-                                } catch (e: any) { toast.error("Gagal reject", { description: e?.response?.data?.detail || e?.message }); }
-                              }}>Reject</Button>
+                              onClick={() => setConfirmAction({
+                                title: "Reject Contract",
+                                description: `Are you sure you want to reject contract "${c.name}"?`,
+                                destructive: true,
+                                onConfirm: async () => {
+                                  try {
+                                    await updateContract.mutateAsync({ domainId, id: c.id, data: { consumer_id: c.consumer_id, provider_id: c.provider_id, name: c.name, status: "REJECTED" } });
+                                    toast.success(`Contract "${c.name}" ditolak`);
+                                  } catch (e: any) { toast.error("Gagal reject", { description: e?.response?.data?.detail || e?.message }); }
+                                }
+                              })}>Reject</Button>
                           </>
                         )}
                         {c.status === "APPROVED" && (
                           <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-500"
                             disabled={!canManageContracts || updateContract.isPending}
-                            onClick={async () => {
-                              try {
-                                await updateContract.mutateAsync({ domainId, id: c.id, data: { consumer_id: c.consumer_id, provider_id: c.provider_id, name: c.name, status: "ACTIVE" } });
-                                toast.success(`Contract "${c.name}" diaktifkan`);
-                              } catch (e: any) { toast.error("Gagal activate", { description: e?.response?.data?.detail || e?.message }); }
+                            onClick={() => {
+                              if (!c.datasets || c.datasets.length === 0) {
+                                toast.error("Contract cannot be activated without datasets. Provider must map datasets first.");
+                                return;
+                              }
+                              setConfirmAction({
+                                title: "Activate Contract",
+                                description: `Are you sure you want to activate contract "${c.name}"? This allows Agreements to be created.`,
+                                onConfirm: async () => {
+                                  try {
+                                    await updateContract.mutateAsync({ domainId, id: c.id, data: { consumer_id: c.consumer_id, provider_id: c.provider_id, name: c.name, status: "ACTIVE" } });
+                                    toast.success(`Contract "${c.name}" diaktifkan`);
+                                  } catch (e: any) { toast.error("Gagal activate", { description: e?.response?.data?.detail || e?.message }); }
+                                }
+                              });
                             }}>Activate</Button>
                         )}
                         <Button size="sm" variant="outline" className="gap-1" onClick={() => setViewTarget({ kind: "contract", data: c })}>
@@ -1071,7 +1126,12 @@ const PolicyContract = () => {
                   return (
                   <tr key={a.id} className="transition-colors hover:bg-muted/20">
                     <td className="px-4 py-3 text-sm">{ctr ? ctr.name : <span className="font-mono text-xs">{a.contract_id?.slice(0, 8)}...</span>}</td>
-                    <td className="px-4 py-3"><Badge variant="outline" className={`text-xs ${STATUS_COLORS[a.status] || ""}`}>{a.status}</Badge></td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="outline" className={`w-fit text-[10px] ${STATUS_COLORS[a.status] || ""}`}>Agr: {a.status}</Badge>
+                        {ctr && <Badge variant="secondary" className={`w-fit text-[10px] ${STATUS_COLORS[ctr.status] || ""}`}>Ctr: {ctr.status}</Badge>}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(a.effective_from).toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(a.effective_to).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
@@ -1083,11 +1143,15 @@ const PolicyContract = () => {
                               variant="outline"
                               className="border-emerald-500/40 text-emerald-500"
                               disabled={!hasPermission("agreements.approve") || updateAgreement.isPending}
-                              onClick={async () => {
-                                try {
-                                  await updateAgreement.mutateAsync({ domainId, id: a.id, data: { contract_id: a.contract_id, status: "APPROVED" } });
-                                } catch { /* hook toasts */ }
-                              }}
+                              onClick={() => setConfirmAction({
+                                title: "Approve Agreement",
+                                description: `Are you sure you want to approve this agreement?`,
+                                onConfirm: async () => {
+                                  try {
+                                    await updateAgreement.mutateAsync({ domainId, id: a.id, data: { contract_id: a.contract_id, status: "APPROVED" } });
+                                  } catch { /* hook toasts */ }
+                                }
+                              })}
                             >
                               Approve
                             </Button>
@@ -1096,11 +1160,16 @@ const PolicyContract = () => {
                               variant="outline"
                               className="border-red-500/40 text-red-500"
                               disabled={!hasPermission("agreements.approve") || updateAgreement.isPending}
-                              onClick={async () => {
-                                try {
-                                  await updateAgreement.mutateAsync({ domainId, id: a.id, data: { contract_id: a.contract_id, status: "REJECTED" } });
-                                } catch { /* hook toasts */ }
-                              }}
+                              onClick={() => setConfirmAction({
+                                title: "Reject Agreement",
+                                description: `Are you sure you want to reject this agreement?`,
+                                destructive: true,
+                                onConfirm: async () => {
+                                  try {
+                                    await updateAgreement.mutateAsync({ domainId, id: a.id, data: { contract_id: a.contract_id, status: "REJECTED" } });
+                                  } catch { /* hook toasts */ }
+                                }
+                              })}
                             >
                               Reject
                             </Button>
@@ -1112,11 +1181,15 @@ const PolicyContract = () => {
                             variant="outline"
                             className="border-blue-500/40 text-blue-500"
                             disabled={!canManageAgreements || updateAgreement.isPending}
-                            onClick={async () => {
-                              try {
-                                await updateAgreement.mutateAsync({ domainId, id: a.id, data: { contract_id: a.contract_id, status: "ACTIVE" } });
-                              } catch { /* hook toasts */ }
-                            }}
+                            onClick={() => setConfirmAction({
+                                title: "Activate Agreement",
+                                description: `Are you sure you want to activate this agreement? This will allow Trigger Consume.`,
+                                onConfirm: async () => {
+                                  try {
+                                    await updateAgreement.mutateAsync({ domainId, id: a.id, data: { contract_id: a.contract_id, status: "ACTIVE" } });
+                                  } catch { /* hook toasts */ }
+                                }
+                              })}
                           >
                             Activate
                           </Button>
@@ -1127,7 +1200,11 @@ const PolicyContract = () => {
                         <Button size="sm" variant="outline" className="gap-1" disabled={!canManageAgreements} onClick={() => openAgreement(a)}>
                           <Pencil className="h-3.5 w-3.5" /> Edit
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleStartConsumerTransfer(a.id)} disabled={consumeMutation.isPending || !hasPermission("transfer.manage") || a.status === "REQUESTED"}>
+                        <Button size="sm" variant="outline" onClick={() => setConfirmAction({
+                          title: "Trigger Consume",
+                          description: "Pull data from provider connector. Are you sure?",
+                          onConfirm: () => handleStartConsumerTransfer(a.id)
+                        })} disabled={consumeMutation.isPending || !hasPermission("transfer.manage") || a.status !== "ACTIVE"} title={a.status !== "ACTIVE" ? "Agreement must be ACTIVE" : "Pull data from provider connector"}>
                           Trigger Consume
                         </Button>
                         <Button size="sm" variant="outline" className="border-destructive/40 text-destructive" disabled={!canManageAgreements} onClick={() => setAgreementDeleteTarget(a)}>
@@ -1338,27 +1415,43 @@ const PolicyContract = () => {
                 <div className="space-y-2">
                   {contractForm.datasets.map((row, idx) => {
                     const incomplete = (row.dataset_id && !row.dataset_policy_id) || (!row.dataset_id && row.dataset_policy_id);
+                    const dsInfo = datasets.find((d: any) => d.id === row.dataset_id);
                     return (
-                    <div key={idx} className={`grid grid-cols-[1fr_1fr_auto] items-center gap-2 rounded-lg p-1 ${incomplete ? "border border-red-500/40 bg-red-500/5" : ""}`}>
-                      <Select value={row.dataset_id} onValueChange={(v) => setContractForm((p) => {
-                        const copy = [...p.datasets]; copy[idx] = { ...copy[idx], dataset_id: v }; return { ...p, datasets: copy };
-                      })}>
-                        <SelectTrigger className={!row.dataset_id ? "border-amber-500/50" : ""}><SelectValue placeholder="Pilih dataset" /></SelectTrigger>
-                        <SelectContent>
-                          {datasets.map((ds: any) => (<SelectItem key={ds.id} value={ds.id}>{ds.name}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={row.dataset_policy_id} onValueChange={(v) => setContractForm((p) => {
-                        const copy = [...p.datasets]; copy[idx] = { ...copy[idx], dataset_policy_id: v }; return { ...p, datasets: copy };
-                      })}>
-                        <SelectTrigger className={!row.dataset_policy_id ? "border-amber-500/50" : ""}><SelectValue placeholder="Pilih policy" /></SelectTrigger>
-                        <SelectContent>
-                          {policies.map((pol: any) => (<SelectItem key={pol.id} value={pol.id}>{pol.name}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setContractForm((p) => ({ ...p, datasets: p.datasets.filter((_, i) => i !== idx) }))}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                    <div key={idx} className={`flex flex-col gap-2 rounded-lg p-2 ${incomplete ? "border border-red-500/40 bg-red-500/5" : "border border-border/50 bg-muted/10"}`}>
+                      <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                        <Select value={row.dataset_id} onValueChange={(v) => setContractForm((p) => {
+                          const copy = [...p.datasets]; copy[idx] = { ...copy[idx], dataset_id: v }; return { ...p, datasets: copy };
+                        })}>
+                          <SelectTrigger className={!row.dataset_id ? "border-amber-500/50" : ""}><SelectValue placeholder="Pilih dataset" /></SelectTrigger>
+                          <SelectContent>
+                            {datasets.map((ds: any) => (<SelectItem key={ds.id} value={ds.id}>{ds.name}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={row.dataset_policy_id} onValueChange={(v) => setContractForm((p) => {
+                          const copy = [...p.datasets]; copy[idx] = { ...copy[idx], dataset_policy_id: v }; return { ...p, datasets: copy };
+                        })}>
+                          <SelectTrigger className={!row.dataset_policy_id ? "border-amber-500/50" : ""}><SelectValue placeholder="Pilih policy" /></SelectTrigger>
+                          <SelectContent>
+                            {policies.map((pol: any) => (<SelectItem key={pol.id} value={pol.id}>{pol.name}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setContractForm((p) => ({ ...p, datasets: p.datasets.filter((_, i) => i !== idx) }))}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      {dsInfo && (
+                        <div className="rounded-md bg-card border border-border/40 p-2 mt-1 shadow-sm">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold">{dsInfo.name}</span>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{dsInfo.version || "v1.0"}</Badge>
+                          </div>
+                          {dsInfo.description && <p className="text-[10px] text-muted-foreground line-clamp-1 mb-1">{dsInfo.description}</p>}
+                          <div className="grid grid-cols-2 gap-2 text-[10px] mt-1 border-t border-border/30 pt-1">
+                            <div className="flex flex-col"><span className="text-muted-foreground uppercase font-medium">Endpoint</span><span className="font-mono text-blue-500 break-all">{dsInfo.endpoint?.url || "-"}</span></div>
+                            <div className="flex flex-col"><span className="text-muted-foreground uppercase font-medium">Protocol</span><span>{dsInfo.endpoint?.protocol || dsInfo.endpoint?.access_type || "-"}</span></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     );
                   })}
@@ -1382,7 +1475,11 @@ const PolicyContract = () => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setContractDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveContract} disabled={createContract.isPending || updateContract.isPending}>
+            <Button onClick={() => setConfirmAction({
+              title: editingContract ? "Update Contract" : "Create Contract",
+              description: "Are you sure you want to save this contract? Note that Contract status will be 'REQUESTED'.",
+              onConfirm: handleSaveContract
+            })} disabled={createContract.isPending || updateContract.isPending}>
               {createContract.isPending || updateContract.isPending ? "Menyimpan..." : editingContract ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
@@ -1484,7 +1581,15 @@ const PolicyContract = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAgreementDialogOpen(false); setEditingAgreement(null); }}>Cancel</Button>
-            <Button onClick={handleSaveAgreement} disabled={createAgreement.isPending || updateAgreement.isPending}>
+            <Button onClick={() => {
+              const selectedContract = contracts.find((c: any) => c.id === agreementForm.contract_id);
+              if (!selectedContract || selectedContract.status !== "ACTIVE") { toast.error("Contract harus berstatus ACTIVE untuk membuat Agreement."); return; }
+              setConfirmAction({
+                title: editingAgreement ? "Update Agreement" : "Create Agreement",
+                description: "Are you sure you want to save this agreement? Make sure the effective dates are correct.",
+                onConfirm: handleSaveAgreement
+              });
+            }} disabled={createAgreement.isPending || updateAgreement.isPending}>
               {createAgreement.isPending || updateAgreement.isPending ? "Saving..." : editingAgreement ? "Save Changes" : "Create Agreement"}
             </Button>
           </DialogFooter>
@@ -1600,6 +1705,29 @@ const PolicyContract = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── General Confirmation Dialog ─────────────────────────────────── */}
+      <AlertDialog open={!!confirmAction} onOpenChange={(o) => !o && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmAction?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmAction?.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              onClick={() => {
+                if (confirmAction?.onConfirm) confirmAction.onConfirm();
+                setConfirmAction(null);
+              }}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ── Detail (View) Dialog ────────────────────────────────────────── */}
       {viewTarget && (() => {
         const d = viewTarget.data;
@@ -1723,6 +1851,37 @@ const PolicyContract = () => {
               { label: "Effective To", value: renderValue(d.effective_to) },
               { label: "Created", value: renderValue(d.created_at) },
               { label: "Updated", value: renderValue(d.updated_at) },
+              { label: "Covered Datasets", span: 2, value: (!ctr || !ctr.datasets || ctr.datasets.length === 0) ? <span className="text-muted-foreground italic">No datasets bound</span> : (
+                <div className="flex flex-col gap-2 mt-1">
+                  {ctr.datasets.map((ds: any, i: number) => {
+                    const datasetInfo = datasets.find((x: any) => x.id === ds.dataset_id);
+                    const policyInfo = policies.find((x: any) => x.id === ds.dataset_policy_id);
+                    return (
+                      <div key={i} className="rounded-md border border-border/50 bg-muted/20 p-2 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-foreground">{datasetInfo?.name || ds.dataset_id}</span>
+                          <Badge variant="secondary" className="text-[9px] h-4 px-1 py-0">{datasetInfo?.version || "v1.0"}</Badge>
+                        </div>
+                        {datasetInfo?.description && <p className="text-muted-foreground">{datasetInfo.description}</p>}
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-2 mt-1 border-t border-border/40 pt-1.5">
+                          <div className="flex flex-col col-span-2">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Endpoint URL</span>
+                            <span className="font-mono text-blue-500 break-all">{datasetInfo?.endpoint?.url || "-"}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Protocol</span>
+                            <span>{datasetInfo?.endpoint?.protocol || datasetInfo?.endpoint?.access_type || "-"}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Applied Policy</span>
+                            <span>{policyInfo?.name || ds.dataset_policy_id}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) },
             ]}
             raw={d}
             footer={
