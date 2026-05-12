@@ -144,6 +144,9 @@ const ContractFulfilment = () => {
   const [pickContractPolicyId, setPickContractPolicyId] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // ── Confirm Action State ───────────────────────────────────────────────
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: React.ReactNode; onConfirm: () => void; destructive?: boolean } | null>(null);
+
   useEffect(() => {
     if (!domainId || contracts.length === 0) return;
 
@@ -505,8 +508,8 @@ const ContractFulfilment = () => {
                     size="sm"
                     variant="outline"
                     className="gap-2"
-                    disabled={!canManage}
-                    title={canManage ? "Attach datasets and policies to this contract" : "Missing permission contracts.manage / fulfilment.manage"}
+                    disabled={!canManage || c.status === "ACTIVE" || c.status === "REJECTED"}
+                    title={!canManage ? "Missing permission contracts.manage / fulfilment.manage" : (c.status === "ACTIVE" || c.status === "REJECTED") ? `Contract is ${c.status}. Cannot manage fulfilment.` : "Attach datasets and policies to this contract"}
                     onClick={() => openFulfilDialog(c)}
                   >
                     <Pencil className="h-4 w-4" />
@@ -544,7 +547,11 @@ const ContractFulfilment = () => {
                       size="sm"
                       variant="outline"
                       className={agreement.status === "ACTIVE" ? "border-blue-500/40 text-blue-500" : ""}
-                      onClick={() => handleProvide(agreement.id)}
+                      onClick={() => setConfirmAction({
+                        title: "Trigger Provide",
+                        description: "Push data ke consumer connector. Pastikan semua dataset sudah di-setup dengan benar di sisi Anda.",
+                        onConfirm: () => handleProvide(agreement.id)
+                      })}
                       disabled={provideMutation.isPending || !hasPermission("transfer.manage") || agreement.status !== "ACTIVE"}
                       title={agreement.status !== "ACTIVE" ? `Status ${agreement.status} — harus ACTIVE dulu` : "Push data ke consumer connector"}
                     >
@@ -742,17 +749,24 @@ const ContractFulfilment = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {draftDatasets.map((entry) => (
+                      {draftDatasets.map((entry) => {
+                        const dsInfo = datasetById.get(entry.dataset_id);
+                        return (
                         <tr key={entry.dataset_id} className="border-b border-border/20 last:border-0">
-                          <td className="px-3 py-2 text-xs">{datasetById.get(entry.dataset_id)?.name || entry.dataset_id.slice(0, 8)}</td>
-                          <td className="px-3 py-2 text-xs">{datasetPolicyById.get(entry.dataset_policy_id)?.name || entry.dataset_policy_id.slice(0, 8)}</td>
-                          <td className="px-3 py-2 text-right">
+                          <td className="px-3 py-2 text-xs">
+                            <div className="font-semibold">{dsInfo?.name || entry.dataset_id.slice(0, 8)} <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{dsInfo?.version || "v1.0"}</Badge></div>
+                            <div className="text-[10px] text-muted-foreground mt-1">Endpoint: <span className="font-mono text-blue-500 break-all">{dsInfo?.endpoint?.url || "-"}</span></div>
+                            <div className="text-[10px] text-muted-foreground">Protocol: {dsInfo?.endpoint?.protocol || dsInfo?.endpoint?.access_type || "-"}</div>
+                          </td>
+                          <td className="px-3 py-2 text-xs align-top">{datasetPolicyById.get(entry.dataset_policy_id)?.name || entry.dataset_policy_id.slice(0, 8)}</td>
+                          <td className="px-3 py-2 text-right align-top">
                             <Button size="sm" variant="ghost" className="h-7 gap-1 text-destructive" onClick={() => handleRemoveDataset(entry.dataset_id)}>
                               <Trash2 className="h-3 w-3" />Hapus
                             </Button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
@@ -841,12 +855,38 @@ const ContractFulfilment = () => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setFulfilDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveFulfilment} disabled={updateContract.isPending || !canManage || loadingDetail}>
+            <Button onClick={() => setConfirmAction({
+              title: "Save Fulfilment",
+              description: "Attach datasets and policies to this contract? Ensure endpoints are correct.",
+              onConfirm: handleSaveFulfilment
+            })} disabled={updateContract.isPending || !canManage || loadingDetail}>
               {updateContract.isPending ? "Menyimpan..." : "Save Fulfilment"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── General Confirmation Dialog ─────────────────────────────────── */}
+      <AlertDialog open={!!confirmAction} onOpenChange={(o) => !o && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmAction?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmAction?.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              onClick={() => {
+                if (confirmAction?.onConfirm) confirmAction.onConfirm();
+                setConfirmAction(null);
+              }}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </V2PageShell>
   );
 };

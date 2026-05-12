@@ -2,7 +2,7 @@
 // Reusable dialog to display transfer trigger response data in a structured way.
 
 import { useState } from "react";
-import { Copy, Check, Code2, Table2, X } from "lucide-react";
+import { Copy, Check, Code2, Table2, X, Download } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -139,6 +139,18 @@ export const TransferPreviewDialog = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownload = () => {
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `consume_data_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const isEmpty = data === null || data === undefined || (typeof data === "object" && Object.keys(data as object).length === 0);
 
   return (
@@ -182,10 +194,16 @@ export const TransferPreviewDialog = ({
                   Raw JSON
                 </TabsTrigger>
               </TabsList>
-              <Button size="sm" variant="ghost" className="gap-1.5 text-xs" onClick={handleCopy}>
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {copied ? "Copied" : "Copy JSON"}
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={handleDownload}>
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </Button>
+                <Button size="sm" variant="ghost" className="gap-1.5 text-xs" onClick={handleCopy}>
+                  {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? "Copied" : "Copy JSON"}
+                </Button>
+              </div>
             </div>
 
             <TabsContent value="structured" className="flex-1 overflow-auto mt-3">
