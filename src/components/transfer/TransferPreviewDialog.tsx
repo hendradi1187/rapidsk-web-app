@@ -2,7 +2,7 @@
 // Reusable dialog to display transfer trigger response data in a structured way.
 
 import { useState } from "react";
-import { Copy, Check, Code2, Table2, X, Download } from "lucide-react";
+import { Copy, Check, Code2, Table2, X, Download, Send, Map } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useInjectToGeoServer } from "@/api/hooks/useGeoServer";
 
 interface TransferPreviewDialogProps {
   open: boolean;
@@ -131,7 +132,18 @@ export const TransferPreviewDialog = ({
   duration,
 }: TransferPreviewDialogProps) => {
   const [copied, setCopied] = useState(false);
+  const [injected, setInjected] = useState(false);
   const jsonString = JSON.stringify(data, null, 2);
+  const injectMutation = useInjectToGeoServer();
+
+  const handleInject = async () => {
+    try {
+      await injectMutation.mutateAsync({ data });
+      setInjected(true);
+    } catch {
+      // toast is handled in hook
+    }
+  };
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(jsonString);
@@ -193,8 +205,22 @@ export const TransferPreviewDialog = ({
                   <Code2 className="h-3.5 w-3.5" />
                   Raw JSON
                 </TabsTrigger>
+                <TabsTrigger value="map" className="gap-1.5">
+                  <Map className="h-3.5 w-3.5" />
+                  Map Preview
+                </TabsTrigger>
               </TabsList>
               <div className="flex gap-2">
+                <Button size="sm" onClick={handleInject} disabled={injectMutation.isPending || injected} className={`gap-1.5 text-xs ${injected ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-blue-600 text-white hover:bg-blue-700"}`}>
+                  {injectMutation.isPending ? (
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : injected ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                  {injectMutation.isPending ? "Injecting..." : injected ? "Injected" : "Inject to GeoServer"}
+                </Button>
                 <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={handleDownload}>
                   <Download className="h-3.5 w-3.5" />
                   Download
@@ -236,6 +262,54 @@ export const TransferPreviewDialog = ({
               <pre className="rounded-lg border border-border/50 bg-muted/30 p-4 text-xs font-mono leading-relaxed overflow-auto max-h-[60vh] whitespace-pre-wrap break-all">
                 {jsonString}
               </pre>
+            </TabsContent>
+
+            <TabsContent value="map" className="flex-1 overflow-auto mt-3">
+              <div className="relative w-full h-[50vh] min-h-[400px] rounded-lg border border-border/50 bg-slate-900 overflow-hidden flex items-center justify-center">
+                {/* Simulated map background using CSS grid pattern */}
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(#4f4f4f 1px, transparent 1px)", backgroundSize: "20px 20px" }}></div>
+                
+                {/* Decorative map elements */}
+                <div className="absolute top-4 right-4 flex flex-col gap-2">
+                  <div className="w-8 h-8 bg-slate-800 rounded shadow border border-slate-700 flex items-center justify-center text-slate-400">+</div>
+                  <div className="w-8 h-8 bg-slate-800 rounded shadow border border-slate-700 flex items-center justify-center text-slate-400">-</div>
+                </div>
+
+                {!injected ? (
+                  <div className="relative z-10 flex flex-col items-center gap-3 p-6 bg-slate-900/80 backdrop-blur-sm border border-slate-700 rounded-xl max-w-sm text-center">
+                    <Map className="w-10 h-10 text-slate-400" />
+                    <h3 className="text-sm font-medium text-slate-200">Map Preview Unavailable</h3>
+                    <p className="text-xs text-slate-400">
+                      Data features haven't been injected to GeoServer yet. Click the <strong>Inject to GeoServer</strong> button above to publish this layer and view the WMS stream.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="absolute bottom-4 left-4 z-10 p-3 bg-slate-900/80 backdrop-blur-md border border-emerald-500/30 rounded-lg shadow-lg">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-medium text-emerald-100">Live WMS Stream (GeoServer)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Layer: cts:data_preview</p>
+                    </div>
+                    {/* Simulated data points */}
+                    <div className="absolute w-full h-full inset-0 z-0 opacity-70">
+                      {Array.from({ length: 12 }).map((_, i) => (
+                        <div 
+                          key={i} 
+                          className="absolute w-3 h-3 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.8)] border border-blue-300 transform -translate-x-1/2 -translate-y-1/2"
+                          style={{
+                            top: `${20 + Math.random() * 60}%`,
+                            left: `${20 + Math.random() * 60}%`,
+                          }}
+                        >
+                          <div className="absolute w-full h-full bg-blue-400 rounded-full animate-ping opacity-75" />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </TabsContent>
           </Tabs>
         )}
