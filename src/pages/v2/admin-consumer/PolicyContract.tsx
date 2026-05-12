@@ -51,6 +51,7 @@ import {
 } from "@/api/hooks/useContracts";
 import { useAgreements, useCreateAgreement, useDeleteAgreement, useUpdateAgreement } from "@/api/hooks/useAgreements";
 import { DatasetPolicyType, DatasetPolicyStatusEnum, RuleOperator, POLICY_TYPES, RULE_OPERATORS, POLICY_STATUSES, DATA_CLASSIFICATIONS } from "@/api/services/policy";
+import { consumerApi } from "@/api/services/connector";
 import { addDays } from "date-fns";
 
 import { transferCache } from "@/lib/transferCache";
