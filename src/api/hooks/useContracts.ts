@@ -247,16 +247,17 @@ export function useUpdateContract() {
       data: ContractUpdateRequest;
     }) => {
       const updated = await contractsApi.update(domainId, id, data);
+      // base = our PATCH payload (has the dataset_policy_id we actually sent)
+      // next = backend response (may have null dataset_policy_id)
+      // mergeDatasetRows preserves our sent policy_id when backend returns null
       return (
         mergeContractSnapshot({ id, ...data } as Partial<Contract>, { id, ...updated }, {
-          authoritativeRelations: true,
           authoritativeParties: true,
         }) ?? updated
       );
     },
     onSuccess: (updated, { domainId }) => {
       seedContractSnapshot(queryClient, domainId, updated, {
-        authoritativeRelations: true,
         authoritativeParties: true,
       });
       queryClient.invalidateQueries({ queryKey: contractKeys.lists() });

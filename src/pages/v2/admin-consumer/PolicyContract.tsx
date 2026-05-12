@@ -791,8 +791,17 @@ const PolicyContract = () => {
       });
     } catch (error: any) {
       setConsumeDuration(Math.round(performance.now() - t0));
-      toast.error("Consumer transfer failed", {
-        description: error?.response?.data?.error || error?.response?.data?.detail || "Unexpected error",
+      console.error("[consume] error:", error);
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+      const detail = data?.error || data?.detail || data?.message;
+      const msg =
+        (typeof detail === "string" && detail) ||
+        (Array.isArray(detail) ? detail.map((d: any) => d?.msg || JSON.stringify(d)).join(" | ") : "") ||
+        error?.message ||
+        (data ? JSON.stringify(data).slice(0, 300) : "Network/Unknown error");
+      toast.error(`Consumer transfer failed${status ? ` (HTTP ${status})` : ""}`, {
+        description: msg,
       });
     }
   };
