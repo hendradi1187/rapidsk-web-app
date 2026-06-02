@@ -1,0 +1,73 @@
+'area: auth':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pages/Login.tsx'
+      - 'src/pages/Activation.tsx'
+      - 'src/pages/ConfirmEmail.tsx'
+      - 'src/context/**'
+      - 'src/components/auth/**'
+
+'area: v2':
+  - changed-files:
+    - any-glob-to-any-file: ['src/pages/v2/**']
+
+'area: api':
+  - changed-files:
+    - any-glob-to-any-file: ['src/api/**']
+
+'area: ui':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/components/**'
+      - 'src/index.css'
+      - 'tailwind.config.ts'
+      - 'components.json'
+
+'area: contracts':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pages/Contracts.tsx'
+      - 'src/pages/v2/**/Policy*.tsx'
+      - 'src/api/services/policy-contract.ts'
+      - 'src/components/policy-contract/**'
+
+'area: datasets':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pages/Datasets.tsx'
+      - 'src/api/services/data-catalog.ts'
+      - 'src/api/hooks/useDatasets.ts'
+
+'area: transfer':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pages/DataTransfer.tsx'
+      - 'src/api/services/data-transfer.ts'
+      - 'src/api/services/transfer-runtime.ts'
+      - 'src/api/hooks/useDataTransfers.ts'
+
+'area: audit':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pages/Audit.tsx'
+      - 'src/pages/Compliance.tsx'
+      - 'src/api/services/audit*.ts'
+
+'area: users':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pages/Users.tsx'
+      - 'src/pages/AccessManagement.tsx'
+      - 'src/api/services/identity-provider.ts'
+      - 'src/api/hooks/useUsers.ts'
+
+'area: ci':
+  - changed-files:
+    - any-glob-to-any-file: ['.github/**']
+
+'area: infra':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'docker/**'

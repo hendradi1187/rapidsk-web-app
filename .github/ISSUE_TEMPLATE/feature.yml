@@ -1,0 +1,77 @@
+name: Feature Request
+description: Usulkan fitur baru atau peningkatan
+title: "feat(<scope>): <judul singkat>"
+labels: ["type: feature", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Terima kasih atas usulan fiturnya! Isi detail di bawah.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Di bagian mana fitur ini akan ada?
+      options:
+        - Auth / Login
+        - Dashboard
+        - Admin Consumer (v2)
+        - Admin Provider (v2)
+        - Authority (v2)
+        - Datasets
+        - Contracts / Policy
+        - Data Transfer
+        - Audit / Compliance
+        - Users / Access
+        - Organizations
+        - API Layer
+        - UI Components
+        - Infra / Docker
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: Masalah apa yang ingin diselesaikan dengan fitur ini?
+      placeholder: "Saat ini ketika saya... saya tidak bisa... karena..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solusi yang Diusulkan
+      description: Bagaimana fitur ini seharusnya bekerja?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif yang Dipertimbangkan
+      description: Apakah ada cara lain untuk menyelesaikan masalah ini?
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "high — dibutuhkan segera"
+        - "medium — dibutuhkan dalam sprint ini"
+        - "low — nice to have"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: User Role yang Terdampak
+      multiple: true
+      options:
+        - Admin Consumer
+        - Admin Provider
+        - Authority
+        - Semua role

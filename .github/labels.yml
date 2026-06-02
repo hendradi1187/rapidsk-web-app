@@ -1,0 +1,124 @@
+# ─── Type ────────────────────────────────────────────
+- name: "type: bug"
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: "type: feature"
+  color: "0075ca"
+  description: "New feature or request"
+
+- name: "type: task"
+  color: "e4e669"
+  description: "General task or chore"
+
+- name: "type: refactor"
+  color: "7057ff"
+  description: "Code improvement without behavior change"
+
+- name: "type: docs"
+  color: "0052cc"
+  description: "Documentation only"
+
+# ─── Status ──────────────────────────────────────────
+- name: "status: needs-triage"
+  color: "ededed"
+  description: "Needs review and categorization"
+
+- name: "status: in-progress"
+  color: "fbca04"
+  description: "Currently being worked on"
+
+- name: "status: blocked"
+  color: "e11d48"
+  description: "Blocked by external dependency"
+
+- name: "status: ready-for-review"
+  color: "0e8a16"
+  description: "Ready for code review"
+
+- name: "status: wont-fix"
+  color: "ffffff"
+  description: "This will not be worked on"
+
+# ─── Priority ────────────────────────────────────────
+- name: "priority: critical"
+  color: "b60205"
+  description: "Must fix immediately"
+
+- name: "priority: high"
+  color: "d93f0b"
+  description: "Fix in current sprint"
+
+- name: "priority: medium"
+  color: "e4e669"
+  description: "Fix in next sprint"
+
+- name: "priority: low"
+  color: "c2e0c6"
+  description: "Nice to have"
+
+# ─── Area ────────────────────────────────────────────
+- name: "area: auth"
+  color: "bfd4f2"
+  description: "Login, RBAC, session, guard"
+
+- name: "area: dashboard"
+  color: "bfd4f2"
+  description: "Dashboard / home page"
+
+- name: "area: datasets"
+  color: "bfd4f2"
+  description: "Data catalog and datasets"
+
+- name: "area: contracts"
+  color: "bfd4f2"
+  description: "Policy and contracts"
+
+- name: "area: transfer"
+  color: "bfd4f2"
+  description: "Data transfer and runtime"
+
+- name: "area: audit"
+  color: "bfd4f2"
+  description: "Audit logs and compliance"
+
+- name: "area: users"
+  color: "bfd4f2"
+  description: "User and access management"
+
+- name: "area: organizations"
+  color: "bfd4f2"
+  description: "Organizations and participants"
+
+- name: "area: v2"
+  color: "5319e7"
+  description: "V2 pages (consumer/provider/authority)"
+
+- name: "area: api"
+  color: "bfd4f2"
+  description: "API layer and services"
+
+- name: "area: ui"
+  color: "bfd4f2"
+  description: "UI components and styling"
+
+- name: "area: ci"
+  color: "f9d0c4"
+  description: "CI/CD workflows"
+
+- name: "area: infra"
+  color: "f9d0c4"
+  description: "Docker, Nginx, deployment"
+
+# ─── Role ────────────────────────────────────────────
+- name: "role: consumer"
+  color: "c5def5"
+  description: "Admin Consumer flow"
+
+- name: "role: provider"
+  color: "c5def5"
+  description: "Admin Provider flow"
+
+- name: "role: authority"
+  color: "c5def5"
+  description: "Authority flow"

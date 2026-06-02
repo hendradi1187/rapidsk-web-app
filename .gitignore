@@ -25,3 +25,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code — local settings only (user-specific, not shared)
+.claude/settings.local.json
+
+# Test credentials — NEVER commit
+TEST_LOGIN.md

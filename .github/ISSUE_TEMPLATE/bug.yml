@@ -1,0 +1,85 @@
+name: Bug Report
+description: Laporkan sesuatu yang tidak bekerja dengan benar
+title: "fix(<scope>): <judul singkat>"
+labels: ["type: bug", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Terima kasih sudah melaporkan bug. Isi form di bawah dengan detail.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Bagian mana yang terdampak?
+      options:
+        - Auth / Login
+        - Dashboard
+        - Admin Consumer (v2)
+        - Admin Provider (v2)
+        - Authority (v2)
+        - Datasets
+        - Contracts / Policy
+        - Data Transfer
+        - Audit / Compliance
+        - Users / Access
+        - Organizations
+        - API Layer
+        - UI Components
+        - Infra / Docker
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Deskripsi Bug
+      description: Jelaskan apa yang terjadi
+      placeholder: "Ketika saya melakukan X, yang terjadi adalah Y. Seharusnya Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Langkah Reproduksi
+      description: Langkah-langkah untuk mereproduksi bug
+      placeholder: |
+        1. Buka halaman ...
+        2. Klik tombol ...
+        3. Lihat error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Behavior yang Diharapkan
+      description: Apa yang seharusnya terjadi?
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Error Log
+      description: Kalau ada, drag & drop screenshot atau paste error log di sini
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "critical — tidak bisa dipakai sama sekali"
+        - "high — fitur utama terdampak"
+        - "medium — workaround ada tapi butuh fix"
+        - "low — minor / kosmetik"
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser / Environment
+      placeholder: "Chrome 120, Windows 11"

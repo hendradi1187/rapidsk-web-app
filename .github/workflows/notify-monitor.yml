@@ -1,0 +1,97 @@
+name: Notify Monitor Hub
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+      - 'chore/**'
+      - 'v2-*'
+      - 'v2/**'
+  pull_request:
+    types: [opened, closed, ready_for_review]
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    name: Send event to gntds-monitoring
+    runs-on: ubuntu-latest
+    # Skip bot pushes (release-please, etc.)
+    if: github.actor != 'github-actions[bot]' && github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MONITOR_PAT }}
+          script: |
+            const eventName = context.eventName;
+            let eventType, payload;
+
+            if (eventName === 'push') {
+              const branch = context.ref.replace('refs/heads/', '');
+              const headCommit = context.payload.head_commit;
+
+              eventType = 'activity-push';
+              payload = {
+                source_repo:  context.repo.repo,
+                event:        'push',
+                branch,
+                actor:        context.actor,
+                commit_sha:   context.sha.substring(0, 7),
+                commit_msg:   (headCommit?.message || '').split('\n')[0].substring(0, 100),
+                commit_url:   headCommit?.url || `https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${context.sha}`,
+                timestamp:    new Date().toISOString(),
+              };
+
+            } else if (eventName === 'pull_request') {
+              const pr     = context.payload.pull_request;
+              const action = context.payload.action;
+
+              // Only track: opened, merged, ready_for_review (skip plain close without merge)
+              if (action === 'closed' && !pr.merged) return;
+
+              const isMerged = action === 'closed' && pr.merged;
+              let event = isMerged ? 'pr_merged' : `pr_${action}`;
+
+              eventType = 'activity-pr';
+              payload = {
+                source_repo:  context.repo.repo,
+                event,
+                pr_number:    pr.number,
+                pr_title:     pr.title.substring(0, 100),
+                pr_url:       pr.html_url,
+                author:       pr.user.login,
+                branch:       pr.head.ref,
+                base:         pr.base.ref,
+                labels:       pr.labels.map(l => l.name).join(', '),
+                merged:       isMerged,
+                timestamp:    new Date().toISOString(),
+              };
+
+            } else if (eventName === 'release') {
+              const release = context.payload.release;
+
+              eventType = 'activity-release';
+              payload = {
+                source_repo:  context.repo.repo,
+                event:        'release',
+                version:      release.tag_name,
+                release_name: (release.name || release.tag_name).substring(0, 100),
+                release_url:  release.html_url,
+                released_at:  release.published_at,
+                timestamp:    new Date().toISOString(),
+              };
+            }
+
+            if (!eventType) return;
+
+            await github.rest.repos.createDispatchEvent({
+              owner:        'ghanemrepo',
+              repo:         'gntds-monitoring',
+              event_type:   eventType,
+              client_payload: payload,
+            });
+
+            console.log(`Dispatched ${eventType} to gntds-monitoring`);

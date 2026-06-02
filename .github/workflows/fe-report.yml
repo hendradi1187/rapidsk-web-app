@@ -1,0 +1,140 @@
+name: FE Bundle Report
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  bundle-report:
+    name: Bundle Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: http://localhost:8182
+
+      - name: Analyze bundle size
+        id: analyze
+        run: |
+          BUDGET_BYTES=1048576  # 1 MB
+
+          JS_BYTES=0
+          CSS_BYTES=0
+          TOTAL_BYTES=0
+
+          TABLE=""
+
+          for f in dist/assets/*.js; do
+            [ -f "$f" ] || continue
+            BYTES=$(wc -c < "$f")
+            JS_BYTES=$((JS_BYTES + BYTES))
+            TOTAL_BYTES=$((TOTAL_BYTES + BYTES))
+            SIZE_KB=$(awk "BEGIN {printf \"%.1f\", $BYTES/1024}")
+            GZ_KB=$(gzip -c "$f" | wc -c | awk '{printf "%.1f", $1/1024}')
+            TABLE="${TABLE}\n| \`$(basename $f)\` | JS | ${SIZE_KB} KB | ${GZ_KB} KB |"
+          done
+
+          for f in dist/assets/*.css; do
+            [ -f "$f" ] || continue
+            BYTES=$(wc -c < "$f")
+            CSS_BYTES=$((CSS_BYTES + BYTES))
+            TOTAL_BYTES=$((TOTAL_BYTES + BYTES))
+            SIZE_KB=$(awk "BEGIN {printf \"%.1f\", $BYTES/1024}")
+            GZ_KB=$(gzip -c "$f" | wc -c | awk '{printf "%.1f", $1/1024}')
+            TABLE="${TABLE}\n| \`$(basename $f)\` | CSS | ${SIZE_KB} KB | ${GZ_KB} KB |"
+          done
+
+          TOTAL_KB=$(awk "BEGIN {printf \"%.1f\", $TOTAL_BYTES/1024}")
+          JS_KB=$(awk "BEGIN {printf \"%.1f\", $JS_BYTES/1024}")
+          CSS_KB=$(awk "BEGIN {printf \"%.1f\", $CSS_BYTES/1024}")
+          BUDGET_KB=$(awk "BEGIN {printf \"%.1f\", $BUDGET_BYTES/1024}")
+          USAGE_PCT=$(awk "BEGIN {printf \"%.0f\", $TOTAL_BYTES*100/$BUDGET_BYTES}")
+
+          OVER_BUDGET="false"
+          [ $TOTAL_BYTES -gt $BUDGET_BYTES ] && OVER_BUDGET="true"
+
+          {
+            echo "table<<EOF"
+            printf "$TABLE"
+            echo ""
+            echo "EOF"
+            echo "total_kb=$TOTAL_KB"
+            echo "js_kb=$JS_KB"
+            echo "css_kb=$CSS_KB"
+            echo "budget_kb=$BUDGET_KB"
+            echo "usage_pct=$USAGE_PCT"
+            echo "over_budget=$OVER_BUDGET"
+          } >> $GITHUB_OUTPUT
+
+      - name: Post bundle comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const overBudget = '${{ steps.analyze.outputs.over_budget }}' === 'true';
+            const totalKb    = '${{ steps.analyze.outputs.total_kb }}';
+            const budgetKb   = '${{ steps.analyze.outputs.budget_kb }}';
+            const jsKb       = '${{ steps.analyze.outputs.js_kb }}';
+            const cssKb      = '${{ steps.analyze.outputs.css_kb }}';
+            const pct        = '${{ steps.analyze.outputs.usage_pct }}';
+            const table      = `${{ steps.analyze.outputs.table }}`;
+
+            const bar = (() => {
+              const filled = Math.min(Math.round(Number(pct) / 5), 20);
+              return '█'.repeat(filled) + '░'.repeat(20 - filled);
+            })();
+
+            const body = [
+              '<!-- dataspace-bundle-report -->',
+              `## ${overBudget ? '❌' : '✅'} FE Bundle Report`,
+              '',
+              '| File | Type | Size | Gzipped |',
+              '|------|------|------|---------|',
+              table,
+              '',
+              `| | **JS total** | **${jsKb} KB** | |`,
+              `| | **CSS total** | **${cssKb} KB** | |`,
+              `| | **Grand total** | **${totalKb} KB** | |`,
+              '',
+              `**Budget:** \`${bar}\` ${pct}% of ${budgetKb} KB`,
+              '',
+              overBudget
+                ? `> ❌ Over budget! ${totalKb} KB exceeds the ${budgetKb} KB limit.`
+                : `> ✅ Within the ${budgetKb} KB budget.`,
+              '',
+              `> Commit: \`${{ github.event.pull_request.head.sha }}\``,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body?.includes('<!-- dataspace-bundle-report -->'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
