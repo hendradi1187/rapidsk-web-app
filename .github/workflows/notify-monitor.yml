@@ -10,6 +10,7 @@ on:
       - 'chore/**'
       - 'v2-*'
       - 'v2/**'
+      - 'dev-major'
   pull_request:
     types: [opened, closed, ready_for_review]
   release:
