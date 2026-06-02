@@ -1,0 +1,59 @@
+name: Task / Chore
+description: Task teknikal, refactor, update deps, atau pekerjaan lainnya
+title: "chore(<scope>): <judul singkat>"
+labels: ["type: task", "status: needs-triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Auth / Login
+        - Dashboard
+        - Admin Consumer (v2)
+        - Admin Provider (v2)
+        - Authority (v2)
+        - Datasets
+        - Contracts / Policy
+        - Data Transfer
+        - Audit / Compliance
+        - Users / Access
+        - Organizations
+        - API Layer
+        - UI Components
+        - CI/CD
+        - Infra / Docker
+        - Dependencies
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Deskripsi Task
+      description: Apa yang perlu dikerjakan dan kenapa?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Kapan task ini dianggap selesai?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "high — blocking atau tech debt kritis"
+        - "medium — perlu dikerjakan sprint ini"
+        - "low — bisa dikerjakan nanti"
+    validations:
+      required: true

@@ -1,0 +1,66 @@
+name: Triage
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  label-issue:
+    name: Auto-label Issue
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.issue.title.toLowerCase();
+            const body  = (context.payload.issue.body || '').toLowerCase();
+            const text  = title + ' ' + body;
+            const labels = ['status: needs-triage'];
+
+            // Type
+            if      (text.match(/\bbug\b|error|crash|fail|broken|wrong|tidak bisa|gabisa/)) labels.push('type: bug');
+            else if (text.match(/\bfeat|feature|fitur|tambah|add|new|baru|implement/))       labels.push('type: feature');
+            else if (text.match(/\btask|todo|chore|refactor|update|upgrade/))                labels.push('type: task');
+
+            // Area
+            if (text.match(/login|auth|token|session|password|rbac|role|permission|guard/))  labels.push('area: auth');
+            if (text.match(/dashboard|home|overview/))                                        labels.push('area: dashboard');
+            if (text.match(/dataset|catalog|data.?catalog/))                                  labels.push('area: datasets');
+            if (text.match(/contract|policy|agreement|perjanjian/))                           labels.push('area: contracts');
+            if (text.match(/transfer|data.?transfer|runtime|connector/))                       labels.push('area: transfer');
+            if (text.match(/audit|log|compliance|obligation/))                                 labels.push('area: audit');
+            if (text.match(/user|pengguna|account|profile/))                                   labels.push('area: users');
+            if (text.match(/organization|org|participant/))                                    labels.push('area: organizations');
+            if (text.match(/v2|admin.?consumer|admin.?provider|authority/))                    labels.push('area: v2');
+            if (text.match(/api|endpoint|service|backend/))                                    labels.push('area: api');
+            if (text.match(/ui|component|layout|style|css|tampilan/))                          labels.push('area: ui');
+
+            // Role
+            if (text.match(/consumer|admin.?consumer/))  labels.push('role: consumer');
+            if (text.match(/provider|admin.?provider/))  labels.push('role: provider');
+            if (text.match(/authority/))                 labels.push('role: authority');
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              labels,
+            });
+
+  label-pr:
+    name: Auto-label PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml

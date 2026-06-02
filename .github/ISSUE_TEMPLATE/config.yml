@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Diskusi / Pertanyaan
+    url: https://github.com/hendradi1187/rapidsk-web-app/discussions
+    about: Untuk pertanyaan umum atau diskusi, gunakan GitHub Discussions

@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+
+  typecheck:
+    name: TypeCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run type-check
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [typecheck]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build production
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL || 'http://localhost:8182' }}
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, build]
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs = {
+              lint:      '${{ needs.lint.result }}',
+              typecheck: '${{ needs.typecheck.result }}',
+              test:      '${{ needs.test.result }}',
+              build:     '${{ needs.build.result }}',
+            };
+
+            const icon = (r) =>
+              r === 'success'  ? '✅' :
+              r === 'skipped'  ? '—'  :
+              r === 'failure'  ? '❌' : '⚠️';
+
+            const allPassed = Object.values(jobs).every(r => r === 'success' || r === 'skipped');
+
+            const body = [
+              '<!-- dataspace-ci-summary -->',
+              `## ${allPassed ? '✅' : '❌'} CI Report`,
+              '',
+              '| Job | Status |',
+              '|-----|--------|',
+              `| Lint | ${icon(jobs.lint)} |`,
+              `| TypeCheck | ${icon(jobs.typecheck)} |`,
+              `| Tests | ${icon(jobs.test)} |`,
+              `| Build | ${icon(jobs.build)} |`,
+              '',
+              `> Branch: \`${{ github.head_ref }}\` → \`${{ github.base_ref }}\``,
+              `> Commit: \`${{ github.event.pull_request.head.sha }}\``,
+              `> Updated: ${new Date().toUTCString()}`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body?.includes('<!-- dataspace-ci-summary -->'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

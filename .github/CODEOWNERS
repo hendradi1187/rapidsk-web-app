@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────
+# CODEOWNERS — Dataspace Web App
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# ─────────────────────────────────────────────────────
+
+# Default: semua file perlu review dari owner utama
+* @hendradi1187
+
+# ─── V2 Flows ────────────────────────────────────────
+# Isi dengan GitHub username anggota tim yang responsible
+
+# Admin Consumer flow
+/src/pages/v2/admin-consumer/   @hendradi1187
+# @tim-consumer
+
+# Admin Provider flow
+/src/pages/v2/admin-provider/   @hendradi1187
+# @tim-provider
+
+# Authority flow
+/src/pages/v2/authority/        @hendradi1187
+# @tim-authority
+
+# ─── API Layer ───────────────────────────────────────
+/src/api/                       @hendradi1187
+
+# ─── Infrastructure & CI ─────────────────────────────
+/Dockerfile                     @hendradi1187
+/docker-compose.yml             @hendradi1187
+/docker/                        @hendradi1187
+/.github/                       @hendradi1187
