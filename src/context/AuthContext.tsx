@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { keycloak, isKeycloakConfigured } from "@/auth/keycloak";
 import { useKeycloak } from "@/auth/KeycloakProvider";
+import { decodeJwt } from "@/lib/jwt";
 
 // ─── Role Types (CANONICAL — IAM-3) ────────────────────────────────────
 //
@@ -54,6 +55,9 @@ export interface AuthUser {
   permissions: string[];
   category: { name: string; code: string; description: string };
   group: { name: string; code: string; description: string; priority: number };
+  /** ID participant (metadata-participant) yang ditautkan ke user. null untuk superadmin.
+   *  Dipakai untuk memfilter kontrak di mana saya provider/consumer. */
+  participantId?: string | null;
 }
 
 interface AuthContextType {
@@ -64,6 +68,8 @@ interface AuthContextType {
   roles: AppRole[];
   /** Granular permissions. */
   permissions: string[];
+  /** ID participant user aktif (null untuk superadmin). */
+  participantId: string | null;
   isAuthenticated: boolean;
   /** Check if current user has at least one of the given canonical roles. */
   hasRole: (roles: AppRole[]) => boolean;
@@ -104,10 +110,13 @@ export const deriveRole = (
   if (grp.includes("GIS") || cat.includes("GIS") || cat.includes("SPATIAL")) {
     return "GIS_ANALYST";
   }
-  if (cat.includes("KKKS") || cat.includes("ENTERPRISE")) {
+  // GX-Space category/group codes: PROVIDER (KKKS) & CONSUMER langsung.
+  if (grp.includes("PROVIDER") || cat.includes("PROVIDER") || cat.includes("KKKS") || cat.includes("ENTERPRISE")) {
     return "PROVIDER";
   }
   if (
+    grp.includes("CONSUMER") ||
+    cat.includes("CONSUMER") ||
     cat.includes("REGULATOR") ||
     cat.includes("GOV") ||
     cat.includes("GOVERNMENT") ||
@@ -222,40 +231,48 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const STORAGE_KEY_USER = "user_info";
 const STORAGE_KEY_TOKEN = "auth_token";
 
+// Build AuthUser dari access_token GX-Space (LOCAL JWT). Klaim: sub, username,
+// email, category{code}, group{code}, is_superadmin.
+const buildUserFromJwt = (token: string): AuthUser | null => {
+  const c = decodeJwt(token);
+  if (!c) return null;
+  const catCode = c.category?.code ?? "";
+  const grpCode = c.group?.code ?? "";
+  const role: AppRole = c.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
+  return {
+    id: c.sub ?? "",
+    email: c.email ?? "",
+    full_name: (c.username as string) ?? c.email ?? "User",
+    role,
+    roles: [role],
+    permissions: [],
+    category: { name: catCode, code: catCode, description: "" },
+    group: { name: grpCode, code: grpCode, description: "", priority: 0 },
+    participantId: (c.participant_id as string | null) ?? null,
+  };
+};
+
 const loadUserFromStorage = (): AuthUser | null => {
   try {
     const token = localStorage.getItem(STORAGE_KEY_TOKEN);
     if (!token) return null;
 
-    const raw = localStorage.getItem(STORAGE_KEY_USER);
-    if (!raw) {
-      return {
-        id: "",
-        email: "",
-        full_name: "Super Admin",
-        role: "SUPER_ADMIN",
-        roles: ["SUPER_ADMIN"],
-        permissions: [],
-        category: { name: "Platform", code: "PLATFORM", description: "" },
-        group: { name: "Admin", code: "ADMIN", description: "", priority: 0 },
-      };
-    }
+    // Otoritatif: decode JWT GX-Space.
+    const fromJwt = buildUserFromJwt(token);
+    if (fromJwt) return fromJwt;
 
+    // Fallback: user_info tersimpan (mis. login lama).
+    const raw = localStorage.getItem(STORAGE_KEY_USER);
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const role = deriveRole(
-      parsed.category?.code || "",
-      parsed.group?.code || "",
-    );
+    const role = deriveRole(parsed.category?.code || "", parsed.group?.code || "");
     return {
       id: parsed.id || "",
       email: parsed.email || "",
       full_name: parsed.full_name || "",
       role,
       roles: parsed.roles && Array.isArray(parsed.roles) ? parsed.roles : [role],
-      permissions:
-        parsed.permissions && Array.isArray(parsed.permissions)
-          ? parsed.permissions
-          : [],
+      permissions: Array.isArray(parsed.permissions) ? parsed.permissions : [],
       category: parsed.category || { name: "", code: "", description: "" },
       group: parsed.group || { name: "", code: "", description: "", priority: 0 },
     };
@@ -317,6 +334,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const role: AppRole = user?.role ?? "VIEWER";
   const roles: AppRole[] = user?.roles ?? [];
   const permissions: string[] = user?.permissions ?? [];
+  const participantId: string | null = user?.participantId ?? null;
 
   return (
     <AuthContext.Provider
@@ -325,6 +343,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         role,
         roles,
         permissions,
+        participantId,
         isAuthenticated: !!user,
         hasRole,
         hasPermission,

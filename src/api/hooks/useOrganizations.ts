@@ -6,7 +6,21 @@ import type { OrganizationCreateRequest } from "../types/governance";
 export const organizationKeys = {
   all: ["organizations"] as const,
   list: () => [...organizationKeys.all, "list"] as const,
+  domains: (orgId?: string | null) =>
+    [...organizationKeys.all, "domains", orgId] as const,
 };
+
+/**
+ * Hook to fetch governance domains belonging to an organization.
+ * GX-Space: GET /governance/organizations/{orgId}/domains
+ */
+export function useOrganizationDomains(orgId?: string | null) {
+  return useQuery({
+    queryKey: organizationKeys.domains(orgId),
+    queryFn: () => organizationsApi.listDomains(orgId!),
+    enabled: !!orgId,
+  });
+}
 
 /**
  * Hook to fetch list of organizations.

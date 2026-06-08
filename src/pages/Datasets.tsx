@@ -1,5 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
+import { DomainClusterTabs } from "@/components/common/DomainClusterTabs";
+import { Pager } from "@/components/common/Pager";
+import { datasetDomain, DOMAINS } from "@/lib/fulfillment";
+import { useAuth } from "@/context/AuthContext";
+import { PublishDatasetDialog } from "@/components/datasets/PublishDatasetDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +64,8 @@ import {
   useDatasets,
   useCreateDataset,
 } from "@/api/hooks/useDatasets";
+import { useDatasetLevels, LEVEL_BADGE, LEVEL_LABEL } from "@/api/hooks/useDatasetLevels";
+import { useProviders } from "@/api/hooks/useProviders";
 import type { Dataset } from "@/api/types/data-catalog";
 
 // ─── Helpers untuk badge style ────────────────────────────────────────
@@ -92,6 +99,12 @@ const Datasets = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterClassification, setFilterClassification] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterDomain, setFilterDomain] = useState<string>("all"); // cluster domain
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
+  const { hasRole, role, participantId } = useAuth();
+  const canPublish = hasRole(["PROVIDER", "SUPER_ADMIN", "ADMIN"]);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   // Dialog states
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -116,21 +129,68 @@ const Datasets = () => {
 
   const createMutation = useCreateDataset();
 
-  // Filter datasets
-  const filteredDatasets = useMemo(() => {
+  // Klasifikasi L0–L4 (dari dataset.level — field description GX-Space)
+  const { levelOf } = useDatasetLevels();
+
+  // Resolve nama provider dari participant (provider_id → organization_name)
+  const { data: providersData } = useProviders();
+  const providerNameById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of (providersData ?? []) as Array<{ provider_id: string; provider_name: string }>) m[p.provider_id] = p.provider_name;
+    return m;
+  }, [providersData]);
+  const providerName = (d: Dataset): string => (d.provider_id && providerNameById[d.provider_id]) || d.provider_name || "—";
+
+  // Isolasi data: KKKS (PROVIDER) hanya lihat dataset miliknya. BE sudah memfilter,
+  // ini lapis pertahanan kedua di FE.
+  const scopedDatasets = useMemo(() => {
     if (!datasets) return [];
+    if (role === "PROVIDER" && participantId)
+      return datasets.filter((d) => d.provider_id === participantId);
+    return datasets;
+  }, [datasets, role, participantId]);
+
+  // Filter dasar (search + level + status), TANPA cluster domain.
+  const baseFiltered = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return datasets.filter((d) => {
+    return scopedDatasets.filter((d) => {
       const matchesSearch =
         d.dataset_name?.toLowerCase().includes(q) ||
         d.schema_name?.toLowerCase().includes(q) ||
-        d.provider_name?.toLowerCase().includes(q);
-      const matchesClassification =
-        filterClassification === "all" || d.classification === filterClassification;
+        providerName(d).toLowerCase().includes(q);
+      const matchesLevel = filterClassification === "all" || levelOf(d) === filterClassification;
       const matchesStatus = filterStatus === "all" || d.status === filterStatus;
-      return matchesSearch && matchesClassification && matchesStatus;
+      return matchesSearch && matchesLevel && matchesStatus;
     });
-  }, [datasets, searchQuery, filterClassification, filterStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedDatasets, searchQuery, filterClassification, filterStatus, providerNameById]);
+
+  // Hitungan per cluster domain (untuk chip)
+  const domainCounts = useMemo(() => {
+    const c: Record<string, number> = { all: baseFiltered.length };
+    for (const d of DOMAINS) c[d.key] = 0;
+    for (const ds of baseFiltered) {
+      const k = datasetDomain(ds);
+      if (k) c[k] = (c[k] ?? 0) + 1;
+    }
+    return c;
+  }, [baseFiltered]);
+
+  // Terapkan cluster domain
+  const filteredDatasets = useMemo(
+    () => (filterDomain === "all" ? baseFiltered : baseFiltered.filter((d) => datasetDomain(d) === filterDomain)),
+    [baseFiltered, filterDomain],
+  );
+
+  // Pagination
+  const pagedDatasets = useMemo(
+    () => filteredDatasets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredDatasets, page],
+  );
+  // Reset ke halaman 1 saat filter/pencarian berubah
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filterClassification, filterStatus, filterDomain]);
 
   const hasActiveFilters = filterClassification !== "all" || filterStatus !== "all";
   const clearFilters = () => {
@@ -138,14 +198,15 @@ const Datasets = () => {
     setFilterStatus("all");
   };
 
-  // Distinct values for filter dropdowns
+  // Distinct level (L0–L4) untuk filter dropdown
   const distinctClassifications = useMemo(() => {
-    return Array.from(new Set(datasets?.map((d) => d.classification).filter(Boolean) ?? []));
-  }, [datasets]);
+    return Array.from(new Set(scopedDatasets.map((d) => levelOf(d)).filter(Boolean) as string[])).sort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedDatasets]);
 
   const distinctStatuses = useMemo(() => {
-    return Array.from(new Set(datasets?.map((d) => d.status).filter(Boolean) ?? []));
-  }, [datasets]);
+    return Array.from(new Set(scopedDatasets.map((d) => d.status).filter(Boolean)));
+  }, [scopedDatasets]);
 
   const resetForm = () =>
     setFormData({ dataset_name: "", schema_name: "", provider_id: "" });
@@ -262,7 +323,7 @@ const Datasets = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold">{distinctClassifications.length}</p>
-                <p className="text-sm text-muted-foreground">Classifications</p>
+                <p className="text-sm text-muted-foreground">Level Klasifikasi</p>
               </div>
             </div>
           </div>
@@ -308,16 +369,16 @@ const Datasets = () => {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Classification</Label>
+                    <Label className="text-xs">Klasifikasi (L0–L4)</Label>
                     <Select value={filterClassification} onValueChange={setFilterClassification}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All classifications</SelectItem>
+                        <SelectItem value="all">Semua level</SelectItem>
                         {distinctClassifications.map((c) => (
                           <SelectItem key={c} value={c}>
-                            {c}
+                            {LEVEL_LABEL[c] ?? c}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -380,19 +441,21 @@ const Datasets = () => {
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button
-              size="sm"
-              className="bg-accent hover:bg-accent/90 text-accent-foreground"
-              onClick={() => {
-                resetForm();
-                setIsAddDialogOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Register Dataset
-            </Button>
+            {canPublish && (
+              <Button
+                size="sm"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                onClick={() => setPublishOpen(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Publish Dataset
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* Cluster Domain */}
+        <DomainClusterTabs value={filterDomain} onChange={setFilterDomain} counts={domainCounts} />
 
         {/* Empty state */}
         {filteredDatasets.length === 0 ? (
@@ -408,7 +471,7 @@ const Datasets = () => {
         ) : viewMode === "grid" ? (
           // Grid view
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDatasets.map((dataset) => (
+            {pagedDatasets.map((dataset) => (
               <Card
                 key={dataset.dataset_id}
                 className="hover:border-accent/50 transition-colors cursor-pointer"
@@ -446,12 +509,12 @@ const Datasets = () => {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Provider</p>
-                    <p className="text-sm font-medium truncate">{dataset.provider_name}</p>
+                    <p className="text-sm font-medium truncate">{providerName(dataset)}</p>
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    {dataset.classification && (
-                      <Badge variant="outline" className={cn(classificationClass(dataset.classification))}>
-                        {dataset.classification}
+                    {levelOf(dataset) && (
+                      <Badge variant="outline" className={cn(LEVEL_BADGE[levelOf(dataset)!])} title={LEVEL_LABEL[levelOf(dataset)!]}>
+                        {levelOf(dataset)}
                       </Badge>
                     )}
                     {dataset.status && (
@@ -473,13 +536,13 @@ const Datasets = () => {
                   <TableHead>Dataset</TableHead>
                   <TableHead>Schema</TableHead>
                   <TableHead>Provider</TableHead>
-                  <TableHead>Classification</TableHead>
+                  <TableHead>Klasifikasi</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredDatasets.map((dataset) => (
+                {pagedDatasets.map((dataset) => (
                   <TableRow
                     key={dataset.dataset_id}
                     className="hover:bg-muted/50 cursor-pointer"
@@ -496,7 +559,7 @@ const Datasets = () => {
                     <TableCell>
                       <span className="font-mono text-sm">{dataset.schema_name}</span>
                     </TableCell>
-                    <TableCell>{dataset.provider_name}</TableCell>
+                    <TableCell>{providerName(dataset)}</TableCell>
                     <TableCell>
                       {dataset.classification && (
                         <Badge variant="outline" className={cn(classificationClass(dataset.classification))}>
@@ -532,7 +595,12 @@ const Datasets = () => {
             </Table>
           </div>
         )}
+
+        {/* Pagination */}
+        <Pager page={page} total={filteredDatasets.length} pageSize={PAGE_SIZE} onPage={setPage} />
       </div>
+
+      <PublishDatasetDialog open={publishOpen} onOpenChange={setPublishOpen} />
 
       {/* Register Dataset Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -614,14 +682,15 @@ const Datasets = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-semibold">{selectedDataset.dataset_name}</h3>
-                  <p className="text-sm text-muted-foreground">{selectedDataset.provider_name}</p>
+                  <p className="text-sm text-muted-foreground">{providerName(selectedDataset)}</p>
                   <div className="flex gap-2 mt-2 flex-wrap">
-                    {selectedDataset.classification && (
+                    {levelOf(selectedDataset) && (
                       <Badge
                         variant="outline"
-                        className={cn(classificationClass(selectedDataset.classification))}
+                        className={cn(LEVEL_BADGE[levelOf(selectedDataset)!])}
+                        title={LEVEL_LABEL[levelOf(selectedDataset)!]}
                       >
-                        {selectedDataset.classification}
+                        {LEVEL_LABEL[levelOf(selectedDataset)!] ?? levelOf(selectedDataset)}
                       </Badge>
                     )}
                     {selectedDataset.status && (
@@ -649,7 +718,23 @@ const Datasets = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Provider</p>
-                  <p className="font-medium">{selectedDataset.provider_name}</p>
+                  <p className="font-medium">{providerName(selectedDataset)}</p>
+                </div>
+                {selectedDataset.endpoint_url && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Endpoint (OGC API Features)</p>
+                    <p className="font-mono text-xs break-all">{selectedDataset.endpoint_url}</p>
+                  </div>
+                )}
+                <div className="flex gap-6">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Protokol</p>
+                    <p className="text-sm font-medium">{selectedDataset.protocol ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Akses</p>
+                    <p className="text-sm font-medium">{selectedDataset.access_type ?? "—"}</p>
+                  </div>
                 </div>
               </div>
             </div>

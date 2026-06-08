@@ -11,7 +11,8 @@ import type {
   UserUpdateRequest,
 } from "../types/identity-provider";
 
-const IDP_BASE_PATH = "/api/v1/identity-provider";
+// Relatif terhadap baseURL (.../api/v1). Jangan tambahkan /api/v1 lagi.
+const IDP_BASE_PATH = "/identity-provider";
 
 /**
  * == Auth Service ==
@@ -23,19 +24,10 @@ export const authService = {
    * @returns A promise resolving to the login response (with token).
    */
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    // Backend expects form-urlencoded format, not JSON
-    const formData = new URLSearchParams();
-    formData.append("username", credentials.username);
-    formData.append("password", credentials.password);
-
+    // GX-Space menerima JSON {username, password}.
     const response = await apiClient.post<LoginResponse>(
       `${IDP_BASE_PATH}/auth/login`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
+      { username: credentials.username, password: credentials.password },
     );
     return response.data;
   },

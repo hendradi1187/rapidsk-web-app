@@ -17,6 +17,14 @@ export interface Dataset {
   provider_name: string;
   classification: string;
   status: string;
+  // ── tambahan dari GX-Space (untuk agregasi dashboard) ──
+  domain?: string;          // key domain geospasial (dari endpoint_metadata.tags[0])
+  access_type?: string;     // PUBLIC | PRIVATE (endpoint.access_type)
+  protocol?: string;        // OGC_API_FEATURES | … (endpoint.protocol)
+  level?: string;           // L0–L4 (di-parse dari description "klasifikasi Lx")
+  provider_id?: string;     // FK participant (untuk resolve nama via /onboarding/participants)
+  endpoint_url?: string;
+  version?: string;
 }
 
 /**

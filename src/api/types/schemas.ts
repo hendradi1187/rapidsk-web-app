@@ -1,9 +1,11 @@
-// Based on rapiDSK Enterprise OpenAPI spec /schemas
+// GX-Space data-catalog schemas
 
 export interface SchemaItem {
   schema_id: string;
-  schema_name: string;
+  vocabulary_id?: string;
+  vocabulary_name?: string | null;
   version: string;
+  status?: string;
 }
 
 export type SchemaListResponse = SchemaItem[];

@@ -1,0 +1,16 @@
+[Unit]
+Description=rapidsk FE (static SPA server, port 8282)
+After=network.target
+
+[Service]
+Type=simple
+User=dt-admin
+# Sesuaikan bila lokasi ekstrak berbeda:
+WorkingDirectory=/home/dt-admin/rapidsk-fe
+Environment=PORT=8282
+ExecStart=/usr/bin/python3 /home/dt-admin/rapidsk-fe/serve.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

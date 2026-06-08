@@ -4,19 +4,25 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
+import { DomainProvider } from "@/context/DomainContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute, PublicRoute } from "@/components/auth/ProtectedRoute";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import Login from "./pages/Login";
+import RegisterKKKS from "./pages/RegisterKKKS";
+import ConfirmEmail from "./pages/ConfirmEmail";
+import OnboardingQueue from "./pages/OnboardingQueue";
+import SetupJuknis from "./pages/SetupJuknis";
 import Dashboard from "./pages/Dashboard";
 import Organizations from "./pages/Organizations";
 import Providers from "./pages/Providers";
 import Datasets from "./pages/Datasets";
 import Schemas from "./pages/Schemas";
 import Vocabularies from "./pages/Vocabularies";
-import Mapping from "./pages/Mapping";
-import ArcGISServices from "./pages/ArcGISServices";
 import Policies from "./pages/Policies";
+import Contracts from "./pages/Contracts";
+import ProviderInbox from "./pages/ProviderInbox";
+import TransferCenter from "./pages/TransferCenter";
 import Audit from "./pages/Audit";
 import ApiDocs from "./pages/ApiDocs";
 import Settings from "./pages/Settings";
@@ -42,30 +48,39 @@ const App = () => (
               }
             />
 
+            {/* Public — self-service KKKS registration & operator activation */}
+            <Route path="/register-kkks" element={<RegisterKKKS />} />
+            <Route path="/confirm-email" element={<ConfirmEmail />} />
+
             {/* Protected Routes - Require Authentication + Role Check */}
             <Route
               path="/*"
               element={
                 <ProtectedRoute>
-                  <MainLayout>
-                    <RoleGuard>
-                      <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/organizations" element={<Organizations />} />
-                        <Route path="/providers" element={<Providers />} />
-                        <Route path="/datasets" element={<Datasets />} />
-                        <Route path="/schemas" element={<Schemas />} />
-                        <Route path="/vocabularies" element={<Vocabularies />} />
-                        <Route path="/mapping" element={<Mapping />} />
-                        <Route path="/arcgis" element={<ArcGISServices />} />
-                        <Route path="/policies" element={<Policies />} />
-                        <Route path="/audit" element={<Audit />} />
-                        <Route path="/api-docs" element={<ApiDocs />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="*" element={<NotFound />} />
-                      </Routes>
-                    </RoleGuard>
-                  </MainLayout>
+                  <DomainProvider>
+                    <MainLayout>
+                      <RoleGuard>
+                        <Routes>
+                          <Route path="/" element={<Dashboard />} />
+                          <Route path="/setup-juknis" element={<SetupJuknis />} />
+                          <Route path="/onboarding" element={<OnboardingQueue />} />
+                          <Route path="/organizations" element={<Organizations />} />
+                          <Route path="/providers" element={<Providers />} />
+                          <Route path="/datasets" element={<Datasets />} />
+                          <Route path="/schemas" element={<Schemas />} />
+                          <Route path="/vocabularies" element={<Vocabularies />} />
+                          <Route path="/policies" element={<Policies />} />
+                          <Route path="/contracts" element={<Contracts />} />
+                          <Route path="/inbox" element={<ProviderInbox />} />
+                          <Route path="/transfers" element={<TransferCenter />} />
+                          <Route path="/audit" element={<Audit />} />
+                          <Route path="/api-docs" element={<ApiDocs />} />
+                          <Route path="/settings" element={<Settings />} />
+                          <Route path="*" element={<NotFound />} />
+                        </Routes>
+                      </RoleGuard>
+                    </MainLayout>
+                  </DomainProvider>
                 </ProtectedRoute>
               }
             />

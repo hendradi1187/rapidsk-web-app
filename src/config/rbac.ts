@@ -6,19 +6,28 @@ import {
   Database,
   FileJson,
   BookOpen,
-  Wand2,
-  Globe,
   Shield,
+  FileSignature,
+  Inbox,
+  UserPlus,
+  Sparkles,
+  Send,
   ClipboardCheck,
   Code2,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
-// ─── Section discriminator ────────────────────────────────────────────
-//
-// Hanya `legacy` (rapiDSK Enterprise). Section field tetap dipertahankan
-// supaya gampang ditambah category lain di masa depan.
-export type MenuSection = "legacy";
+export type MenuSection = "persiapan" | "pemantauan" | "lain";
+
+/** Label grup sidebar (urutan = alur kerja: setup dulu, baru pantau/operasional). */
+export const SECTION_LABELS: Record<MenuSection, string> = {
+  persiapan: "Persiapan",
+  pemantauan: "Pemantauan & Operasional",
+  lain: "Lainnya",
+};
+
+/** Urutan render grup di sidebar. */
+export const SECTION_ORDER: MenuSection[] = ["persiapan", "pemantauan", "lain"];
 
 export interface MenuItem {
   icon: LucideIcon;
@@ -26,94 +35,112 @@ export interface MenuItem {
   path: string;
   /** Canonical roles yang boleh akses menu ini (any-of). */
   roles: AppRole[];
-  /** Section grouping di sidebar. */
   section: MenuSection;
-  /**
-   * Optional fine-grained gate. Kalau di-set, user harus punya
-   * minimal SATU permission di array ini (selain role match).
-   */
   permissions?: string[];
 }
 
 /**
- * All sidebar menu items — backed by rapiDSK Enterprise API spec.
- *
- * Canonical role model (IAM-3):
- *   SUPER_ADMIN, ADMIN, PROVIDER, CONSUMER, VIEWER, AUDITOR, GIS_ANALYST
+ * Sidebar menu — selaras breakdown FE (data exchange, tanpa peta).
+ * SKK Migas = SUPER_ADMIN/ADMIN/CONSUMER/AUDITOR ; KKKS = PROVIDER.
  */
 export const MENU_ITEMS: MenuItem[] = [
+  // ── Persiapan (alur setup A–Z: dijalankan lebih dulu di instance fresh) ──
   {
-    section: "legacy",
+    section: "persiapan",
+    icon: Sparkles,
+    label: "Setup Juknis",
+    path: "/setup-juknis",
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    section: "persiapan",
+    icon: UserPlus,
+    label: "Pendaftaran KKKS",
+    path: "/onboarding",
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    section: "persiapan",
+    icon: Building2,
+    label: "Organizations",
+    path: "/organizations",
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  // ── Pemantauan & Operasional ──
+  {
+    section: "pemantauan",
     icon: LayoutDashboard,
     label: "Dashboard",
     path: "/",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
   },
   {
-    section: "legacy",
-    icon: Building2,
-    label: "Organizations",
-    path: "/organizations",
-    roles: ["SUPER_ADMIN", "ADMIN"],
-  },
-  {
-    section: "legacy",
-    icon: Users,
-    label: "Providers",
-    path: "/providers",
-    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "GIS_ANALYST", "AUDITOR"],
-  },
-  {
-    section: "legacy",
+    section: "pemantauan",
     icon: Database,
-    label: "Dataset Catalog",
+    label: "Katalog Dataset",
     path: "/datasets",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "GIS_ANALYST"],
   },
   {
-    section: "legacy",
-    icon: FileJson,
-    label: "Schemas",
-    path: "/schemas",
-    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "GIS_ANALYST", "AUDITOR"],
+    section: "pemantauan",
+    icon: FileSignature,
+    label: "Contracts",
+    path: "/contracts",
+    roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "PROVIDER", "AUDITOR"],
   },
   {
-    section: "legacy",
-    icon: BookOpen,
-    label: "Vocabularies",
-    path: "/vocabularies",
-    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "GIS_ANALYST", "AUDITOR"],
-  },
-  {
-    section: "legacy",
-    icon: Wand2,
-    label: "Auto Mapping",
-    path: "/mapping",
+    section: "pemantauan",
+    icon: Inbox,
+    label: "Permintaan Masuk",
+    path: "/inbox",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER"],
   },
   {
-    section: "legacy",
-    icon: Globe,
-    label: "ArcGIS Services",
-    path: "/arcgis",
-    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "GIS_ANALYST"],
+    section: "pemantauan",
+    icon: Send,
+    label: "Transfer Data",
+    path: "/transfers",
+    roles: ["PROVIDER", "SUPER_ADMIN", "ADMIN"],
   },
   {
-    section: "legacy",
-    icon: Shield,
-    label: "Governance Policies",
-    path: "/policies",
+    section: "pemantauan",
+    icon: Users,
+    label: "Participants",
+    path: "/providers",
+    // KKKS (PROVIDER) tidak boleh melihat direktori peserta lain — isolasi data.
+    roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "AUDITOR"],
+  },
+  {
+    section: "pemantauan",
+    icon: FileJson,
+    label: "Schemas",
+    path: "/schemas",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
   },
   {
-    section: "legacy",
+    section: "pemantauan",
+    icon: BookOpen,
+    label: "Vocabularies",
+    path: "/vocabularies",
+    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+  },
+  {
+    section: "pemantauan",
+    icon: Shield,
+    label: "Policies",
+    path: "/policies",
+    roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "PROVIDER", "AUDITOR"],
+  },
+  {
+    section: "pemantauan",
     icon: ClipboardCheck,
     label: "Audit Trail",
     path: "/audit",
     roles: ["SUPER_ADMIN", "ADMIN", "AUDITOR"],
   },
+  // ── Lainnya ──
   {
-    section: "legacy",
+    section: "lain",
     icon: Code2,
     label: "API Docs",
     path: "/api-docs",
@@ -123,9 +150,6 @@ export const MENU_ITEMS: MenuItem[] = [
 
 // ─── Route gating ─────────────────────────────────────────────────────
 
-/**
- * Build allowed routes per role from MENU_ITEMS + /settings (always accessible).
- */
 const buildRoleRoutes = (): Record<AppRole, string[]> => {
   const roles: AppRole[] = [
     "SUPER_ADMIN",
@@ -148,24 +172,19 @@ const buildRoleRoutes = (): Record<AppRole, string[]> => {
 
 const ROLE_ROUTES = buildRoleRoutes();
 
-/** Returns true if the given role may access the given path. */
 export const canAccess = (role: AppRole, path: string): boolean => {
   return ROLE_ROUTES[role]?.includes(path) ?? false;
 };
 
-/**
- * Multi-role variant: returns true if ANY of the user's roles may access path.
- */
 export const canAccessAny = (roles: AppRole[], path: string): boolean => {
   return roles.some((r) => canAccess(r, path));
 };
 
-/** Human-readable label for each role (used in UI badges). */
 export const ROLE_LABELS: Record<AppRole, string> = {
-  SUPER_ADMIN: "Super Admin",
+  SUPER_ADMIN: "SKK Migas (Super Admin)",
   ADMIN: "Admin",
-  PROVIDER: "Provider",
-  CONSUMER: "Consumer",
+  PROVIDER: "KKKS (Provider)",
+  CONSUMER: "SKK Migas (Consumer)",
   VIEWER: "Viewer",
   AUDITOR: "Auditor",
   GIS_ANALYST: "GIS Analyst",

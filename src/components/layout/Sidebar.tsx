@@ -3,7 +3,7 @@ import { Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { MENU_ITEMS } from "@/config/rbac";
+import { MENU_ITEMS, SECTION_LABELS, SECTION_ORDER } from "@/config/rbac";
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -12,6 +12,13 @@ export const Sidebar = () => {
 
   // Only show menu items allowed for the current role
   const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(role));
+
+  // Kelompokkan per grup (urut sesuai alur kerja); grup kosong otomatis tersembunyi.
+  const groups = SECTION_ORDER.map((section) => ({
+    section,
+    label: SECTION_LABELS[section],
+    items: visibleItems.filter((item) => item.section === section),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <aside
@@ -37,21 +44,30 @@ export const Sidebar = () => {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {visibleItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn("nav-item", isActive && "nav-item-active")}
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              {!collapsed && <span className="font-medium">{item.label}</span>}
-            </Link>
-          );
-        })}
+      {/* Navigation — dikelompokkan: Persiapan → Pemantauan & Operasional → Lainnya */}
+      <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
+        {groups.map((group) => (
+          <div key={group.section} className="space-y-1">
+            {!collapsed && (
+              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                {group.label}
+              </p>
+            )}
+            {group.items.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={cn("nav-item", isActive && "nav-item-active")}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!collapsed && <span className="font-medium">{item.label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Settings & Collapse */}

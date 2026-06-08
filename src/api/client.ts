@@ -6,7 +6,7 @@ import {
 } from "@/auth/keycloak";
 
 // API Base URL - can be configured via environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://45.158.126.171:8181";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8184/api/v1";
 
 // Create axios instance with default configuration
 export const apiClient: AxiosInstance = axios.create({

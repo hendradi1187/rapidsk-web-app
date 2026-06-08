@@ -1,9 +1,19 @@
-// Based on rapiDSK Enterprise OpenAPI spec /vocabularies
+// GX-Space data-catalog vocabularies
 
 export interface Vocabulary {
   vocabulary_id: string;
-  vocabulary_term: string;
-  canonical_name: string;
+  name: string;
+  description?: string;
+  version?: string;
+  status?: string;
+}
+
+export interface VocabularyTerm {
+  id: string;
+  term: string;
+  datatype?: string;
+  unit?: string | null;
+  description?: string | null;
 }
 
 export type VocabularyListResponse = Vocabulary[];

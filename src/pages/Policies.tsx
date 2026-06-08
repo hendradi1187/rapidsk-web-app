@@ -2,95 +2,69 @@ import { useState, useMemo } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import {
-  Search,
-  Shield,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-} from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Search, Shield, AlertCircle, RefreshCw, Inbox } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { usePolicies } from "@/api/hooks/usePolicies";
+import { LEVEL_BADGE, LEVEL_LABEL } from "@/api/hooks/useDatasetLevels";
 
-const CLASSIFICATION_STYLES: Record<string, string> = {
-  public: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  internal: "bg-blue-50 text-blue-700 border-blue-200",
-  restricted: "bg-amber-50 text-amber-700 border-amber-200",
-  confidential: "bg-rose-50 text-rose-700 border-rose-200",
+// Tipe policy GX-Space (DatasetPolicyType)
+const TYPE_STYLE: Record<string, string> = {
+  ACCESS: "bg-blue-50 text-blue-700 border-blue-200",
+  USAGE: "bg-violet-50 text-violet-700 border-violet-200",
+  RETENTION: "bg-slate-100 text-slate-700 border-slate-200",
+  SECURITY: "bg-rose-50 text-rose-700 border-rose-200",
+};
+const DOMAIN_LABELS: Record<string, string> = {
+  wilayah_kerja: "Wilayah Kerja", sumur: "Sumur", lapangan: "Lapangan", fasilitas: "Fasilitas", seismik: "Seismik",
 };
 
-const classificationClass = (value: string) =>
-  CLASSIFICATION_STYLES[value?.toLowerCase()] ??
-  "bg-slate-50 text-slate-700 border-slate-200";
+interface PolicyRow {
+  policy_id: string;
+  policy_name: string;
+  classification: string; // type
+  level?: string;
+  domain?: string;
+}
 
 const Policies = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterClassification, setFilterClassification] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
 
-  const { data: policies, isLoading, isError, error, refetch } = usePolicies();
+  const { data, isLoading, isError, error, refetch } = usePolicies();
+  const policies = (data ?? []) as unknown as PolicyRow[];
 
   const filtered = useMemo(() => {
-    if (!policies) return [];
     const q = searchQuery.toLowerCase();
     return policies.filter((p) => {
-      const matchesSearch =
-        p.policy_name?.toLowerCase().includes(q) ||
-        p.classification?.toLowerCase().includes(q);
-      const matchesClassification =
-        filterClassification === "all" || p.classification === filterClassification;
-      return matchesSearch && matchesClassification;
+      const matchesSearch = p.policy_name?.toLowerCase().includes(q);
+      const matchesType = filterType === "all" || p.classification === filterType;
+      return matchesSearch && matchesType;
     });
-  }, [policies, searchQuery, filterClassification]);
+  }, [policies, searchQuery, filterType]);
 
-  const distinctClassifications = useMemo(() => {
-    return Array.from(new Set(policies?.map((p) => p.classification).filter(Boolean) ?? []));
-  }, [policies]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen">
-        <Header title="Governance Policies" subtitle="Read-only policy registry" />
-        <div className="flex items-center justify-center h-[60vh]">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
-            <p className="mt-2 text-muted-foreground">Loading policies...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const distinctTypes = useMemo(
+    () => Array.from(new Set(policies.map((p) => p.classification).filter(Boolean))),
+    [policies],
+  );
+  const distinctLevels = useMemo(
+    () => Array.from(new Set(policies.map((p) => p.level).filter(Boolean) as string[])).sort(),
+    [policies],
+  );
 
   if (isError) {
     return (
       <div className="min-h-screen">
-        <Header title="Governance Policies" subtitle="Read-only policy registry" />
+        <Header title="Policies" subtitle="Registry dataset-policy" />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
-            <p className="mt-2 text-lg font-medium">Failed to load policies</p>
-            <p className="text-sm text-muted-foreground mb-4">
-              {(error as any)?.message || "An error occurred"}
-            </p>
-            <Button onClick={() => refetch()} variant="outline">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Try Again
-            </Button>
+            <p className="mt-2 text-lg font-medium">Gagal memuat policies</p>
+            <p className="text-sm text-muted-foreground mb-4">{(error as { message?: string })?.message || "Error"}</p>
+            <Button onClick={() => refetch()} variant="outline"><RefreshCw className="w-4 h-4 mr-2" /> Coba lagi</Button>
           </div>
         </div>
       </div>
@@ -99,95 +73,54 @@ const Policies = () => {
 
   return (
     <div className="min-h-screen">
-      <Header title="Governance Policies" subtitle="Read-only policy registry" />
+      <Header title="Policies" subtitle="Dataset-policy (akses · penggunaan · retensi · keamanan)" />
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-info/10">
-                <Shield className="w-6 h-6 text-info" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{policies?.length ?? 0}</p>
-                <p className="text-sm text-muted-foreground">Total Policies</p>
-              </div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-accent/10">
-                <Shield className="w-6 h-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{filtered.length}</p>
-                <p className="text-sm text-muted-foreground">Showing Results</p>
-              </div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-success/10">
-                <Shield className="w-6 h-6 text-success" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{distinctClassifications.length}</p>
-                <p className="text-sm text-muted-foreground">Classifications</p>
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="stat-card"><p className="text-sm text-muted-foreground">Total Policy</p><p className="text-3xl font-bold mt-1">{isLoading ? "—" : policies.length}</p></div>
+          <div className="stat-card"><p className="text-sm text-muted-foreground">Tipe</p><p className="text-3xl font-bold mt-1">{isLoading ? "—" : distinctTypes.length}</p></div>
+          <div className="stat-card"><p className="text-sm text-muted-foreground">Level Klasifikasi</p><p className="text-3xl font-bold mt-1">{isLoading ? "—" : distinctLevels.length}</p></div>
+          <div className="stat-card"><p className="text-sm text-muted-foreground">Tampil</p><p className="text-3xl font-bold mt-1">{isLoading ? "—" : filtered.length}</p></div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+        <div className="flex flex-col md:flex-row gap-2 items-start md:items-center justify-between">
           <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto md:flex-1 max-w-2xl">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search policies..."
-                className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <Input placeholder="Cari policy..." className="pl-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            <Select value={filterClassification} onValueChange={setFilterClassification}>
-              <SelectTrigger className="w-full md:w-56">
-                <SelectValue placeholder="All classifications" />
-              </SelectTrigger>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-full md:w-56"><SelectValue placeholder="Semua tipe" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All classifications</SelectItem>
-                {distinctClassifications.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">Semua tipe</SelectItem>
+                {distinctTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} /> Refresh
           </Button>
         </div>
 
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="panel overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="table-header">
                 <TableHead>Policy</TableHead>
-                <TableHead>Classification</TableHead>
-                <TableHead>ID</TableHead>
+                <TableHead>Tipe</TableHead>
+                <TableHead>Klasifikasi</TableHead>
+                <TableHead>Domain</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {isLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                ))
+              ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                    <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No policies found</p>
-                    <p className="text-sm">
-                      {searchQuery || filterClassification !== "all"
-                        ? "Try adjusting your search or filter"
-                        : "No policies registered yet"}
-                    </p>
+                  <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                    <Inbox className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">{searchQuery || filterType !== "all" ? "Tidak ada policy cocok filter" : "Belum ada policy"}</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -195,25 +128,17 @@ const Policies = () => {
                   <TableRow key={p.policy_id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-accent/10">
-                          <Shield className="w-4 h-4 text-accent" />
-                        </div>
+                        <div className="p-2 rounded-lg bg-accent/10"><Shield className="w-4 h-4 text-accent" /></div>
                         <span className="font-medium">{p.policy_name}</span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      {p.classification && (
-                        <Badge
-                          variant="outline"
-                          className={cn(classificationClass(p.classification))}
-                        >
-                          {p.classification}
-                        </Badge>
-                      )}
+                      {p.classification && <Badge variant="outline" className={cn(TYPE_STYLE[p.classification] ?? "")}>{p.classification}</Badge>}
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono text-xs text-muted-foreground">{p.policy_id}</span>
+                      {p.level ? <Badge variant="outline" className={LEVEL_BADGE[p.level] ?? ""} title={LEVEL_LABEL[p.level]}>{p.level}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
                     </TableCell>
+                    <TableCell className="text-sm">{p.domain ? (DOMAIN_LABELS[p.domain] ?? p.domain) : "—"}</TableCell>
                   </TableRow>
                 ))
               )}
