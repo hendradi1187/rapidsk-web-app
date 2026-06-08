@@ -26,12 +26,13 @@ Aplikasi akan **memandu otomatis** lewat banner di Dashboard: "Langkah 1 — tin
 
 ## Tahap 2 — Aktivasi akun operator (lewat email)
 - Setelah disetujui SKK Migas, operator menerima **email aktivasi**.
-- Klik tautan di email → halaman **Aktivasi Akun** (`/confirm-email`) → **buat kata sandi** → akun aktif.
+- Klik tautan di email → halaman **Aktivasi Akun** (`/confirm-email`) → **buat kata sandi** (minimal 6 karakter, ketik ulang untuk konfirmasi) → akun aktif.
 - Bila email belum sampai, minta SKK Migas klik **"Kirim Ulang Undangan"**.
 - Saat akun dibuat, SKK Migas sekaligus menerbitkan **5 kontrak kewajiban** (satu per domain) untuk Anda.
 
 ## Tahap 3 — Masuk (Login)
 - Login dengan **username & kata sandi** operator (yang Anda buat di Tahap 2).
+- Field **"Organization"** di form login **opsional/kosmetik** (tidak memengaruhi login); tombol **"Sign in with SSO (OIDC)"** saat ini **nonaktif** — gunakan username & password.
 - *(Khusus lingkungan uji: tersedia akun pra-seed `phe` / `Phe12345!` yang sudah aktif — melewati Tahap 1–2. KKKS sungguhan tetap melalui daftar mandiri + aktivasi.)*
 - Anda masuk ke **Dashboard KKKS** — menampilkan **5 kartu domain** dengan progres: **Terdaftar → Kontrak → Aktif → Terkirim**, serta KPI (Domain Terpenuhi, Dataset Published, Kontrak Aktif, Permintaan Menunggu).
 
@@ -48,7 +49,8 @@ Banner berubah menjadi **"Langkah 2 — Kirim data"**. Klik **Buka Transfer Data
 - **Riwayat Transfer** menampilkan status, ukuran, **checksum**, dan **jumlah record**.
 
 ### (Bila perlu) Daftarkan dataset baru — menu "Katalog Dataset"
-- Klik **"Publish Dataset"** → pilih **Domain + Schema + Klasifikasi + URL endpoint + protokol** → terbit (status PUBLISHED).
+- Klik **"Publish Dataset"** lalu isi: **Domain** · **Klasifikasi** (L0–L4, terisi default sesuai domain) · **Schema** (kamus data domain) · **Nama Dataset** (≥3 karakter) · **Protokol** (`OGC_API_FEATURES` / `REST_API`) · **Versi** (format `X.Y.Z`, mis. `1.0.0`) · **Endpoint URL** (`http`/`https`) → klik **Publish** → terbit (status PUBLISHED).
+- Bila dropdown **Schema** kosong, berarti **Setup Juknis** sisi SKK Migas belum dijalankan (schema belum ada).
 - Dataset yang dipublikasikan inilah yang akan dikirim pada Tahap 5.
 
 ---
