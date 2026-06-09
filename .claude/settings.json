@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(git commit*)",
+            "prompt": "The user is about to run a git commit command. Your job is to generate a proper conventional commit message for them.\n\n1. Run 'git diff --staged' in d:/laragon/www/dataspace-new to see what's staged\n2. Analyze the changes\n3. Generate a conventional commit message: type(scope): subject\n   - Types: feat, fix, chore, docs, test, refactor, style, ci, perf\n   - Valid scopes: auth, dashboard, datasets, contracts, policy, transfer, audit, v2, consumer, provider, authority, api, components, ui, ci, deps, docs, release, test\n   - Subject: imperative, lowercase, max 72 chars\n4. Return JSON: {\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"updatedInput\": {\"command\": \"git commit -m \\\"<your generated message>\\\"\"}}}",
+            "timeout": 60,
+            "statusMessage": "Generating commit message..."
+          }
+        ]
+      }
+    ]
+  }
+}
