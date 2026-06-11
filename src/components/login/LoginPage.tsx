@@ -60,7 +60,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const { setAuthUser } = useAuth();
   const preferredOrgName = getPreferredOrganizationName();
-  const [org, setOrg] = useState(preferredOrgName || "");
+  const [org, setOrg] = useState(preferredOrgName || "__none__");
   const [orgOptions, setOrgOptions] = useState<OrgOption[]>([]);
   const [orgLoading, setOrgLoading] = useState(true);
   const [username, setUsername] = useState("");
@@ -115,8 +115,8 @@ export const LoginPage = () => {
           setOrgOptions(nextOptions);
           setOrgLoading(false);
           setOrg((current) => {
-            if (nextOptions.some((item) => item.name === current)) return current;
-            return preferredOrgName || nextOptions[0]?.name || "";
+            if (current === "__none__" || nextOptions.some((item) => item.name === current)) return current;
+            return preferredOrgName || nextOptions[0]?.name || "__none__";
           });
         }
       } catch {
@@ -153,8 +153,9 @@ export const LoginPage = () => {
       const catCode = c?.category?.code ?? "";
       const grpCode = c?.group?.code ?? "";
       const role: AppRole = c?.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
-      const selectedOrgKey = normalizeOrgKey(org);
-      let resolvedOrgName = org;
+      const effectiveOrg = org === "__none__" ? "" : org;
+      const selectedOrgKey = normalizeOrgKey(effectiveOrg);
+      let resolvedOrgName = effectiveOrg;
       let resolvedOrgId: string | null = selectedOrgOption?.id ?? null;
       let resolvedParticipantId =
         (c?.participant_id as string | null | undefined) ?? selectedOrgOption?.participantId ?? null;
@@ -278,7 +279,7 @@ export const LoginPage = () => {
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
-                  <SelectItem value="" className="focus:bg-white/10 focus:text-white text-slate-500">
+                  <SelectItem value="__none__" className="focus:bg-white/10 focus:text-white text-slate-500">
                     — Tanpa organisasi (Platform Admin) —
                   </SelectItem>
                   {orgOptions.map((option) => (
