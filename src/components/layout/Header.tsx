@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useLogout } from "@/api/hooks/useAuth";
 import { useAuth, type AppRole } from "@/context/AuthContext";
+import { useDomain } from "@/context/DomainContext";
 import { ROLE_LABELS } from "@/config/rbac";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +37,10 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
   const { user, role } = useAuth();
+  const { domainName } = useDomain();
 
   const userName = user?.full_name || "User";
+  const organizationName = user?.category?.name || "Organisasi belum terdeteksi";
   const userInitials = userName
     .split(" ")
     .map((n: string) => n[0])
@@ -97,6 +100,14 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
                   {user?.email && (
                     <span className="text-xs text-muted-foreground font-normal truncate">
                       {user.email}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground font-normal">
+                    Org: {organizationName}
+                  </span>
+                  {domainName && (
+                    <span className="text-xs text-muted-foreground font-normal">
+                      Domain: {domainName}
                     </span>
                   )}
                   <Badge

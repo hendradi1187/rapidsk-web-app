@@ -119,6 +119,13 @@ export const LoginPage = () => {
         }
 
         if (merged.size === 0) {
+          // Coba cache dari sesi login sebelumnya
+          try {
+            const cached = JSON.parse(localStorage.getItem("cached_orgs") ?? "[]") as { id: string; name: string }[];
+            cached.forEach((o) => merged.set(o.name, { id: o.id, name: o.name, participantId: null }));
+          } catch { /* ignore */ }
+        }
+        if (merged.size === 0) {
           FALLBACK_ORGS.forEach((name) => merged.set(name, { id: null, name, participantId: null }));
         }
 
@@ -178,6 +185,10 @@ export const LoginPage = () => {
 
       try {
         const organizations = await organizationsApi.list();
+        // Cache org list untuk login page berikutnya (sebelum auth)
+        localStorage.setItem("cached_orgs", JSON.stringify(
+          organizations.map((o) => ({ id: o.organization_id, name: o.organization_name }))
+        ));
         const matchedOrg =
           organizations.find(
             (item) => normalizeOrgKey(item.organization_name) === selectedOrgKey,

@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Send, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useCreateContract } from "@/api/hooks/useContracts";
 import { useProviders } from "@/api/hooks/useProviders";
 import { useDatasets } from "@/api/hooks/useDatasets";
@@ -117,8 +118,8 @@ export function RequestContractDialog({
       });
       toast.success("Permintaan terkirim — menunggu persetujuan KKKS (REQUESTED).");
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal mengirim permintaan");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal mengirim permintaan"));
     }
   };
 

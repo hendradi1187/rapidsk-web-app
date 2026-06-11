@@ -16,7 +16,7 @@ import type { ApiCategory } from "@/components/api-docs";
 import { useOpenApiSpec } from "@/hooks/use-openapi-spec";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8184/api/v1";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8185/api/v1";
 
 // FastAPI exposes /docs and /openapi.json at root (bukan di bawah /api/v1).
 const API_ROOT_URL = API_BASE_URL.replace(/\/api\/v\d+\/?$/, "");

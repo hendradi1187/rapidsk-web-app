@@ -15,6 +15,8 @@ export interface TransferItem {
   error_message?: string | null;
 }
 
+export type TransferMode = "direct" | "persistent";
+
 export const transfersApi = {
   list: async (domainId: string): Promise<TransferItem[]> => {
     if (!domainId) return [];
@@ -39,15 +41,39 @@ export const transfersApi = {
     domain_id: string;
     agreement_id: string;
     dataset_id: string;
-  }): Promise<{ transfer_process_id: string }> => {
+  }): Promise<{ transfer_process_id: string; status?: string }> => {
     const res = await apiClient.post(`/connector/initiate`, body);
     const d = res?.data ?? {};
-    return { transfer_process_id: d.transfer_process_id ?? d.id };
+    return {
+      transfer_process_id: d.transfer_process_id ?? d.id,
+      status: d.status,
+    };
   },
 
-  // Jalankan pemindahan data (background).
-  start: async (transferProcessId: string): Promise<void> => {
-    await apiClient.post(`/connector/${transferProcessId}/start`);
+  // Jalankan pemindahan data (direct).
+  startDirect: async (transferProcessId: string): Promise<void> => {
+    await apiClient.post(`/connector/transfers/direct/${transferProcessId}/start`);
+  },
+
+  // Jalankan pemindahan data (persistent).
+  startPersistent: async (transferProcessId: string): Promise<void> => {
+    await apiClient.post(`/connector/transfers/persistent/${transferProcessId}/start`);
+  },
+
+  // Download data persistent.
+  downloadPersistent: async (
+    transferProcessId: string,
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const res = await apiClient.get(
+      `/connector/transfers/persistent/${transferProcessId}/download`,
+      { responseType: "blob" },
+    );
+    const disposition = String(res.headers["content-disposition"] ?? "");
+    const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+    return {
+      blob: res.data as Blob,
+      filename: filenameMatch?.[1] ?? `transfer-${transferProcessId}.bin`,
+    };
   },
 
   // Status satu transfer.

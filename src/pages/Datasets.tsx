@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import {
   useDatasets,
   useCreateDataset,
@@ -230,8 +231,8 @@ const Datasets = () => {
       setIsAddDialogOpen(false);
       resetForm();
       toast.success("Dataset registered successfully");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Failed to register dataset");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to register dataset"));
     }
   };
 
@@ -271,7 +272,7 @@ const Datasets = () => {
             <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
             <p className="mt-2 text-lg font-medium">Failed to load datasets</p>
             <p className="text-sm text-muted-foreground mb-4">
-              {(error as any)?.message || "An error occurred"}
+              {getApiErrorMessage(error, "An error occurred")}
             </p>
             <Button onClick={() => refetch()} variant="outline">
               <RefreshCw className="w-4 h-4 mr-2" />

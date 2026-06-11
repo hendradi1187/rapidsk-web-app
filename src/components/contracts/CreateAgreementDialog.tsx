@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, FileCheck2 } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useCreateAgreement } from "@/api/hooks/useAgreements";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -56,8 +57,8 @@ export function CreateAgreementDialog({
       });
       toast.success("Perjanjian dibuat (APPROVED).");
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal membuat perjanjian");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal membuat perjanjian"));
     }
   };
 

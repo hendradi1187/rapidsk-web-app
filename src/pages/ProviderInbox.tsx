@@ -33,6 +33,7 @@ import {
   CalendarCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useContracts, useUpdateContractStatus } from "@/api/hooks/useContracts";
 import { useAgreements } from "@/api/hooks/useAgreements";
 import { useProviders } from "@/api/hooks/useProviders";
@@ -206,10 +207,8 @@ const ProviderInbox = () => {
             : "Permintaan ditolak",
       );
       setPending(null);
-    } catch (err: any) {
-      toast.error(
-        err?.response?.data?.detail || "Gagal memperbarui status kontrak",
-      );
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal memperbarui status kontrak"));
     }
   };
 
