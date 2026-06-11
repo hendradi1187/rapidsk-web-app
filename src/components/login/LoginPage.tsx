@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -14,18 +14,26 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { authService } from "@/api/services/identity-provider";
+import { organizationsApi } from "@/api/services/governance";
+import { providersApi } from "@/api/services/providers";
 import { useAuth, deriveRole, type AppRole } from "@/context/AuthContext";
 import { decodeJwt } from "@/lib/jwt";
 import { keycloak, isKeycloakConfigured } from "@/auth/keycloak";
+import {
+  getPreferredOrganizationName,
+  setPreferredOrganization,
+  setPreferredParticipantId,
+} from "@/lib/session-binding";
 import { SecurityCards } from "@/components/login/SecurityCards";
 import { DomainCards } from "@/components/login/DomainCards";
 import { DataFlowAnimation } from "@/components/login/DataFlowAnimation";
 import { BackgroundScene } from "@/components/login/BackgroundScene";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 const APP_VERSION = "4.0.3";
 const BUILD_NUMBER = "2026.06.04";
 
-const ORGS = [
+const FALLBACK_ORGS = [
   "SKK MIGAS", "Pertamina Hulu Energi", "Medco Energi",
   "Eni Indonesia", "Chevron Indonesia", "Harbour Energy",
 ];
@@ -38,6 +46,15 @@ const STATS: { icon: LucideIcon; v: string; s: string }[] = [
   { icon: Code2, v: `Version ${APP_VERSION}`, s: `Build ${BUILD_NUMBER}` },
 ];
 
+const normalizeOrgKey = (value: string | null | undefined) =>
+  (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+interface OrgOption {
+  id: string | null;
+  name: string;
+  participantId: string | null;
+}
+
 /**
  * LoginPage — halaman login enterprise (Dark Mode Only, responsif).
  * Panel kiri = form fungsional (auth GX-Space LOCAL JWT). Panel kanan = showcase animasi.
@@ -46,7 +63,11 @@ export const LoginPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { setAuthUser } = useAuth();
-  const [org, setOrg] = useState(ORGS[0]);
+  const preferredOrgName = getPreferredOrganizationName();
+  const [org, setOrg] = useState(preferredOrgName || FALLBACK_ORGS[0]);
+  const [orgOptions, setOrgOptions] = useState<OrgOption[]>(
+    FALLBACK_ORGS.map((name) => ({ id: null, name, participantId: null })),
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -54,6 +75,90 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
 
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || "/";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOrganizations = async () => {
+      try {
+        const [organizations, participants] = await Promise.allSettled([
+          organizationsApi.list(),
+          providersApi.list(),
+        ]);
+
+        const merged = new Map<string, OrgOption>();
+
+        const upsert = (option: OrgOption) => {
+          const key = normalizeOrgKey(option.name);
+          if (!key) return;
+          const current = merged.get(key);
+          merged.set(key, {
+            id: option.id ?? current?.id ?? null,
+            name: current?.name ?? option.name,
+            participantId: option.participantId ?? current?.participantId ?? null,
+          });
+        };
+
+        if (organizations.status === "fulfilled") {
+          organizations.value.forEach((item) => {
+            upsert({
+              id: item.organization_id,
+              name: item.organization_name,
+              participantId: null,
+            });
+          });
+        }
+
+        if (participants.status === "fulfilled") {
+          participants.value.forEach((item) => {
+            upsert({
+              id: null,
+              name: item.provider_name,
+              participantId: item.provider_id,
+            });
+          });
+        }
+
+        if (merged.size === 0) {
+          FALLBACK_ORGS.forEach((name) => upsert({ id: null, name, participantId: null }));
+        }
+
+        const nextOptions = Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+        if (preferredOrgName && !nextOptions.some((item) => item.name === preferredOrgName)) {
+          nextOptions.unshift({ id: null, name: preferredOrgName, participantId: null });
+        }
+
+        if (!cancelled) {
+          setOrgOptions(nextOptions);
+          setOrg((current) => {
+            if (nextOptions.some((item) => item.name === current)) return current;
+            return preferredOrgName || nextOptions[0]?.name || FALLBACK_ORGS[0];
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          const fallbackOptions = FALLBACK_ORGS.map((name) => ({
+            id: null,
+            name,
+            participantId: null,
+          }));
+          setOrgOptions(fallbackOptions);
+          setOrg((current) => current || preferredOrgName || FALLBACK_ORGS[0]);
+        }
+      }
+    };
+
+    void loadOrganizations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [preferredOrgName]);
+
+  const selectedOrgOption = useMemo(
+    () => orgOptions.find((item) => item.name === org) ?? null,
+    [org, orgOptions],
+  );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +174,46 @@ export const LoginPage = () => {
       const catCode = c?.category?.code ?? "";
       const grpCode = c?.group?.code ?? "";
       const role: AppRole = c?.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
+      const selectedOrgKey = normalizeOrgKey(org);
+      let resolvedOrgName = org;
+      let resolvedOrgId: string | null = selectedOrgOption?.id ?? null;
+      let resolvedParticipantId =
+        (c?.participant_id as string | null | undefined) ?? selectedOrgOption?.participantId ?? null;
+
+      try {
+        const organizations = await organizationsApi.list();
+        const matchedOrg =
+          organizations.find(
+            (item) => normalizeOrgKey(item.organization_name) === selectedOrgKey,
+          ) ?? null;
+        if (matchedOrg) {
+          resolvedOrgId = matchedOrg.organization_id;
+          resolvedOrgName = matchedOrg.organization_name;
+        }
+      } catch {
+        // Keep selected org label as a fallback session hint.
+      }
+
+      if (role !== "SUPER_ADMIN" && !resolvedParticipantId) {
+        try {
+          const participants = await providersApi.list();
+          const matchedParticipant =
+            participants.find(
+              (item) => normalizeOrgKey(item.provider_name) === normalizeOrgKey(resolvedOrgName),
+            ) ??
+            participants.find(
+              (item) => normalizeOrgKey(item.provider_name) === selectedOrgKey,
+            ) ??
+            null;
+          resolvedParticipantId = matchedParticipant?.provider_id ?? null;
+        } catch {
+          // Leave participant empty if backend mapping is not readable here.
+        }
+      }
+
+      setPreferredOrganization(resolvedOrgId, resolvedOrgName);
+      setPreferredParticipantId(role === "SUPER_ADMIN" ? null : resolvedParticipantId);
+
       const user = {
         id: c?.sub ?? "",
         email: c?.email ?? "",
@@ -76,19 +221,32 @@ export const LoginPage = () => {
         role,
         roles: [role],
         permissions: [] as string[],
-        category: { name: catCode, code: catCode, description: "" },
+        category: {
+          name: resolvedOrgName,
+          code: catCode || resolvedOrgName,
+          description: "",
+        },
         group: { name: grpCode, code: grpCode, description: "", priority: 0 },
+        participantId: role === "SUPER_ADMIN" ? null : resolvedParticipantId,
       };
       localStorage.setItem("user_info", JSON.stringify(user));
       setAuthUser(user);
       toast.success("Welcome back!", { description: `Signed in as ${user.full_name} (${role})` });
-      navigate(from, { replace: true });
+
+      const roleRedirect: Record<string, string> = {
+        SUPER_ADMIN: "/organizations",
+        ADMIN: "/participants",
+        PROVIDER: "/inbox",
+        CONSUMER: "/contracts",
+        AUDITOR: "/audit",
+        VIEWER: "/datasets",
+        GIS_ANALYST: "/datasets",
+      };
+      const destination = from !== "/" ? from : (roleRedirect[role] ?? "/");
+      navigate(destination, { replace: true });
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
       toast.error("Login gagal", {
-        description: status === 401 || status === 500
-          ? "Username atau password salah."
-          : "Tidak dapat terhubung ke server.",
+        description: getApiErrorMessage(err, "Username atau password salah."),
       });
     } finally {
       setLoading(false);
@@ -136,8 +294,14 @@ export const LoginPage = () => {
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
-                  {ORGS.map((o) => (
-                    <SelectItem key={o} value={o} className="focus:bg-white/10 focus:text-white">{o}</SelectItem>
+                  {orgOptions.map((option) => (
+                    <SelectItem
+                      key={`${option.id ?? "org"}-${option.participantId ?? "participant"}-${option.name}`}
+                      value={option.name}
+                      className="focus:bg-white/10 focus:text-white"
+                    >
+                      {option.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

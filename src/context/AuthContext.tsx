@@ -2,6 +2,11 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { keycloak, isKeycloakConfigured } from "@/auth/keycloak";
 import { useKeycloak } from "@/auth/KeycloakProvider";
 import { decodeJwt } from "@/lib/jwt";
+import {
+  getPreferredOrganizationName,
+  getPreferredParticipantId,
+  clearSessionBinding,
+} from "@/lib/session-binding";
 
 // ─── Role Types (CANONICAL — IAM-3) ────────────────────────────────────
 //
@@ -198,7 +203,7 @@ const buildUserFromKeycloak = (): AuthUser | null => {
     console.log("[Auth] ======================");
   }
 
-  return {
+  return mergeStoredBinding({
     id: (t.sub as string) ?? "",
     email: (t.email as string) ?? "",
     full_name:
@@ -221,7 +226,8 @@ const buildUserFromKeycloak = (): AuthUser | null => {
       description: "",
       priority: 0,
     },
-  };
+    participantId: (t.participant_id as string | null | undefined) ?? null,
+  });
 };
 
 // ─── Context ──────────────────────────────────────────────────────────
@@ -231,6 +237,24 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const STORAGE_KEY_USER = "user_info";
 const STORAGE_KEY_TOKEN = "auth_token";
 
+const mergeStoredBinding = (user: AuthUser): AuthUser => {
+  const preferredOrgName = getPreferredOrganizationName();
+  const preferredParticipantId = getPreferredParticipantId();
+
+  return {
+    ...user,
+    category: {
+      ...user.category,
+      name: preferredOrgName || user.category.name || "",
+      code: user.category.code || preferredOrgName || "",
+    },
+    participantId:
+      user.role === "SUPER_ADMIN"
+        ? null
+        : user.participantId ?? preferredParticipantId ?? null,
+  };
+};
+
 // Build AuthUser dari access_token GX-Space (LOCAL JWT). Klaim: sub, username,
 // email, category{code}, group{code}, is_superadmin.
 const buildUserFromJwt = (token: string): AuthUser | null => {
@@ -239,7 +263,7 @@ const buildUserFromJwt = (token: string): AuthUser | null => {
   const catCode = c.category?.code ?? "";
   const grpCode = c.group?.code ?? "";
   const role: AppRole = c.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
-  return {
+  return mergeStoredBinding({
     id: c.sub ?? "",
     email: c.email ?? "",
     full_name: (c.username as string) ?? c.email ?? "User",
@@ -249,7 +273,7 @@ const buildUserFromJwt = (token: string): AuthUser | null => {
     category: { name: catCode, code: catCode, description: "" },
     group: { name: grpCode, code: grpCode, description: "", priority: 0 },
     participantId: (c.participant_id as string | null) ?? null,
-  };
+  });
 };
 
 const loadUserFromStorage = (): AuthUser | null => {
@@ -266,7 +290,7 @@ const loadUserFromStorage = (): AuthUser | null => {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const role = deriveRole(parsed.category?.code || "", parsed.group?.code || "");
-    return {
+    return mergeStoredBinding({
       id: parsed.id || "",
       email: parsed.email || "",
       full_name: parsed.full_name || "",
@@ -275,7 +299,8 @@ const loadUserFromStorage = (): AuthUser | null => {
       permissions: Array.isArray(parsed.permissions) ? parsed.permissions : [],
       category: parsed.category || { name: "", code: "", description: "" },
       group: parsed.group || { name: "", code: "", description: "", priority: 0 },
-    };
+      participantId: parsed.participantId ?? null,
+    });
   } catch {
     return null;
   }
@@ -304,7 +329,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Fallback / atau user belum login via Keycloak — coba legacy
     setUser(loadUserFromStorage());
     // tokenVersion di-include supaya re-sync setiap token refresh
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keycloakAuthenticated, tokenVersion]);
 
   const setAuthUser = useCallback((userInfo: AuthUser) => {
@@ -313,6 +337,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAuth = useCallback(() => {
     setUser(null);
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("user_info");
+    localStorage.removeItem("remember_device");
+    clearSessionBinding();
   }, []);
 
   const hasRole = useCallback(
