@@ -37,6 +37,10 @@ import { getApiErrorMessage } from "@/lib/api-error";
 const APP_VERSION = "4.0.3";
 const BUILD_NUMBER = "2026.06.04";
 
+const FALLBACK_ORGS = [
+  "SKK MIGAS", "Pertamina Hulu Energi", "Medco Energi",
+  "Eni Indonesia", "Chevron Indonesia", "Harbour Energy",
+];
 
 const STATS: { icon: LucideIcon; v: string; s: string }[] = [
   { icon: ShieldCheck, v: "Enterprise Grade", s: "ISO 27001 Aligned" },
@@ -114,6 +118,10 @@ export const LoginPage = () => {
           });
         }
 
+        if (merged.size === 0) {
+          FALLBACK_ORGS.forEach((name) => merged.set(name, { id: null, name, participantId: null }));
+        }
+
         const nextOptions = Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
         if (preferredOrgName && !nextOptions.some((item) => item.name === preferredOrgName)) {
           nextOptions.unshift({ id: null, name: preferredOrgName, participantId: null });
@@ -129,7 +137,7 @@ export const LoginPage = () => {
         }
       } catch {
         if (!cancelled) {
-          setOrgOptions([]);
+          setOrgOptions(FALLBACK_ORGS.map((name) => ({ id: null, name, participantId: null })));
           setOrgLoading(false);
         }
       }
