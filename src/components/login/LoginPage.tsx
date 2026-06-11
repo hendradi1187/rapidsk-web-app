@@ -13,9 +13,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
+import axios from "axios";
 import { authService } from "@/api/services/identity-provider";
 import { organizationsApi } from "@/api/services/governance";
 import { providersApi } from "@/api/services/providers";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8185/api/v1";
+const publicClient = axios.create({ baseURL: API_BASE, timeout: 10000 });
 import { useAuth, deriveRole, type AppRole } from "@/context/AuthContext";
 import { decodeJwt } from "@/lib/jwt";
 import { keycloak, isKeycloakConfigured } from "@/auth/keycloak";
@@ -76,9 +80,9 @@ export const LoginPage = () => {
 
     const loadOrganizations = async () => {
       try {
-        const [organizations, participants] = await Promise.allSettled([
-          organizationsApi.list(),
-          providersApi.list(),
+        const [orgRes, provRes] = await Promise.allSettled([
+          publicClient.get("/governance/organizations/"),
+          publicClient.get("/providers/"),
         ]);
 
         const merged = new Map<string, OrgOption>();
@@ -94,15 +98,19 @@ export const LoginPage = () => {
           });
         };
 
-        if (organizations.status === "fulfilled") {
-          organizations.value.forEach((item) => {
-            upsert({ id: item.organization_id, name: item.organization_name, participantId: null });
+        if (orgRes.status === "fulfilled") {
+          const data = orgRes.value.data;
+          const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
+          list.forEach((o: any) => {
+            upsert({ id: o.id ?? o.organization_id, name: o.name ?? o.organization_name, participantId: null });
           });
         }
 
-        if (participants.status === "fulfilled") {
-          participants.value.forEach((item) => {
-            upsert({ id: null, name: item.provider_name, participantId: item.provider_id });
+        if (provRes.status === "fulfilled") {
+          const data = provRes.value.data;
+          const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
+          list.forEach((p: any) => {
+            upsert({ id: null, name: p.provider_name ?? p.name, participantId: p.provider_id ?? p.id ?? null });
           });
         }
 
@@ -265,22 +273,19 @@ export const LoginPage = () => {
             <p className="text-sm text-slate-400 mt-1 mb-6">Access RapiDSK Enterprise Platform</p>
 
             <div className="mb-4">
-              <Label className="text-xs font-medium text-slate-400">
-                Organization
-                <span className="ml-1 text-slate-600">(opsional untuk Platform Admin)</span>
-              </Label>
+              <Label className="text-xs font-medium text-slate-400">Organization</Label>
               <Select value={org} onValueChange={setOrg}>
                 <SelectTrigger className="mt-1.5 h-11 bg-[#070b16] border-white/10 text-slate-200 focus:ring-amber-500/40">
                   <span className="flex items-center gap-2 truncate">
                     <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     {orgLoading
-                      ? <span className="text-slate-500 text-sm">Memuat organisasi...</span>
-                      : <SelectValue placeholder="— Platform Admin / tidak perlu pilih —" />}
+                      ? <span className="text-slate-500 text-sm">Memuat...</span>
+                      : <SelectValue placeholder="Pilih organisasi..." />}
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
-                  <SelectItem value="__none__" className="focus:bg-white/10 focus:text-white text-slate-500">
-                    — Tanpa organisasi (Platform Admin) —
+                  <SelectItem value="__none__" className="focus:bg-white/10 focus:text-white text-slate-500 italic">
+                    Pilih organisasi...
                   </SelectItem>
                   {orgOptions.map((option) => (
                     <SelectItem
