@@ -124,14 +124,38 @@ export function PublishDatasetDialog({
     }
   };
 
-  const schemaOptions = useMemo(
-    () => schemaList.map((s) => ({ id: s.schema_id, label: `${s.vocabulary_name ?? "Schema"} · v${s.version}` })),
-    [schemaList],
-  );
+  // Schema dikategorikan: cocok domain aktif (primary) vs domain lain (secondary)
+  const { domainSchemas, otherSchemas } = useMemo(() => {
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const dl = normalize(domainLabel);
+    const primary: typeof schemaList = [];
+    const secondary: typeof schemaList = [];
+    schemaList.forEach((s) => {
+      const vn = normalize(s.vocabulary_name ?? "");
+      if (vn.includes(dl) || dl.includes(vn)) primary.push(s);
+      else secondary.push(s);
+    });
+    return { domainSchemas: primary, otherSchemas: secondary };
+  }, [schemaList, domainLabel]);
+
+  const schemaOptions = useMemo(() => [
+    ...domainSchemas.map((s) => ({
+      id: s.schema_id,
+      label: `${s.vocabulary_name ?? "Schema"} · v${s.version}`,
+      status: s.status,
+      forDomain: true,
+    })),
+    ...otherSchemas.map((s) => ({
+      id: s.schema_id,
+      label: `${s.vocabulary_name ?? "Schema"} · v${s.version}`,
+      status: s.status,
+      forDomain: false,
+    })),
+  ], [domainSchemas, otherSchemas]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UploadCloud className="w-5 h-5 text-accent" /> Publish Dataset
@@ -147,7 +171,7 @@ export function PublishDatasetDialog({
           </div>
         )}
 
-        <div className="space-y-4 py-1">
+        <div className="space-y-4 py-1 overflow-y-auto flex-1 pr-1">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Domain</Label>
@@ -174,7 +198,42 @@ export function PublishDatasetDialog({
                 <SelectValue placeholder={schemaOptions.length ? "Pilih schema…" : "Belum ada schema — jalankan Setup Juknis"} />
               </SelectTrigger>
               <SelectContent>
-                {schemaOptions.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                {domainSchemas.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-amber-600 flex items-center gap-1.5">
+                    <AlertCircle className="w-3 h-3" />
+                    Tidak ada schema untuk domain <strong>{domainLabel}</strong>
+                  </div>
+                )}
+                {domainSchemas.length > 0 && (
+                  <div className="px-2 py-1 text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
+                    ✓ Untuk domain {domainLabel}
+                  </div>
+                )}
+                {domainSchemas.map((s) => (
+                  <SelectItem key={s.schema_id} value={s.schema_id}>
+                    <span className="flex items-center gap-2">
+                      {s.vocabulary_name ?? "Schema"} · v{s.version}
+                      {s.status && s.status !== "PUBLISHED" && (
+                        <span className="text-[10px] text-amber-500">[{s.status}]</span>
+                      )}
+                    </span>
+                  </SelectItem>
+                ))}
+                {otherSchemas.length > 0 && (
+                  <>
+                    <div className="px-2 py-1 mt-1 text-[10px] text-muted-foreground font-semibold uppercase tracking-wide border-t pt-2">
+                      Domain lain
+                    </div>
+                    {otherSchemas.map((s) => (
+                      <SelectItem key={s.schema_id} value={s.schema_id} className="text-muted-foreground">
+                        <span className="flex items-center gap-2">
+                          {s.vocabulary_name ?? "Schema"} · v{s.version}
+                          <span className="text-[10px] text-rose-400">[bukan {domainLabel}]</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
               </SelectContent>
             </Select>
 
