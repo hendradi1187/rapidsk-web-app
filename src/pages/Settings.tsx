@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { useConnectionPools, useCreateConnectionPool, useDeleteConnectionPool } from "@/api/hooks/useConnectionPools";
+import { useParticipantAdapters, useAddParticipantAdapter, useUpdateParticipantAdapter, useDeleteParticipantAdapter } from "@/api/hooks/useProviders";
+import { useProviders } from "@/api/hooks/useProviders";
+import { useAuth } from "@/context/AuthContext";
+import { useDomain } from "@/context/DomainContext";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { DOMAINS } from "@/lib/fulfillment";
 
 interface GeoServerEndpoint {
   id: number;
@@ -54,7 +61,81 @@ interface NotificationSetting {
   enabled: boolean;
 }
 
+const ADAPTER_TYPES = ["GIS_STUDIO", "REST_API", "OGC_WFS", "OGC_WMS", "ARCGIS", "GEONODE"];
+
 const Settings = () => {
+  const { participantId, role } = useAuth();
+  const { domainId } = useDomain();
+  const { data: connectionPoolsData, isLoading: isLoadingConnectionPools } = useConnectionPools();
+  const { data: providersData } = useProviders();
+  const createConnectionPoolMutation = useCreateConnectionPool();
+  const deleteConnectionPoolMutation = useDeleteConnectionPool();
+
+  // Adapter — hanya PROVIDER
+  const { data: adaptersData, isLoading: loadingAdapters, refetch: refetchAdapters } =
+    useParticipantAdapters(participantId ?? "");
+  const addAdapterMutation = useAddParticipantAdapter();
+  const updateAdapterMutation = useUpdateParticipantAdapter();
+  const deleteAdapterMutation = useDeleteParticipantAdapter();
+
+  const [adapterDialog, setAdapterDialog] = useState(false);
+  const [editingAdapter, setEditingAdapter] = useState<any>(null);
+  const [adapterForm, setAdapterForm] = useState({
+    domain_id: domainId ?? "",
+    type: "GIS_STUDIO",
+    url: "",
+  });
+  const [connTestStatus, setConnTestStatus] = useState<Record<string, "idle"|"checking"|"ok"|"error">>({});
+
+  const testAdapterConn = async (id: string, url: string) => {
+    setConnTestStatus((p) => ({ ...p, [id]: "checking" }));
+    try {
+      await fetch(url, { method: "HEAD", mode: "no-cors" });
+      setConnTestStatus((p) => ({ ...p, [id]: "ok" }));
+    } catch {
+      setConnTestStatus((p) => ({ ...p, [id]: "error" }));
+    }
+  };
+
+  const openAddAdapter = () => {
+    setEditingAdapter(null);
+    setAdapterForm({ domain_id: domainId ?? "", type: "GIS_STUDIO", url: "" });
+    setAdapterDialog(true);
+  };
+  const openEditAdapter = (a: any) => {
+    setEditingAdapter(a);
+    setAdapterForm({ domain_id: a.domain_id ?? "", type: a.type ?? "GIS_STUDIO", url: a.endpoint?.url ?? "" });
+    setAdapterDialog(true);
+  };
+  const saveAdapter = async () => {
+    if (!participantId) return toast.error("Akun tidak terhubung ke participant.");
+    if (!adapterForm.url) return toast.error("URL endpoint wajib diisi.");
+    try {
+      const body = { domain_id: adapterForm.domain_id, type: adapterForm.type, endpoint: { url: adapterForm.url } };
+      if (editingAdapter) {
+        await updateAdapterMutation.mutateAsync({ participantId, id: editingAdapter.id, body });
+        toast.success("Adapter diperbarui.");
+      } else {
+        await addAdapterMutation.mutateAsync({ participantId, body });
+        toast.success("Adapter ditambahkan.");
+      }
+      setAdapterDialog(false);
+      refetchAdapters();
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e, "Gagal simpan adapter"));
+    }
+  };
+  const removeAdapter = async (id: string) => {
+    if (!participantId) return;
+    try {
+      await deleteAdapterMutation.mutateAsync({ participantId, id });
+      toast.success("Adapter dihapus.");
+      refetchAdapters();
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e, "Gagal hapus adapter"));
+    }
+  };
+
   // Profile settings state
   const [profileForm, setProfileForm] = useState({
     name: "Super Admin",
@@ -107,6 +188,8 @@ const Settings = () => {
   const [isGeoServerDialogOpen, setIsGeoServerDialogOpen] = useState(false);
   const [isIdpDialogOpen, setIsIdpDialogOpen] = useState(false);
   const [isAddEndpointDialogOpen, setIsAddEndpointDialogOpen] = useState(false);
+  const [isConnectionPoolDialogOpen, setIsConnectionPoolDialogOpen] = useState(false);
+  const [isAddConnectionPoolDialogOpen, setIsAddConnectionPoolDialogOpen] = useState(false);
 
   // Password form state
   const [passwordForm, setPasswordForm] = useState({
@@ -126,6 +209,37 @@ const Settings = () => {
     url: "",
     type: "WMS",
   });
+  const [newConnectionPoolForm, setNewConnectionPoolForm] = useState({
+    participant_id: participantId ?? "",
+    name: "",
+    type: "PROVIDER" as "CONSUMER" | "PROVIDER",
+    token: "",
+    url_consumer: "",
+    url_provider: "",
+  });
+
+  const connectionPools = useMemo(
+    () => (connectionPoolsData ?? []) as Array<{
+      id: string;
+      participant_id: string;
+      name: string;
+      type: "CONSUMER" | "PROVIDER";
+      token: string;
+      metadata: { url_consumer: string; url_provider: string };
+    }>,
+    [connectionPoolsData],
+  );
+
+  const providers = useMemo(
+    () => (providersData ?? []) as Array<{ provider_id: string; provider_name: string }>,
+    [providersData],
+  );
+
+  const providerNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const provider of providers) map[provider.provider_id] = provider.provider_name;
+    return map;
+  }, [providers]);
 
   // Handle save profile
   const handleSaveProfile = async () => {
@@ -217,6 +331,53 @@ const Settings = () => {
     toast.success("Endpoint removed successfully");
   };
 
+  const handleAddConnectionPool = async () => {
+    if (
+      !newConnectionPoolForm.participant_id ||
+      !newConnectionPoolForm.name ||
+      !newConnectionPoolForm.token ||
+      !newConnectionPoolForm.url_consumer ||
+      !newConnectionPoolForm.url_provider
+    ) {
+      toast.error("Please fill in all connection pool fields");
+      return;
+    }
+
+    try {
+      await createConnectionPoolMutation.mutateAsync({
+        participant_id: newConnectionPoolForm.participant_id,
+        name: newConnectionPoolForm.name,
+        type: newConnectionPoolForm.type,
+        token: newConnectionPoolForm.token,
+        metadata: {
+          url_consumer: newConnectionPoolForm.url_consumer,
+          url_provider: newConnectionPoolForm.url_provider,
+        },
+      });
+      setNewConnectionPoolForm({
+        participant_id: participantId ?? "",
+        name: "",
+        type: "PROVIDER",
+        token: "",
+        url_consumer: "",
+        url_provider: "",
+      });
+      setIsAddConnectionPoolDialogOpen(false);
+      toast.success("Connection pool added successfully");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to add connection pool"));
+    }
+  };
+
+  const handleRemoveConnectionPool = async (id: string) => {
+    try {
+      await deleteConnectionPoolMutation.mutateAsync(id);
+      toast.success("Connection pool removed successfully");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to remove connection pool"));
+    }
+  };
+
   // Handle save IDP settings
   const handleSaveIdpSettings = async () => {
     setIsSaving(true);
@@ -239,6 +400,9 @@ const Settings = () => {
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            {(role === "PROVIDER" || role === "ADMIN" || role === "SUPER_ADMIN") && (
+              <TabsTrigger value="adapter">DS Adapter</TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="general" className="space-y-6">
@@ -517,10 +681,169 @@ const Settings = () => {
                     </div>
                   </div>
                 </div>
+                <div className="p-4 rounded-lg border border-border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-success/10">
+                        <Database className="w-5 h-5 text-success" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Connection Pools</p>
+                        <p className="text-sm text-muted-foreground">
+                          {isLoadingConnectionPools ? "Loading connection pools..." : `${connectionPools.length} connector pools configured`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">
+                        {isLoadingConnectionPools ? "Loading" : connectionPools.length > 0 ? "Configured" : "Empty"}
+                      </Badge>
+                      <Button variant="outline" size="sm" onClick={() => setIsConnectionPoolDialogOpen(true)}>
+                        Configure
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── DS Adapter Tab ─────────────────────────────────────── */}
+          <TabsContent value="adapter" className="space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="w-5 h-5" /> DS Adapter Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Daftarkan adapter yang menghubungkan connector ke sumber data aktual (GeoServer, ArcGIS, GeoNode, dll).
+                    Setiap adapter terikat ke satu domain wajib.
+                  </CardDescription>
+                </div>
+                <Button onClick={openAddAdapter} disabled={!participantId}>
+                  <Plus className="w-4 h-4 mr-2" /> Tambah Adapter
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {!participantId && (
+                  <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <Shield className="w-4 h-4" /> Akun tidak terhubung ke participant — hanya operator KKKS yang dapat mengelola adapter.
+                  </div>
+                )}
+
+                {loadingAdapters && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Memuat adapter…
+                  </div>
+                )}
+
+                {!loadingAdapters && (adaptersData ?? []).length === 0 && participantId && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Database className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm font-medium">Belum ada adapter terdaftar</p>
+                    <p className="text-xs mt-1">Tambah adapter untuk setiap domain yang sumber datanya via GeoServer / ArcGIS / GeoNode.</p>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {(adaptersData ?? []).map((a: any) => {
+                    const domainLabel = DOMAINS.find((d) => d.key === a.domain_id || d.key === a.domain?.key)?.label ?? a.domain_id ?? "—";
+                    const connSt = connTestStatus[a.id] ?? "idle";
+                    return (
+                      <div key={a.id} className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="outline" className="text-xs">{domainLabel}</Badge>
+                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">{a.type ?? "GIS_STUDIO"}</Badge>
+                            {connSt === "ok" && <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Online</Badge>}
+                            {connSt === "error" && <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-200">Unreachable</Badge>}
+                          </div>
+                          <p className="text-xs font-mono text-muted-foreground truncate">{a.endpoint?.url ?? "—"}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button size="sm" variant="outline" className="h-7 text-xs"
+                            onClick={() => testAdapterConn(a.id, a.endpoint?.url ?? "")}
+                            disabled={connSt === "checking"}
+                          >
+                            {connSt === "checking"
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Globe className="w-3 h-3" />}
+                            <span className="ml-1">Test</span>
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEditAdapter(a)}>
+                            Edit
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                            onClick={() => removeAdapter(a.id)}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground">Cara kerja adapter:</p>
+                  <p>Dataset endpoint → <span className="font-mono bg-muted px-1 rounded">DS Adapter URL</span> → Adapter routing ke GeoServer/ArcGIS → Connector mengambil data sesuai standar SKK Migas.</p>
+                  <p>Set endpoint URL dataset Anda ke URL adapter ini agar transfer data melalui adapter.</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Adapter Dialog */}
+        <Dialog open={adapterDialog} onOpenChange={setAdapterDialog}>
+          <DialogContent className="sm:max-w-[460px]">
+            <DialogHeader>
+              <DialogTitle>{editingAdapter ? "Edit Adapter" : "Tambah DS Adapter"}</DialogTitle>
+              <DialogDescription>
+                Daftarkan endpoint adapter Anda untuk domain tertentu.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Domain</Label>
+                <Select value={adapterForm.domain_id} onValueChange={(v) => setAdapterForm((f) => ({ ...f, domain_id: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Pilih domain" /></SelectTrigger>
+                  <SelectContent>
+                    {DOMAINS.map((d) => (
+                      <SelectItem key={d.key} value={d.key}>{d.label} <span className="text-muted-foreground text-xs">({d.sub})</span></SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Tipe Adapter</Label>
+                <Select value={adapterForm.type} onValueChange={(v) => setAdapterForm((f) => ({ ...f, type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ADAPTER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Endpoint URL *</Label>
+                <Input
+                  value={adapterForm.url}
+                  onChange={(e) => setAdapterForm((f) => ({ ...f, url: e.target.value }))}
+                  placeholder="https://adapter.kkks.co.id/api/v1"
+                />
+                <p className="text-xs text-muted-foreground">URL service adapter Anda. Dataset endpoint harus diarahkan ke URL ini agar transfer via adapter.</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAdapterDialog(false)}>Batal</Button>
+              <Button onClick={saveAdapter}
+                disabled={addAdapterMutation.isPending || updateAdapterMutation.isPending || !adapterForm.url}>
+                {(addAdapterMutation.isPending || updateAdapterMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {editingAdapter ? "Simpan Perubahan" : "Tambah Adapter"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Change Password Dialog */}
         <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
@@ -798,6 +1121,163 @@ const Settings = () => {
               <Button onClick={handleSaveIdpSettings} disabled={isSaving} className="bg-accent hover:bg-accent/90">
                 {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 Save Configuration
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isConnectionPoolDialogOpen} onOpenChange={setIsConnectionPoolDialogOpen}>
+          <DialogContent className="sm:max-w-[760px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Connection Pool Configuration
+              </DialogTitle>
+              <DialogDescription>
+                Manage connector onboarding pools without changing the existing transfer flow.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {isLoadingConnectionPools ? "Loading..." : `${connectionPools.length} connection pools configured`}
+                </p>
+                <Button size="sm" variant="outline" onClick={() => setIsAddConnectionPoolDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Pool
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                {connectionPools.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    No connection pools configured yet.
+                  </div>
+                ) : (
+                  connectionPools.map((pool) => (
+                    <div key={pool.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                      <div className="space-y-1">
+                        <p className="font-medium text-sm">{pool.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Participant: {providerNameById[pool.participant_id] ?? pool.participant_id}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Type: {pool.type}</p>
+                        <p className="text-xs text-muted-foreground">Consumer URL: {pool.metadata?.url_consumer || "—"}</p>
+                        <p className="text-xs text-muted-foreground">Provider URL: {pool.metadata?.url_provider || "—"}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveConnectionPool(pool.id)}
+                        disabled={deleteConnectionPoolMutation.isPending}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsConnectionPoolDialogOpen(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isAddConnectionPoolDialogOpen} onOpenChange={setIsAddConnectionPoolDialogOpen}>
+          <DialogContent className="sm:max-w-[560px]">
+            <DialogHeader>
+              <DialogTitle>Add Connection Pool</DialogTitle>
+              <DialogDescription>
+                Register connector pool metadata already supported by the live backend.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Participant</Label>
+                <Select
+                  value={newConnectionPoolForm.participant_id}
+                  onValueChange={(value) => setNewConnectionPoolForm({ ...newConnectionPoolForm, participant_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select participant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers.map((provider) => (
+                      <SelectItem key={provider.provider_id} value={provider.provider_id}>
+                        {provider.provider_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input
+                    value={newConnectionPoolForm.name}
+                    onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, name: e.target.value })}
+                    placeholder="Pool name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select
+                    value={newConnectionPoolForm.type}
+                    onValueChange={(value) =>
+                      setNewConnectionPoolForm({
+                        ...newConnectionPoolForm,
+                        type: value as "CONSUMER" | "PROVIDER",
+                      })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PROVIDER">PROVIDER</SelectItem>
+                      <SelectItem value="CONSUMER">CONSUMER</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Token</Label>
+                <Input
+                  value={newConnectionPoolForm.token}
+                  onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, token: e.target.value })}
+                  placeholder="Connection pool token"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Consumer URL</Label>
+                <Input
+                  value={newConnectionPoolForm.url_consumer}
+                  onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, url_consumer: e.target.value })}
+                  placeholder="http://consumer-host"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Provider URL</Label>
+                <Input
+                  value={newConnectionPoolForm.url_provider}
+                  onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, url_provider: e.target.value })}
+                  placeholder="http://provider-host"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddConnectionPoolDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddConnectionPool}
+                disabled={createConnectionPoolMutation.isPending}
+                className="bg-accent hover:bg-accent/90"
+              >
+                {createConnectionPoolMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Add Pool
               </Button>
             </DialogFooter>
           </DialogContent>
