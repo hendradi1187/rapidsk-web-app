@@ -149,6 +149,20 @@ const TransferCenter = () => {
   const send = async (row: (typeof rows)[number]) => {
     if (!domainId || !row.ds || !row.contract) return;
     if (!dpId) return toast.error("Tidak ada dataset-policy (jalankan Setup Juknis dulu).");
+
+    // Cek apakah ada transfer aktif untuk dataset ini
+    const activeTransfer = (transfers as typeof transfers).find(
+      (t) =>
+        t.dataset_id === row.ds!.dataset_id &&
+        !["COMPLETED", "FAILED"].includes(String(t.status).toUpperCase()),
+    );
+    if (activeTransfer) {
+      toast.warning(
+        `Transfer sedang berjalan untuk dataset ini (status: ${activeTransfer.status}). Tunggu sampai selesai atau gagal dulu.`,
+        { duration: 6000 },
+      );
+      return;
+    }
     const key = row.dom.key;
     const mode = transferModes[key] ?? "direct";
     const step = (s: string) => setBusy((b) => ({ ...b, [key]: s }));
@@ -219,7 +233,12 @@ const TransferCenter = () => {
     } catch (e: unknown) {
       const msg = getApiErrorMessage(e, "error");
       console.error("[Transfer] FAILED at step:", busy[key], e);
-      toast.error(`Gagal (${busy[key] ?? "?"}): ${msg}`, { duration: 8000 });
+      const isActiveTransferError = msg.toLowerCase().includes("active transfer");
+      if (isActiveTransferError) {
+        toast.warning("Transfer aktif sudah ada untuk dataset ini — tunggu sampai selesai atau gagal.", { duration: 6000 });
+      } else {
+        toast.error(`Gagal (${busy[key] ?? "?"}): ${msg}`, { duration: 8000 });
+      }
     } finally {
       setBusy((b) => { const n = { ...b }; delete n[key]; return n; });
     }
