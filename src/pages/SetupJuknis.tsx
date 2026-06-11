@@ -12,6 +12,7 @@ import {
   Building2, Layers, ShieldCheck, CheckCircle2, Loader2, ArrowRight, ArrowLeft, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { organizationsApi } from "@/api/services/governance";
 import { juknisApi, type JuknisApplyResult } from "@/api/services/juknis";
 
@@ -74,8 +75,8 @@ const SetupJuknis = () => {
       await orgQ.refetch();
       setNewOrgName("");
       toast.success("Organisasi dibuat.");
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal membuat organisasi");
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e, "Gagal membuat organisasi"));
     } finally {
       setCreatingOrg(false);
     }
@@ -105,8 +106,8 @@ const SetupJuknis = () => {
       await domQ.refetch();
       setDomainId(d.domain_id);
       toast.success("Governance domain dibuat.");
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal membuat domain");
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e, "Gagal membuat domain"));
     } finally {
       setCreatingDomain(false);
     }
@@ -134,8 +135,8 @@ const SetupJuknis = () => {
       const res = await juknisApi.apply(domainId, { overrides, include_dictionary: includeDict });
       setResult(res);
       toast.success("Paket Juknis diterapkan.");
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || "Gagal menerapkan Juknis");
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e, "Gagal menerapkan Juknis"));
     } finally {
       setApplying(false);
     }

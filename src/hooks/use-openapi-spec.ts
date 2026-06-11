@@ -3,7 +3,7 @@ import { parseOpenApiSpec } from "@/components/api-docs/openapi-parser";
 import type { ApiCategory } from "@/components/api-docs/api-endpoints";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8184/api/v1";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8185/api/v1";
 
 export interface OpenApiSpecResult {
   categories: ApiCategory[];

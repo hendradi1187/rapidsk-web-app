@@ -54,13 +54,6 @@ export const MENU_ITEMS: MenuItem[] = [
   },
   {
     section: "persiapan",
-    icon: UserPlus,
-    label: "Pendaftaran KKKS",
-    path: "/onboarding",
-    roles: ["SUPER_ADMIN", "ADMIN"],
-  },
-  {
-    section: "persiapan",
     icon: Building2,
     label: "Organizations",
     path: "/organizations",
@@ -106,8 +99,8 @@ export const MENU_ITEMS: MenuItem[] = [
     section: "pemantauan",
     icon: Users,
     label: "Participants",
-    path: "/providers",
-    // KKKS (PROVIDER) tidak boleh melihat direktori peserta lain — isolasi data.
+    path: "/participants",
+    // Gabungan dari Pendaftaran KKKS & Providers
     roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "AUDITOR"],
   },
   {

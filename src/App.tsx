@@ -11,11 +11,12 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import Login from "./pages/Login";
 import RegisterKKKS from "./pages/RegisterKKKS";
 import ConfirmEmail from "./pages/ConfirmEmail";
-import OnboardingQueue from "./pages/OnboardingQueue";
+
 import SetupJuknis from "./pages/SetupJuknis";
 import Dashboard from "./pages/Dashboard";
 import Organizations from "./pages/Organizations";
-import Providers from "./pages/Providers";
+import Participants from "./pages/Participants";
+import ParticipantDetail from "./pages/ParticipantDetail";
 import Datasets from "./pages/Datasets";
 import Schemas from "./pages/Schemas";
 import Vocabularies from "./pages/Vocabularies";
@@ -63,9 +64,9 @@ const App = () => (
                         <Routes>
                           <Route path="/" element={<Dashboard />} />
                           <Route path="/setup-juknis" element={<SetupJuknis />} />
-                          <Route path="/onboarding" element={<OnboardingQueue />} />
+                          <Route path="/participants" element={<Participants />} />
+                          <Route path="/participants/:id" element={<ParticipantDetail />} />
                           <Route path="/organizations" element={<Organizations />} />
-                          <Route path="/providers" element={<Providers />} />
                           <Route path="/datasets" element={<Datasets />} />
                           <Route path="/schemas" element={<Schemas />} />
                           <Route path="/vocabularies" element={<Vocabularies />} />

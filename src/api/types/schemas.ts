@@ -8,4 +8,22 @@ export interface SchemaItem {
   status?: string;
 }
 
+export interface SchemaFieldSelection {
+  vocabulary_term_id: string;
+  required?: boolean;
+  cardinality?: "SINGLE" | "MULTIPLE";
+}
+
+export interface SchemaCreateRequest {
+  vocabulary_id: string;
+  version: string;
+  status?: "DRAFT" | "PUBLISHED" | "DEPRECATED";
+  metadata_schemas: SchemaFieldSelection[];
+}
+
+export interface SchemaUpdateRequest {
+  version?: string;
+  status?: "DRAFT" | "PUBLISHED" | "DEPRECATED";
+}
+
 export type SchemaListResponse = SchemaItem[];

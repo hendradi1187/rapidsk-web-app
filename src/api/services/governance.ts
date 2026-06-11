@@ -1,9 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { apiClient } from "../client";
 import type {
+  ConnectionPoolCreateRequest,
+  ConnectionPoolItem,
+  ConnectionPoolUpdateRequest,
+  OrganizationDomain,
+  OrganizationDomainCreateRequest,
+  OrganizationDomainUpdateRequest,
   Organization,
   OrganizationCreateRequest,
   OrganizationListResponse,
+  OrganizationUpdateRequest,
   PolicyListResponse,
 } from "../types/governance";
 
@@ -11,13 +18,6 @@ import type {
 // Envelope: { data: [...], total, ... }
 
 const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
-
-export interface DomainItem {
-  domain_id: string;
-  domain_name: string;
-  code?: string;
-  status?: string;
-}
 
 export const organizationsApi = {
   list: async (): Promise<OrganizationListResponse> => {
@@ -30,27 +30,21 @@ export const organizationsApi = {
     })) as unknown as OrganizationListResponse;
   },
 
-  listDomains: async (orgId: string): Promise<DomainItem[]> => {
+  listDomains: async (orgId: string): Promise<OrganizationDomain[]> => {
     const res = await apiClient.get(`/governance/organizations/${orgId}/domains`);
     return unwrap(res).map((d: any) => ({
       domain_id: d.id,
       domain_name: d.name,
       code: d.code,
       status: d.status,
+      description: d.description ?? undefined,
     }));
   },
 
   create: async (data: OrganizationCreateRequest): Promise<Organization> => {
     const name = data.organization_name.trim();
-    // code: backend mensyaratkan 2–20 char. Ambil dari type bila ada, jika
-    // tidak dari nama; bersihkan jadi alnum uppercase, jamin minimal 2 char.
-    const rawCode = (data.organization_type || name)
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "");
-    const code = (rawCode.slice(0, 20) || "ORG").padEnd(2, "X");
-    // description: backend mensyaratkan minLength 10. Form tidak punya field
-    // deskripsi, jadi auto-generate dari nama agar lolos validasi.
-    const description = name.length >= 10 ? name : `Organisasi ${name}`;
+    const code = data.code?.trim() || data.organization_type?.trim() || "ORG";
+    const description = data.description?.trim() || `Organisasi ${name}`;
     const res = await apiClient.post("/governance/organizations/", {
       name,
       code,
@@ -59,14 +53,49 @@ export const organizationsApi = {
     return res.data as Organization;
   },
 
+  update: async (id: string, data: OrganizationUpdateRequest): Promise<Organization> => {
+    const res = await apiClient.patch(`/governance/organizations/${id}`, data);
+    return res.data as Organization;
+  },
+
+  remove: async (id: string): Promise<void> => {
+    await apiClient.delete(`/governance/organizations/${id}`);
+  },
+
   // Buat governance domain di bawah organisasi. code 2–20, description ≥10.
   createDomain: async (
     orgId: string,
-    data: { name: string; code: string; description: string },
-  ): Promise<DomainItem> => {
+    data: OrganizationDomainCreateRequest,
+  ): Promise<OrganizationDomain> => {
     const res = await apiClient.post(`/governance/organizations/${orgId}/domains`, data);
     const d = res.data as any;
-    return { domain_id: d.id, domain_name: d.name, code: d.code, status: d.status };
+    return {
+      domain_id: d.id,
+      domain_name: d.name,
+      code: d.code,
+      status: d.status,
+      description: d.description ?? undefined,
+    };
+  },
+
+  updateDomain: async (
+    orgId: string,
+    domainId: string,
+    data: OrganizationDomainUpdateRequest,
+  ): Promise<OrganizationDomain> => {
+    const res = await apiClient.patch(`/governance/organizations/${orgId}/domains/${domainId}`, data);
+    const d = res.data as any;
+    return {
+      domain_id: d.id,
+      domain_name: d.name,
+      code: d.code,
+      status: d.status,
+      description: d.description ?? undefined,
+    };
+  },
+
+  removeDomain: async (orgId: string, domainId: string): Promise<void> => {
+    await apiClient.delete(`/governance/organizations/${orgId}/domains/${domainId}`);
   },
 };
 
@@ -109,5 +138,26 @@ export const policiesApi = {
       level: levelFromRules(p.rules) ?? levelFromName(p.name),
       domain: inferDomainFromName(p.name),
     })) as unknown as PolicyListResponse;
+  },
+};
+
+export const connectionPoolsApi = {
+  list: async (): Promise<ConnectionPoolItem[]> => {
+    const res = await apiClient.get("/onboarding/connection-pools");
+    return unwrap(res) as ConnectionPoolItem[];
+  },
+
+  create: async (body: ConnectionPoolCreateRequest): Promise<ConnectionPoolItem> => {
+    const res = await apiClient.post("/onboarding/connection-pools", body);
+    return res.data as ConnectionPoolItem;
+  },
+
+  update: async (id: string, body: ConnectionPoolUpdateRequest): Promise<ConnectionPoolItem> => {
+    const res = await apiClient.patch(`/onboarding/connection-pools/${id}`, body);
+    return res.data as ConnectionPoolItem;
+  },
+
+  remove: async (id: string): Promise<void> => {
+    await apiClient.delete(`/onboarding/connection-pools/${id}`);
   },
 };

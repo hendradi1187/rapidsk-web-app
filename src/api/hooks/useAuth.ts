@@ -13,6 +13,8 @@ import {
   keycloak,
   logoutFromKeycloak,
 } from "@/auth/keycloak";
+import { setActiveDomainId } from "@/lib/domain";
+import { clearSessionBinding } from "@/lib/session-binding";
 
 /**
  * Hook for user logout.
@@ -28,6 +30,8 @@ export const useLogout = () => {
     // Selalu clear local state dulu (defensif)
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user_info");
+    setActiveDomainId(null);
+    clearSessionBinding();
     clearAuth();
     queryClient.invalidateQueries();
 

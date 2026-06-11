@@ -82,6 +82,7 @@ const Dashboard = () => {
   const { role, user, participantId } = useAuth();
   const isProvider = role === "PROVIDER";
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
+  const organizationName = user?.category?.name || "Organisasi belum terhubung";
 
   const dsQ = useDatasets();
   const { data: providersData } = useProviders();
@@ -227,6 +228,9 @@ const Dashboard = () => {
           <div className="flex items-center gap-2 mt-2">
             <span className="text-xs px-2 py-0.5 rounded-full bg-amber/20 text-amber-glow border border-amber/30">
               {isProvider ? "KKKS · Provider" : "SKK Migas"}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/80 border border-white/10">
+              Org: {organizationName}
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/80 border border-white/10">
               Domain: {domainName ?? "—"}

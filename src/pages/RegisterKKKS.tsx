@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Building2, CheckCircle2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { registrationsApi } from "@/api/services/onboarding";
 
 const RegisterKKKS = () => {
@@ -44,8 +45,8 @@ const RegisterKKKS = () => {
         note: form.note.trim() || undefined,
       });
       setDone(true);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal mengirim pendaftaran");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal mengirim pendaftaran"));
     } finally {
       setSubmitting(false);
     }

@@ -1,8 +1,25 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -12,40 +29,32 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Plus,
-  Search,
-  MoreHorizontal,
+  AlertCircle,
   Building2,
   Eye,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
   Layers,
-  Network,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import {
-  useOrganizations,
   useCreateOrganization,
+  useCreateOrganizationDomain,
+  useDeleteOrganization,
+  useDeleteOrganizationDomain,
   useOrganizationDomains,
+  useOrganizations,
+  useUpdateOrganization,
+  useUpdateOrganizationDomain,
 } from "@/api/hooks/useOrganizations";
-import type { Organization } from "@/api/types/governance";
+import type { Organization, OrganizationDomain } from "@/api/types/governance";
 
 const ROLE_BY_CODE: Record<string, string> = {
   REGULATOR: "SKK Migas (Regulator)",
@@ -55,146 +64,490 @@ const ROLE_BY_CODE: Record<string, string> = {
   PROVIDER: "KKKS (Provider)",
 };
 
+const emptyOrganizationForm = {
+  organization_name: "",
+  code: "",
+  description: "",
+};
+
+const emptyDomainForm = {
+  name: "",
+  code: "",
+  description: "",
+};
+
 const getAvatar = (name: string) =>
   name
     .split(" ")
-    .map((w) => w[0])
+    .map((word) => word[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
 
-/** Daftar governance domain milik satu organisasi (dipakai di dialog detail). */
-const OrganizationDomains = ({ orgId }: { orgId: string }) => {
-  const { data: domains, isLoading, isError } = useOrganizationDomains(orgId);
+const validateOrganizationForm = (formData: typeof emptyOrganizationForm) => {
+  if (!formData.organization_name.trim()) {
+    return "Nama organisasi wajib diisi";
+  }
+  if (formData.organization_name.trim().length < 3) {
+    return "Nama organisasi minimal 3 karakter";
+  }
+  if (!formData.code.trim()) {
+    return "Code organisasi wajib diisi";
+  }
+  if (formData.code.trim().length < 2 || formData.code.trim().length > 20) {
+    return "Code organisasi harus 2-20 karakter";
+  }
+  if (!formData.description.trim()) {
+    return "Deskripsi organisasi wajib diisi";
+  }
+  if (formData.description.trim().length < 10) {
+    return "Deskripsi organisasi minimal 10 karakter";
+  }
+  return null;
+};
 
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        <div className="skeleton h-10" />
-        <div className="skeleton h-10" />
-      </div>
-    );
+const validateDomainForm = (formData: typeof emptyDomainForm) => {
+  if (!formData.name.trim()) {
+    return "Nama domain wajib diisi";
   }
-  if (isError) {
-    return (
-      <p className="text-sm text-destructive">Gagal memuat governance domain.</p>
-    );
+  if (formData.name.trim().length < 3) {
+    return "Nama domain minimal 3 karakter";
   }
-  if (!domains || domains.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground italic">
-        Belum ada governance domain pada organisasi ini.
-      </p>
-    );
+  if (!formData.code.trim()) {
+    return "Code domain wajib diisi";
   }
+  if (formData.code.trim().length < 2 || formData.code.trim().length > 20) {
+    return "Code domain harus 2-20 karakter";
+  }
+  if (!formData.description.trim()) {
+    return "Deskripsi domain wajib diisi";
+  }
+  if (formData.description.trim().length < 10) {
+    return "Deskripsi domain minimal 10 karakter";
+  }
+  return null;
+};
+
+const OrganizationDomainsManager = ({ organization }: { organization: Organization }) => {
+  const [isDomainDialogOpen, setIsDomainDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [editingDomain, setEditingDomain] = useState<OrganizationDomain | null>(null);
+  const [selectedDomain, setSelectedDomain] = useState<OrganizationDomain | null>(null);
+  const [domainForm, setDomainForm] = useState(emptyDomainForm);
+
+  const { data: domains, isLoading, isError, refetch } = useOrganizationDomains(
+    organization.organization_id,
+  );
+  const createDomainMutation = useCreateOrganizationDomain();
+  const updateDomainMutation = useUpdateOrganizationDomain();
+  const deleteDomainMutation = useDeleteOrganizationDomain();
+
+  const openCreateDialog = () => {
+    setEditingDomain(null);
+    setDomainForm(emptyDomainForm);
+    setIsDomainDialogOpen(true);
+  };
+
+  const openEditDialog = (domain: OrganizationDomain) => {
+    setEditingDomain(domain);
+    setDomainForm({
+      name: domain.domain_name,
+      code: domain.code ?? "",
+      description: domain.description ?? "",
+    });
+    setIsDomainDialogOpen(true);
+  };
+
+  const handleSaveDomain = async () => {
+    const validationError = validateDomainForm(domainForm);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const payload = {
+      name: domainForm.name.trim(),
+      code: domainForm.code.trim(),
+      description: domainForm.description.trim(),
+    };
+
+    try {
+      if (editingDomain) {
+        await updateDomainMutation.mutateAsync({
+          orgId: organization.organization_id,
+          domainId: editingDomain.domain_id,
+          data: payload,
+        });
+        toast.success("Governance domain berhasil diperbarui");
+      } else {
+        await createDomainMutation.mutateAsync({
+          orgId: organization.organization_id,
+          data: payload,
+        });
+        toast.success("Governance domain berhasil dibuat");
+      }
+      setIsDomainDialogOpen(false);
+      setEditingDomain(null);
+      setDomainForm(emptyDomainForm);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal menyimpan governance domain"));
+    }
+  };
+
+  const handleDeleteDomain = async () => {
+    if (!selectedDomain) return;
+
+    try {
+      await deleteDomainMutation.mutateAsync({
+        orgId: organization.organization_id,
+        domainId: selectedDomain.domain_id,
+      });
+      setIsDeleteDialogOpen(false);
+      setSelectedDomain(null);
+      toast.success("Governance domain berhasil dihapus");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal menghapus governance domain"));
+    }
+  };
+
   return (
-    <div className="space-y-2">
-      {domains.map((d) => (
-        <div
-          key={d.domain_id}
-          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <Layers className="w-4 h-4 text-accent shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{d.domain_name}</p>
-              {d.code && (
-                <p className="font-mono text-xs text-muted-foreground truncate">
-                  {d.code}
-                </p>
-              )}
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm font-semibold">Governance Domains</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Domain governance milik organisasi ini yang nanti bisa dipakai participant.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={openCreateDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tambah Domain
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow className="table-header">
+              <TableHead>Nama Domain</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Deskripsi</TableHead>
+              <TableHead className="w-[70px] text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 2 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell colSpan={5}>
+                    <div className="skeleton h-10 w-full" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-8 text-center text-sm text-destructive">
+                  Gagal memuat governance domain.
+                </TableCell>
+              </TableRow>
+            ) : !domains || domains.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                  Belum ada governance domain pada organisasi ini.
+                </TableCell>
+              </TableRow>
+            ) : (
+              domains.map((domain) => (
+                <TableRow key={domain.domain_id} className="hover:bg-muted/40">
+                  <TableCell className="font-medium">{domain.domain_name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="font-mono">
+                      {domain.code ?? "-"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{domain.status ?? "ACTIVE"}</Badge>
+                  </TableCell>
+                  <TableCell className="max-w-[240px] truncate text-sm text-muted-foreground">
+                    {domain.description ?? "-"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditDialog(domain)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => {
+                            setSelectedDomain(domain);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Hapus
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Dialog open={isDomainDialogOpen} onOpenChange={setIsDomainDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingDomain ? "Edit Governance Domain" : "Tambah Governance Domain"}</DialogTitle>
+            <DialogDescription>
+              {editingDomain
+                ? "Perbarui domain governance untuk organisasi ini."
+                : "Daftarkan domain governance baru di bawah organisasi ini."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="domain-name">Nama Domain</Label>
+              <Input
+                id="domain-name"
+                value={domainForm.name}
+                onChange={(e) => setDomainForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Contoh: Wilayah Kerja"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="domain-code">Code</Label>
+              <Input
+                id="domain-code"
+                value={domainForm.code}
+                onChange={(e) => setDomainForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                placeholder="Contoh: WK"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="domain-description">Deskripsi</Label>
+              <Textarea
+                id="domain-description"
+                value={domainForm.description}
+                onChange={(e) =>
+                  setDomainForm((prev) => ({ ...prev, description: e.target.value }))
+                }
+                placeholder="Deskripsikan cakupan domain governance ini"
+              />
             </div>
           </div>
-          {d.status && (
-            <Badge variant="outline" className="text-xs shrink-0">
-              {d.status}
-            </Badge>
-          )}
-        </div>
-      ))}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDomainDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={handleSaveDomain}
+              disabled={createDomainMutation.isPending || updateDomainMutation.isPending}
+            >
+              {(createDomainMutation.isPending || updateDomainMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus Governance Domain</DialogTitle>
+            <DialogDescription>
+              Governance domain yang dihapus tidak lagi bisa di-assign ke participant.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">
+            {selectedDomain?.domain_name ?? "-"}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteDomain}
+              disabled={deleteDomainMutation.isPending}
+            >
+              {deleteDomainMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
 const Organizations = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [selectedOrganization, setSelectedOrganization] =
-    useState<Organization | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [formData, setFormData] = useState(emptyOrganizationForm);
 
-  const [formData, setFormData] = useState({
-    organization_name: "",
-    organization_type: "",
-  });
-
-  const {
-    data: organizations,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useOrganizations();
-
+  const { data: organizations, isLoading, isError, error, refetch } = useOrganizations();
   const createMutation = useCreateOrganization();
+  const updateMutation = useUpdateOrganization();
+  const deleteMutation = useDeleteOrganization();
 
   const filteredOrganizations = useMemo(() => {
-    if (!organizations) return [];
-    const q = searchQuery.toLowerCase();
-    return organizations.filter(
-      (org) =>
-        org.organization_name.toLowerCase().includes(q) ||
-        (org.organization_type ?? "").toLowerCase().includes(q) ||
-        (org.description ?? "").toLowerCase().includes(q),
+    const rows = organizations ?? [];
+    const query = searchQuery.toLowerCase().trim();
+
+    if (!query) return rows;
+
+    return rows.filter((org) =>
+      [org.organization_name, org.organization_type, org.description]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query)),
     );
   }, [organizations, searchQuery]);
 
-  const resetForm = () =>
-    setFormData({ organization_name: "", organization_type: "" });
+  const regulatorCount = useMemo(
+    () =>
+      (organizations ?? []).filter((org) =>
+        ["REGULATOR", "SKKMIGAS", "PLATFORM"].includes((org.organization_type ?? "").toUpperCase()),
+      ).length,
+    [organizations],
+  );
 
-  const handleAddOrganization = async () => {
-    if (!formData.organization_name.trim()) {
-      toast.error("Nama organisasi wajib diisi");
-      return;
-    }
-    if (formData.organization_name.trim().length < 3) {
-      toast.error("Nama organisasi minimal 3 karakter");
-      return;
-    }
-    try {
-      await createMutation.mutateAsync({
-        organization_name: formData.organization_name.trim(),
-        organization_type: formData.organization_type.trim() || undefined,
-      });
-      setIsAddDialogOpen(false);
-      resetForm();
-      toast.success("Organisasi berhasil dibuat");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal membuat organisasi");
-    }
+  const providerCount = useMemo(
+    () =>
+      (organizations ?? []).filter((org) =>
+        ["KKKS", "PROVIDER"].includes((org.organization_type ?? "").toUpperCase()),
+      ).length,
+    [organizations],
+  );
+
+  const resetForm = () => {
+    setFormData(emptyOrganizationForm);
   };
 
-  const openViewDialog = (org: Organization) => {
-    setSelectedOrganization(org);
+  const openCreateDialog = () => {
+    resetForm();
+    setSelectedOrganization(null);
+    setIsCreateDialogOpen(true);
+  };
+
+  const openViewDialog = (organization: Organization) => {
+    setSelectedOrganization(organization);
     setIsViewDialogOpen(true);
   };
 
-  // ── Loading (skeleton, konsisten dgn halaman lain) ──
+  const openEditDialog = (organization: Organization) => {
+    setSelectedOrganization(organization);
+    setFormData({
+      organization_name: organization.organization_name,
+      code: organization.organization_type ?? "",
+      description: organization.description ?? "",
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const openDeleteDialog = (organization: Organization) => {
+    setSelectedOrganization(organization);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleCreateOrganization = async () => {
+    const validationError = validateOrganizationForm(formData);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    try {
+      await createMutation.mutateAsync({
+        organization_name: formData.organization_name.trim(),
+        code: formData.code.trim(),
+        description: formData.description.trim(),
+      });
+      setIsCreateDialogOpen(false);
+      resetForm();
+      toast.success("Organisasi berhasil dibuat");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal membuat organisasi"));
+    }
+  };
+
+  const handleUpdateOrganization = async () => {
+    if (!selectedOrganization) return;
+
+    const validationError = validateOrganizationForm(formData);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    try {
+      await updateMutation.mutateAsync({
+        id: selectedOrganization.organization_id,
+        data: {
+          name: formData.organization_name.trim(),
+          description: formData.description.trim(),
+        },
+      });
+      setIsEditDialogOpen(false);
+      resetForm();
+      toast.success("Organisasi berhasil diperbarui");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal memperbarui organisasi"));
+    }
+  };
+
+  const handleDeleteOrganization = async () => {
+    if (!selectedOrganization) return;
+
+    try {
+      await deleteMutation.mutateAsync(selectedOrganization.organization_id);
+      setIsDeleteDialogOpen(false);
+      setSelectedOrganization(null);
+      toast.success("Organisasi berhasil dihapus");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal menghapus organisasi"));
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen">
-        <Header title="Organizations" subtitle="Organisasi & governance domain" />
-        <div className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="stat-card">
-                <div className="skeleton h-14" />
+        <Header title="Organizations" subtitle="Organisasi governance & domain operasional" />
+        <div className="space-y-6 p-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="stat-card">
+                <div className="skeleton h-16 w-full" />
               </div>
             ))}
           </div>
-          <div className="panel p-4 space-y-3">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="skeleton h-12" />
+          <div className="panel space-y-3 p-4">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="skeleton h-12 w-full" />
             ))}
           </div>
         </div>
@@ -202,21 +555,20 @@ const Organizations = () => {
     );
   }
 
-  // ── Error ──
   if (isError) {
     return (
       <div className="min-h-screen">
-        <Header title="Organizations" subtitle="Organisasi & governance domain" />
-        <div className="flex items-center justify-center h-[60vh]">
+        <Header title="Organizations" subtitle="Organisasi governance & domain operasional" />
+        <div className="flex h-[60vh] items-center justify-center">
           <div className="text-center">
-            <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
+            <AlertCircle className="mx-auto h-12 w-12 text-destructive" />
             <p className="mt-2 text-lg font-medium">Gagal memuat organisasi</p>
-            <p className="text-sm text-muted-foreground mb-4">
-              {(error as any)?.message || "Terjadi kesalahan"}
+            <p className="mb-4 text-sm text-muted-foreground">
+              {getApiErrorMessage(error, "Terjadi kesalahan saat mengambil data organisasi")}
             </p>
-            <Button onClick={() => refetch()} variant="outline">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Coba Lagi
+            <Button variant="outline" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Coba lagi
             </Button>
           </div>
         </div>
@@ -224,85 +576,65 @@ const Organizations = () => {
     );
   }
 
-  const totalCount = organizations?.length ?? 0;
-  const typeCount = new Set(
-    organizations?.map((o) => o.organization_type).filter(Boolean),
-  ).size;
-
   return (
     <div className="min-h-screen">
-      <Header title="Organizations" subtitle="Organisasi & governance domain" />
-      <div className="p-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Header
+        title="Organizations"
+        subtitle="Kelola master organisasi governance beserta governance domain yang bisa dipakai participant"
+      />
+
+      <div className="space-y-6 p-6">
+        <div className="grid gap-4 md:grid-cols-4">
           <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-info/10">
-                <Building2 className="w-6 h-6 text-info" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalCount}</p>
-                <p className="text-sm text-muted-foreground">Total Organisasi</p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Total Organisasi</p>
+            <p className="mt-1 text-3xl font-bold">{organizations?.length ?? 0}</p>
           </div>
           <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-accent/10">
-                <Network className="w-6 h-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{typeCount}</p>
-                <p className="text-sm text-muted-foreground">Tipe Organisasi</p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Regulator / Platform</p>
+            <p className="mt-1 text-3xl font-bold">{regulatorCount}</p>
           </div>
           <div className="stat-card">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-success/10">
-                <Search className="w-6 h-6 text-success" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {filteredOrganizations.length}
-                </p>
-                <p className="text-sm text-muted-foreground">Hasil Tampil</p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Provider / KKKS</p>
+            <p className="mt-1 text-3xl font-bold">{providerCount}</p>
+          </div>
+          <div className="stat-card">
+            <p className="text-sm text-muted-foreground">Tampil Sekarang</p>
+            <p className="mt-1 text-3xl font-bold">{filteredOrganizations.length}</p>
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+            <span>
+              Organization di sini adalah master governance. Participant operasional tetap dikelola di menu
+              <strong> Participants</strong>, lalu dihubungkan ke governance domain yang berasal dari organisasi ini.
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Cari organisasi..."
               className="pl-10"
+              placeholder="Cari organisasi, code, atau deskripsi..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="w-4 h-4 mr-2" />
+            <Button variant="outline" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
-            <Button
-              size="sm"
-              className="bg-accent hover:bg-accent/90 text-accent-foreground"
-              onClick={() => {
-                resetForm();
-                setIsAddDialogOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
+            <Button onClick={openCreateDialog}>
+              <Plus className="mr-2 h-4 w-4" />
               Tambah Organisasi
             </Button>
           </div>
         </div>
 
-        {/* Table */}
         <div className="panel overflow-hidden">
           <Table>
             <TableHeader>
@@ -311,85 +643,71 @@ const Organizations = () => {
                 <TableHead>Code</TableHead>
                 <TableHead>Peran</TableHead>
                 <TableHead>Deskripsi</TableHead>
-                <TableHead className="w-12"></TableHead>
+                <TableHead className="w-[70px] text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredOrganizations.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-12 text-muted-foreground"
-                  >
-                    <Building2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">Tidak ada organisasi</p>
-                    <p className="text-sm">
-                      {searchQuery
-                        ? "Coba ubah kata kunci pencarian"
-                        : "Buat organisasi pertama Anda"}
-                    </p>
+                  <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    Belum ada organisasi yang cocok dengan pencarian.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredOrganizations.map((org) => {
-                  const code = (org.organization_type ?? "").toUpperCase();
-                  const role = ROLE_BY_CODE[code];
+                filteredOrganizations.map((organization) => {
+                  const code = organization.organization_type ?? "-";
+                  const roleLabel = ROLE_BY_CODE[(organization.organization_type ?? "").toUpperCase()];
+
                   return (
-                    <TableRow
-                      key={org.organization_id}
-                      className="hover:bg-muted/50 cursor-pointer"
-                      onClick={() => openViewDialog(org)}
-                    >
+                    <TableRow key={organization.organization_id} className="hover:bg-muted/40">
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar className="w-9 h-9">
-                            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                              {getAvatar(org.organization_name)}
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-primary text-primary-foreground">
+                              {getAvatar(organization.organization_name)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="font-medium">
-                            {org.organization_name}
-                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{organization.organization_name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {organization.organization_id}
+                            </p>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {org.organization_type ? (
-                          <Badge variant="outline" className="font-mono">
-                            {org.organization_type}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">
-                            —
-                          </span>
-                        )}
+                        <Badge variant="outline" className="font-mono">
+                          {code}
+                        </Badge>
                       </TableCell>
-                      <TableCell>
-                        {role ? (
-                          <span className="text-sm">{role}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">
-                            —
-                          </span>
-                        )}
+                      <TableCell className="text-sm text-muted-foreground">
+                        {roleLabel ?? "-"}
                       </TableCell>
-                      <TableCell className="max-w-xs">
-                        <span className="text-sm text-muted-foreground line-clamp-1">
-                          {org.description || "—"}
-                        </span>
+                      <TableCell className="max-w-[300px] truncate text-sm text-muted-foreground">
+                        {organization.description ?? "-"}
                       </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
+                      <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="w-4 h-4" />
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openViewDialog(organization)}>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Detail
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(organization)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => openViewDialog(org)}
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => openDeleteDialog(organization)}
                             >
-                              <Eye className="w-4 h-4 mr-2" />
-                              Lihat Detail
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Hapus
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -403,127 +721,173 @@ const Organizations = () => {
         </div>
       </div>
 
-      {/* Add Organization Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Tambah Organisasi</DialogTitle>
             <DialogDescription>
-              Buat organisasi governance baru.
+              Buat master organisasi governance sebelum domain dan participant dihubungkan.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="organization_name">Nama Organisasi *</Label>
+              <Label htmlFor="organization-name">Nama Organisasi</Label>
               <Input
-                id="organization_name"
-                placeholder="Masukkan nama organisasi"
+                id="organization-name"
                 value={formData.organization_name}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    organization_name: e.target.value,
-                  })
+                  setFormData((prev) => ({ ...prev, organization_name: e.target.value }))
                 }
+                placeholder="Contoh: SKK Migas"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="organization_type">Code / Tipe</Label>
+              <Label htmlFor="organization-code">Code</Label>
               <Input
-                id="organization_type"
-                placeholder="mis. KKKS, REGULATOR, PLATFORM"
-                value={formData.organization_type}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    organization_type: e.target.value,
-                  })
-                }
+                id="organization-code"
+                value={formData.code}
+                onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                placeholder="Contoh: SKKMIGAS"
               />
-              <p className="text-xs text-muted-foreground">
-                Opsional. Dipakai sebagai <code>code</code> organisasi di
-                GX-Space.
-              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organization-description">Deskripsi</Label>
+              <Textarea
+                id="organization-description"
+                value={formData.description}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Jelaskan fungsi organisasi ini di dalam data space"
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
               Batal
             </Button>
-            <Button
-              onClick={handleAddOrganization}
-              className="bg-accent hover:bg-accent/90"
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
+            <Button onClick={handleCreateOrganization} disabled={createMutation.isPending}>
+              {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Simpan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* View Organization Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Organisasi</DialogTitle>
+            <DialogDescription>
+              Ubah data organisasi governance. Code tetap ditampilkan untuk referensi backend.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-organization-name">Nama Organisasi</Label>
+              <Input
+                id="edit-organization-name"
+                value={formData.organization_name}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, organization_name: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-organization-code">Code</Label>
+              <Input id="edit-organization-code" value={formData.code} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-organization-description">Deskripsi</Label>
+              <Textarea
+                id="edit-organization-description"
+                value={formData.description}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleUpdateOrganization} disabled={updateMutation.isPending}>
+              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Simpan Perubahan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus Organisasi</DialogTitle>
+            <DialogDescription>
+              Tindakan ini tidak dapat dibatalkan. Pastikan domain terkait sudah tidak dipakai participant.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+            <div className="flex items-center gap-3">
+              <Building2 className="h-5 w-5 text-destructive" />
+              <div>
+                <p className="font-medium">{selectedOrganization?.organization_name ?? "-"}</p>
+                <p className="text-xs text-muted-foreground">{selectedOrganization?.organization_type ?? "-"}</p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteOrganization}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detail Organisasi</DialogTitle>
+            <DialogDescription>
+              Tinjau metadata organisasi governance dan kelola domain yang nantinya dipakai participant.
+            </DialogDescription>
           </DialogHeader>
+
           {selectedOrganization && (
-            <div className="space-y-5 py-2">
-              <div className="flex items-center gap-4">
-                <Avatar className="w-16 h-16">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xl font-semibold">
+            <div className="space-y-6 py-2">
+              <div className="flex flex-col gap-4 rounded-xl border border-border bg-muted/20 p-4 md:flex-row md:items-start">
+                <Avatar className="h-16 w-16">
+                  <AvatarFallback className="bg-primary text-xl text-primary-foreground">
                     {getAvatar(selectedOrganization.organization_name)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="min-w-0">
-                  <h3 className="text-lg font-semibold truncate">
-                    {selectedOrganization.organization_name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-semibold">{selectedOrganization.organization_name}</h3>
                     {selectedOrganization.organization_type && (
                       <Badge variant="outline" className="font-mono">
                         {selectedOrganization.organization_type}
                       </Badge>
                     )}
-                    {ROLE_BY_CODE[
-                      (
-                        selectedOrganization.organization_type ?? ""
-                      ).toUpperCase()
-                    ] && (
-                      <span className="text-sm text-muted-foreground">
-                        {
-                          ROLE_BY_CODE[
-                            (
-                              selectedOrganization.organization_type ?? ""
-                            ).toUpperCase()
-                          ]
-                        }
-                      </span>
-                    )}
                   </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {selectedOrganization.description ?? "Belum ada deskripsi organisasi."}
+                  </p>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    ID: {selectedOrganization.organization_id}
+                  </p>
                 </div>
               </div>
 
-              {selectedOrganization.description && (
-                <div className="rounded-lg border border-border bg-muted/30 p-3">
-                  <p className="text-sm">{selectedOrganization.description}</p>
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Layers className="w-4 h-4 text-muted-foreground" />
-                  <p className="text-sm font-semibold">Governance Domains</p>
-                </div>
-                <OrganizationDomains
-                  orgId={selectedOrganization.organization_id}
-                />
-              </div>
+              <OrganizationDomainsManager organization={selectedOrganization} />
             </div>
           )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
               Tutup
