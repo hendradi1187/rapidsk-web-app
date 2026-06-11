@@ -33,10 +33,6 @@ import { getApiErrorMessage } from "@/lib/api-error";
 const APP_VERSION = "4.0.3";
 const BUILD_NUMBER = "2026.06.04";
 
-const FALLBACK_ORGS = [
-  "SKK MIGAS", "Pertamina Hulu Energi", "Medco Energi",
-  "Eni Indonesia", "Chevron Indonesia", "Harbour Energy",
-];
 
 const STATS: { icon: LucideIcon; v: string; s: string }[] = [
   { icon: ShieldCheck, v: "Enterprise Grade", s: "ISO 27001 Aligned" },
@@ -64,10 +60,9 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const { setAuthUser } = useAuth();
   const preferredOrgName = getPreferredOrganizationName();
-  const [org, setOrg] = useState(preferredOrgName || FALLBACK_ORGS[0]);
-  const [orgOptions, setOrgOptions] = useState<OrgOption[]>(
-    FALLBACK_ORGS.map((name) => ({ id: null, name, participantId: null })),
-  );
+  const [org, setOrg] = useState(preferredOrgName || "");
+  const [orgOptions, setOrgOptions] = useState<OrgOption[]>([]);
+  const [orgLoading, setOrgLoading] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -101,26 +96,14 @@ export const LoginPage = () => {
 
         if (organizations.status === "fulfilled") {
           organizations.value.forEach((item) => {
-            upsert({
-              id: item.organization_id,
-              name: item.organization_name,
-              participantId: null,
-            });
+            upsert({ id: item.organization_id, name: item.organization_name, participantId: null });
           });
         }
 
         if (participants.status === "fulfilled") {
           participants.value.forEach((item) => {
-            upsert({
-              id: null,
-              name: item.provider_name,
-              participantId: item.provider_id,
-            });
+            upsert({ id: null, name: item.provider_name, participantId: item.provider_id });
           });
-        }
-
-        if (merged.size === 0) {
-          FALLBACK_ORGS.forEach((name) => upsert({ id: null, name, participantId: null }));
         }
 
         const nextOptions = Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -130,20 +113,16 @@ export const LoginPage = () => {
 
         if (!cancelled) {
           setOrgOptions(nextOptions);
+          setOrgLoading(false);
           setOrg((current) => {
             if (nextOptions.some((item) => item.name === current)) return current;
-            return preferredOrgName || nextOptions[0]?.name || FALLBACK_ORGS[0];
+            return preferredOrgName || nextOptions[0]?.name || "";
           });
         }
       } catch {
         if (!cancelled) {
-          const fallbackOptions = FALLBACK_ORGS.map((name) => ({
-            id: null,
-            name,
-            participantId: null,
-          }));
-          setOrgOptions(fallbackOptions);
-          setOrg((current) => current || preferredOrgName || FALLBACK_ORGS[0]);
+          setOrgOptions([]);
+          setOrgLoading(false);
         }
       }
     };
@@ -290,10 +269,17 @@ export const LoginPage = () => {
                 <SelectTrigger className="mt-1.5 h-11 bg-[#070b16] border-white/10 text-slate-200 focus:ring-amber-500/40">
                   <span className="flex items-center gap-2 truncate">
                     <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                    <SelectValue />
+                    {orgLoading
+                      ? <span className="text-slate-500 text-sm">Memuat organisasi...</span>
+                      : <SelectValue placeholder="Pilih organisasi" />}
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
+                  {orgOptions.length === 0 && !orgLoading && (
+                    <div className="px-3 py-2 text-xs text-slate-500">
+                      Belum ada organisasi terdaftar
+                    </div>
+                  )}
                   {orgOptions.map((option) => (
                     <SelectItem
                       key={`${option.id ?? "org"}-${option.participantId ?? "participant"}-${option.name}`}
