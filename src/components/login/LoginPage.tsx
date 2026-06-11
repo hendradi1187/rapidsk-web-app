@@ -82,7 +82,7 @@ export const LoginPage = () => {
       try {
         const [orgRes, provRes] = await Promise.allSettled([
           publicClient.get("/governance/organizations/"),
-          publicClient.get("/providers/"),
+          publicClient.get("/onboarding/participants"),
         ]);
 
         const merged = new Map<string, OrgOption>();
