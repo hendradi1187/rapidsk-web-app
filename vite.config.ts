@@ -6,11 +6,16 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "0.0.0.0",   // dengarkan semua interface → akses via IP server :8282
+    host: "0.0.0.0",
     port: 8282,
-    strictPort: true,  // jangan auto-pindah port; gagal jika 8282 terpakai
-    hmr: {
-      overlay: false,
+    strictPort: true,
+    hmr: { overlay: false },
+    proxy: {
+      "/api": {
+        target: "http://45.158.126.171:8185",
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   preview: {

@@ -4,9 +4,12 @@ import {
   getKeycloakToken,
   isKeycloakConfigured,
 } from "@/auth/keycloak";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 // API Base URL - can be configured via environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8184/api/v1";
+// Dev: pakai path relatif → lewat Vite proxy (bypass CORS)
+// Prod: set VITE_API_BASE_URL ke URL BE lengkap
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 // Create axios instance with default configuration
 export const apiClient: AxiosInstance = axios.create({
@@ -58,6 +61,9 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error: AxiosError) => {
+    const parsedMessage = getApiErrorMessage(error);
+    error.message = parsedMessage;
+
     // Handle common errors
     if (error.response) {
       switch (error.response.status) {
@@ -70,20 +76,20 @@ apiClient.interceptors.response.use(
           }
           break;
         case 403:
-          console.error("Access forbidden");
+          console.error(parsedMessage);
           break;
         case 404:
-          console.error("Resource not found");
+          console.error(parsedMessage);
           break;
         case 422:
           // Validation error - handled by caller
           break;
         case 500:
-          console.error("Server error");
+          console.error(parsedMessage);
           break;
       }
     } else if (error.request) {
-      console.error("Network error - no response received");
+      console.error(parsedMessage);
     }
 
     return Promise.reject(error);
