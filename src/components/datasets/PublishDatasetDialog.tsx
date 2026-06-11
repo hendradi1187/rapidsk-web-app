@@ -13,6 +13,7 @@ import { Loader2, UploadCloud, AlertCircle, BookOpen, ShieldAlert, CheckCircle2 
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSchemas } from "@/api/hooks/useSchemas";
+import { useVocabularies } from "@/api/hooks/useVocabularies";
 import { useDatasets, usePublishDataset } from "@/api/hooks/useDatasets";
 import { useAuth } from "@/context/AuthContext";
 import { DOMAINS } from "@/lib/fulfillment";
@@ -32,6 +33,7 @@ export function PublishDatasetDialog({
 }) {
   const { participantId } = useAuth();
   const { data: schemas } = useSchemas();
+  const { data: vocabularies } = useVocabularies();
   const { data: existingDatasets } = useDatasets();
   const mutation = usePublishDataset();
 
@@ -45,13 +47,26 @@ export function PublishDatasetDialog({
   const [touchedName, setTouchedName] = useState(false);
   const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
 
-  const schemaList = (schemas ?? []) as Array<{
-    schema_id: string;
-    vocabulary_name?: string | null;
-    version: string;
-    status?: string;
-  }>;
+  // vocab lookup: vocabulary_id → name
+  const vocabMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    (vocabularies ?? []).forEach((v: any) => { m[v.vocabulary_id] = v.name; });
+    return m;
+  }, [vocabularies]);
+
+  // enrich schema list — pakai vocab name dari join, fallback ke field vocabulary_name BE
+  const schemaList = useMemo(() =>
+    (schemas ?? []).map((s: any) => ({
+      schema_id: s.schema_id,
+      vocabulary_id: s.vocabulary_id ?? "",
+      vocabulary_name: vocabMap[s.vocabulary_id ?? ""] || s.vocabulary_name || null,
+      version: s.version,
+      status: s.status,
+    })),
+  [schemas, vocabMap]);
+
   const domainLabel = DOMAINS.find((d) => d.key === domainKey)?.label ?? "";
+  const domainSub   = DOMAINS.find((d) => d.key === domainKey)?.sub ?? "";
 
   const selectedSchema = useMemo(
     () => schemaList.find((s) => s.schema_id === schemaId) ?? null,
@@ -239,21 +254,31 @@ export function PublishDatasetDialog({
 
             {/* Info card schema terpilih */}
             {selectedSchema && (
-              <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <BookOpen className="w-4 h-4 text-accent" />
-                    {selectedSchema.vocabulary_name ?? "Schema"}
+              <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <BookOpen className="w-4 h-4 text-accent shrink-0" />
+                      {selectedSchema.vocabulary_name
+                        ? <span>{selectedSchema.vocabulary_name}</span>
+                        : <span className="text-muted-foreground italic">Nama vocab tidak tersedia</span>}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground pl-6">
+                      Vocabulary untuk domain <strong>{domainLabel}</strong> ({domainSub}) · versi <code className="text-xs bg-muted px-1 rounded">{selectedSchema.version}</code>
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">v{selectedSchema.version}</span>
-                    {selectedSchema.status && (
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusColor[selectedSchema.status] ?? ""}`}>
-                        {selectedSchema.status}
-                      </Badge>
-                    )}
-                  </div>
+                  {selectedSchema.status && (
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${statusColor[selectedSchema.status] ?? ""}`}>
+                      {selectedSchema.status}
+                    </Badge>
+                  )}
                 </div>
+                {!selectedSchema.vocabulary_name && (
+                  <p className="text-[11px] text-amber-600 flex items-center gap-1.5 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    Nama vocab kosong — schema ini mungkin belum punya vocabulary terdaftar. Cek di menu Schemas.
+                  </p>
+                )}
                 {selectedSchema.status === "DRAFT" && (
                   <p className="text-[11px] text-amber-600 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" /> Schema masih DRAFT — belum PUBLISHED, mungkin belum final.
@@ -261,7 +286,7 @@ export function PublishDatasetDialog({
                 )}
                 {selectedSchema.status === "DEPRECATED" && (
                   <p className="text-[11px] text-rose-600 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" /> Schema DEPRECATED — pertimbangkan pakai versi terbaru.
+                    <AlertCircle className="w-3 h-3" /> Schema DEPRECATED — gunakan versi terbaru.
                   </p>
                 )}
               </div>
