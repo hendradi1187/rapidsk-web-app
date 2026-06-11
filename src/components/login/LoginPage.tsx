@@ -264,22 +264,23 @@ export const LoginPage = () => {
             <p className="text-sm text-slate-400 mt-1 mb-6">Access RapiDSK Enterprise Platform</p>
 
             <div className="mb-4">
-              <Label className="text-xs font-medium text-slate-400">Organization</Label>
+              <Label className="text-xs font-medium text-slate-400">
+                Organization
+                <span className="ml-1 text-slate-600">(opsional untuk Platform Admin)</span>
+              </Label>
               <Select value={org} onValueChange={setOrg}>
                 <SelectTrigger className="mt-1.5 h-11 bg-[#070b16] border-white/10 text-slate-200 focus:ring-amber-500/40">
                   <span className="flex items-center gap-2 truncate">
                     <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     {orgLoading
                       ? <span className="text-slate-500 text-sm">Memuat organisasi...</span>
-                      : <SelectValue placeholder="Pilih organisasi" />}
+                      : <SelectValue placeholder="— Platform Admin / tidak perlu pilih —" />}
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
-                  {orgOptions.length === 0 && !orgLoading && (
-                    <div className="px-3 py-2 text-xs text-slate-500">
-                      Belum ada organisasi terdaftar
-                    </div>
-                  )}
+                  <SelectItem value="" className="focus:bg-white/10 focus:text-white text-slate-500">
+                    — Tanpa organisasi (Platform Admin) —
+                  </SelectItem>
                   {orgOptions.map((option) => (
                     <SelectItem
                       key={`${option.id ?? "org"}-${option.participantId ?? "participant"}-${option.name}`}
