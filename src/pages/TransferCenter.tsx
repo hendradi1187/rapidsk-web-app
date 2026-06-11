@@ -153,14 +153,22 @@ const TransferCenter = () => {
     const mode = transferModes[key] ?? "direct";
     const step = (s: string) => setBusy((b) => ({ ...b, [key]: s }));
     try {
+      console.debug("[Transfer] start", { domainId, contractId: row.contract.id, datasetId: row.ds.dataset_id, dpId });
+
       step("menautkan dataset");
-      await contractsApi.linkDataset(domainId, {
-        id: row.contract.id, consumer_id: row.contract.consumer_id, provider_id: row.contract.provider_id,
-        name: row.contract.name, status: row.contract.status,
-      }, row.ds.dataset_id, dpId);
+      try {
+        await contractsApi.linkDataset(domainId, {
+          id: row.contract.id, consumer_id: row.contract.consumer_id, provider_id: row.contract.provider_id,
+          name: row.contract.name, status: row.contract.status,
+        }, row.ds.dataset_id, dpId);
+        console.debug("[Transfer] linkDataset OK");
+      } catch (e: unknown) {
+        console.warn("[Transfer] linkDataset FAILED (non-blocking):", e);
+      }
 
       step("menyiapkan perjanjian");
       let ag = agreements.find((a) => a.contract_id === row.contract!.id);
+      console.debug("[Transfer] existing agreement:", ag);
       if (!ag) {
         const created = await agreementsApi.create(domainId, {
           contract_id: row.contract.id,
@@ -168,17 +176,21 @@ const TransferCenter = () => {
           effective_to: new Date(Date.now() + 5 * 365 * 86400000).toISOString(),
         });
         ag = created;
+        console.debug("[Transfer] agreement created:", ag);
       }
       if (ag.status !== "ACTIVE") {
         await agreementsApi.updateStatus(domainId, { id: ag.id, contract_id: row.contract.id }, "ACTIVE");
+        console.debug("[Transfer] agreement activated");
       }
 
       step("memulai transfer");
+      console.debug("[Transfer] initiate payload:", { domain_id: domainId, agreement_id: ag.id, dataset_id: row.ds.dataset_id });
       const { transfer_process_id } = await transfersApi.initiate({
         domain_id: domainId,
         agreement_id: ag.id,
         dataset_id: row.ds.dataset_id,
       });
+      console.debug("[Transfer] initiated, process_id:", transfer_process_id);
       persistTransferMode(transfer_process_id, mode);
       if (mode === "persistent") {
         await transfersApi.startPersistent(transfer_process_id);
@@ -205,7 +217,9 @@ const TransferCenter = () => {
       qc.invalidateQueries({ queryKey: ["transfers"] });
       qc.invalidateQueries({ queryKey: ["contracts"] });
     } catch (e: unknown) {
-      toast.error(`Gagal (${busy[key] ?? "?"}): ${getApiErrorMessage(e, "error")}`);
+      const msg = getApiErrorMessage(e, "error");
+      console.error("[Transfer] FAILED at step:", busy[key], e);
+      toast.error(`Gagal (${busy[key] ?? "?"}): ${msg}`, { duration: 8000 });
     } finally {
       setBusy((b) => { const n = { ...b }; delete n[key]; return n; });
     }
