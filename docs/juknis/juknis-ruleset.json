@@ -1,0 +1,150 @@
+{
+  "_README": "Ruleset Juknis SKK Migas — sumber kebenaran tunggal untuk validasi kepatuhan onboarding KKKS (/adapter/validate) DAN wizard Setup Juknis. v1 INI DIISI DARI IMPLEMENTASI BE NYATA (gx-space): apply.py (atribut+geometri+klasifikasi), masking.py (aturan L3/L4), dan AUDIT_Atribut_SIGI_vs_Schema.md. Field 'pending_*' menandai keputusan tata-kelola SKK Migas yang BELUM final (penamaan UPPERCASE SIGI/PPDM, set field SIGI penuh, sub-tipe fasilitas) — diisi/diratifikasi tim domain.",
+  "ruleset_version": "1.0.0",
+  "juknis_reference": {
+    "document": "Petunjuk Teknis SPEKTRUM IOG 4.0 — Dokumen SIGI",
+    "sections": "§3.1–3.6, Tabel 2–16",
+    "version": "IOG 4.0",
+    "issued_by": "SKK Migas",
+    "source_doc": "Petunjuk Teknis SPEKTRUM IOG 4.0.pdf (gx-space/version_feature_connector)",
+    "be_source_of_truth": "gxspace/.../policy_contract/juknis/apply.py (JUKNIS_VERSION 1.0.0)"
+  },
+  "global_rules": {
+    "crs_required": "EPSG:4326",
+    "service_protocol": ["OGC_API_FEATURES"],
+    "default_retention_years": 5,
+    "classification_levels": {
+      "L0": { "label": "PUBLIK (penuh)", "access_type": "PUBLIC", "published_to_spektrum": true, "masked": false },
+      "L1": { "label": "PUBLIK (terbatas)", "access_type": "PUBLIC", "published_to_spektrum": true, "masked": false },
+      "L2": { "label": "INTERNAL", "access_type": "PRIVATE", "published_to_spektrum": true, "masked": false },
+      "L3": { "label": "TERBATAS/KONFIDENSIAL", "access_type": "PRIVATE", "published_to_spektrum": true, "masked": true },
+      "L4": { "label": "RAHASIA", "access_type": "PRIVATE", "published_to_spektrum": false, "masked": true }
+    },
+    "masking": {
+      "L3": {
+        "coordinate_decimals": 2,
+        "drop_attributes": ["kb_elevation", "total_depth", "tahun_akuisisi", "tahun_temuan"]
+      },
+      "L4": {
+        "coordinate_decimals": 1,
+        "keep_only_attributes": ["wk_id", "uwi", "field_id", "facility_id", "survey_id", "nama_sumur", "nama_lapangan", "nama_fasilitas", "nama_survei", "nama_wk", "operator"]
+      }
+    },
+    "pending_governance_decisions": [
+      "Konvensi penamaan field: adopsi nama SIGI UPPERCASE (selaras PPDM, mis. WK_ID/NAMA_WK) ATAU pertahankan lowercase + simpan SIGI/PPDM sebagai alias.",
+      "Subset Mandatory untuk publish ke SPEKTRUM: tentukan field SIGI mana yang wajib vs opsional (SIGI menandai Mandatory per field).",
+      "Model Fasilitas: 1 schema generik (jenis_fasilitas enum) ATAU 8 sub-tipe SIGI (PIPELINE_LN/PLATFORM_PT/...).",
+      "Seismik: adopsi nama PPDM SEIS_ACQTN_* dan pisah Area vs Line.",
+      "Pembagian PJ input (Field SK SKK Migas): field mana diisi SKK vs KKKS."
+    ]
+  },
+  "attribute_type_enum": ["string", "integer", "number", "boolean", "date", "datetime"],
+  "geometry_type_enum": ["Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"],
+  "domains": [
+    {
+      "key": "wilayah_kerja",
+      "label": "Wilayah Kerja",
+      "sub": "PSC Area",
+      "classification_default": "L1",
+      "retention_years": 0,
+      "geometry_types_allowed": ["Polygon", "MultiPolygon"],
+      "required_attributes": [
+        { "name": "wk_id", "type": "string", "masked_l3": false, "description": "ID Wilayah Kerja (PPDM AREA_ID)", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "nama_wk", "type": "string", "masked_l3": false, "description": "Nama WK (PREFERRED_NAME)", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "status_wk", "type": "string", "masked_l3": false, "description": "Status WK", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "provinsi_1", "type": "string", "masked_l3": false, "description": "Provinsi utama", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "lokasi", "type": "string", "masked_l3": false, "description": "Onshore/Offshore (OFFSHORE_IND)", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "jenis_kontrak", "type": "string", "masked_l3": false, "description": "Jenis kontrak (CONTRACT_TYPE)", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "operator", "type": "string", "masked_l3": false, "description": "Operator/HOLDING (Fase 3a)", "juknis_ref": "SIGI Tabel 2 (HOLDING)" },
+        { "name": "effective_date", "type": "date", "masked_l3": false, "description": "Tanggal efektif WK (Fase 3a)", "juknis_ref": "SIGI Tabel 2" },
+        { "name": "expire_date", "type": "date", "masked_l3": false, "description": "Tanggal berakhir WK (Fase 3a)", "juknis_ref": "SIGI Tabel 2" }
+      ],
+      "sigi_full_fields_pending": ["PROVINSI_2", "FASE_WK", "JENIS_WK", "LUAS_WK_AWAL", "LUAS_WK", "STATUS_PERUBAHAN", "NAMA_CEKUNGAN", "STATUS_CEKUNGAN", "DEPTH_RIGHTS", "PARTICIPATING_INTEREST", "KEWENANGAN", "ATTACHMENT", "REMARKS"],
+      "masking_rules": { "applies_when_classification_at_least": "L3", "coordinate_decimals_l3": 2, "coordinate_decimals_l4": 1, "masked_attributes": [] },
+      "notes": "TODO tim domain: ratifikasi penamaan & field SIGI penuh (lihat sigi_full_fields_pending)."
+    },
+    {
+      "key": "lapangan",
+      "label": "Lapangan",
+      "sub": "Field",
+      "classification_default": "L2",
+      "retention_years": 5,
+      "geometry_types_allowed": ["Polygon", "MultiPolygon"],
+      "required_attributes": [
+        { "name": "field_id", "type": "string", "masked_l3": false, "description": "ID Lapangan (FIELD_ID)", "juknis_ref": "SIGI Tabel 4" },
+        { "name": "nama_lapangan", "type": "string", "masked_l3": false, "description": "Nama lapangan (FIELD_NAME)", "juknis_ref": "SIGI Tabel 4" },
+        { "name": "wk_id", "type": "string", "masked_l3": false, "description": "FK Wilayah Kerja", "juknis_ref": "SIGI Tabel 4" },
+        { "name": "status_lapangan", "type": "string", "masked_l3": false, "description": "Status (eksplorasi/eksploitasi/produksi)", "juknis_ref": "SIGI Tabel 4" },
+        { "name": "jenis_fluida", "type": "string", "masked_l3": false, "description": "Jenis fluida (≈FIELD_TYPE)", "juknis_ref": "SIGI Tabel 4" },
+        { "name": "tahun_temuan", "type": "integer", "masked_l3": true, "description": "Tahun temuan (DISCOVERY_DATE) — sensitif L3+", "juknis_ref": "SIGI Tabel 4" },
+        { "name": "operator", "type": "string", "masked_l3": false, "description": "Operator (Fase 3a)", "juknis_ref": "SIGI Tabel 4 (OPERATOR)" }
+      ],
+      "sigi_full_fields_pending": ["BASIN", "COUNTRY", "IS_OFFSHORE", "PROVINSI", "PROJECT_ID", "PROJECT_LEVEL", "ZONE_ID", "REMARKS", "REPORT_DATE"],
+      "masking_rules": { "applies_when_classification_at_least": "L3", "coordinate_decimals_l3": 2, "coordinate_decimals_l4": 1, "masked_attributes": ["tahun_temuan"] },
+      "notes": "TODO tim domain: ratifikasi penamaan & field SIGI penuh."
+    },
+    {
+      "key": "fasilitas",
+      "label": "Fasilitas",
+      "sub": "Facility",
+      "classification_default": "L2",
+      "retention_years": 5,
+      "geometry_types_allowed": ["Point", "MultiPoint"],
+      "required_attributes": [
+        { "name": "facility_id", "type": "string", "masked_l3": false, "description": "ID Fasilitas", "juknis_ref": "SIGI Tabel 5–13" },
+        { "name": "nama_fasilitas", "type": "string", "masked_l3": false, "description": "Nama fasilitas", "juknis_ref": "SIGI Tabel 5–13" },
+        { "name": "wk_id", "type": "string", "masked_l3": false, "description": "FK Wilayah Kerja", "juknis_ref": "SIGI Tabel 5–13" },
+        { "name": "jenis_fasilitas", "type": "string", "masked_l3": false, "description": "Jenis fasilitas (generik; SIGI granular per sub-tipe)", "juknis_ref": "SIGI Tabel 5–13" },
+        { "name": "status_fasilitas", "type": "string", "masked_l3": false, "description": "Status fasilitas", "juknis_ref": "SIGI Tabel 5–13" },
+        { "name": "operator", "type": "string", "masked_l3": false, "description": "Operator (Fase 3a)", "juknis_ref": "SIGI Tabel 5–13 (OPERATOR)" },
+        { "name": "kapasitas", "type": "number", "masked_l3": false, "description": "Kapasitas (Fase 3a)", "juknis_ref": "SIGI Tabel 5–13 (KAPASITAS)" },
+        { "name": "satuan_kapasitas", "type": "string", "masked_l3": false, "description": "Satuan kapasitas (Fase 3a)", "juknis_ref": "SIGI Tabel 5–13" }
+      ],
+      "sigi_full_fields_pending": ["SUB_TIPE_MODEL: PIPELINE_LN", "PLATFORM_PT", "PLATFORM_AR", "FLOATING_FACILITY_PT", "CUSTODY_TRANSFER_METERING_PT", "KILANG_AR", "STORAGE_TANK_PT", "CABLE_LN", "OTHER_FACILITIES_PT"],
+      "masking_rules": { "applies_when_classification_at_least": "L3", "coordinate_decimals_l3": 2, "coordinate_decimals_l4": 1, "masked_attributes": [] },
+      "notes": "TODO tim domain: keputusan model 1-schema-generik vs 8 sub-tipe SIGI (lihat pending_governance_decisions #3)."
+    },
+    {
+      "key": "sumur",
+      "label": "Sumur",
+      "sub": "Well",
+      "classification_default": "L3",
+      "retention_years": 5,
+      "geometry_types_allowed": ["Point", "MultiPoint"],
+      "required_attributes": [
+        { "name": "uwi", "type": "string", "masked_l3": false, "description": "Unique Well Identifier (wajib unik, PPDM WELL). Kodefikasi final ditetapkan SKK Migas.", "juknis_ref": "SIGI Tabel 16 / §3.5" },
+        { "name": "nama_sumur", "type": "string", "masked_l3": false, "description": "Nama sumur", "juknis_ref": "SIGI Tabel 16" },
+        { "name": "wk_id", "type": "string", "masked_l3": false, "description": "FK Wilayah Kerja", "juknis_ref": "SIGI Tabel 16" },
+        { "name": "status_sumur", "type": "string", "masked_l3": false, "description": "Status sumur", "juknis_ref": "SIGI Tabel 16" },
+        { "name": "jenis_sumur", "type": "string", "masked_l3": false, "description": "Jenis sumur", "juknis_ref": "SIGI Tabel 16" },
+        { "name": "kb_elevation", "type": "number", "masked_l3": true, "description": "Kelly bushing elevation (m) — sensitif L3+", "juknis_ref": "SIGI Tabel 16" },
+        { "name": "total_depth", "type": "number", "masked_l3": true, "description": "Total depth (m) — sensitif L3+", "juknis_ref": "SIGI Tabel 16" },
+        { "name": "operator", "type": "string", "masked_l3": false, "description": "Operator (Fase 3a)", "juknis_ref": "SIGI Tabel 16 (OPERATOR)" }
+      ],
+      "sigi_full_fields_pending": ["Field PPDM Well lengkap (koordinat KB, spud/completion date, dll. — lihat SIGI §3.5)"],
+      "masking_rules": { "applies_when_classification_at_least": "L3", "coordinate_decimals_l3": 2, "coordinate_decimals_l4": 1, "masked_attributes": ["kb_elevation", "total_depth"] },
+      "notes": "L3 by default — koordinat dikaburkan & kb_elevation/total_depth dibuang sebelum keluar. L4 (SEG-Y) di luar publikasi peta."
+    },
+    {
+      "key": "seismik",
+      "label": "Survei Seismik",
+      "sub": "Seismic",
+      "classification_default": "L3",
+      "retention_years": 5,
+      "geometry_types_allowed": ["Polygon", "MultiPolygon", "LineString", "MultiLineString"],
+      "required_attributes": [
+        { "name": "survey_id", "type": "string", "masked_l3": false, "description": "ID survei (PPDM SEIS_ACQTN_SURVEY_ID)", "juknis_ref": "SIGI Tabel 14/15" },
+        { "name": "nama_survei", "type": "string", "masked_l3": false, "description": "Nama survei (ACQTN_SURVEY_NAME)", "juknis_ref": "SIGI Tabel 14/15" },
+        { "name": "wk_id", "type": "string", "masked_l3": false, "description": "FK Wilayah Kerja", "juknis_ref": "SIGI Tabel 14/15" },
+        { "name": "dimensi", "type": "string", "masked_l3": false, "description": "Dimensi survei (2D/3D)", "juknis_ref": "SIGI Tabel 14/15" },
+        { "name": "metode", "type": "string", "masked_l3": false, "description": "Metode akuisisi", "juknis_ref": "SIGI Tabel 14/15" },
+        { "name": "tahun_akuisisi", "type": "integer", "masked_l3": true, "description": "Tahun akuisisi — sensitif L3+", "juknis_ref": "SIGI Tabel 14/15" },
+        { "name": "operator", "type": "string", "masked_l3": false, "description": "Operator (Fase 3a)", "juknis_ref": "SIGI Tabel 14/15 (OPERATOR)" },
+        { "name": "sumber_navigasi", "type": "string", "masked_l3": false, "description": "Sumber navigasi (Real Acquisition/processing) — wajib BAB III (Fase 3a)", "juknis_ref": "SIGI §3.4 BAB III" }
+      ],
+      "sigi_full_fields_pending": ["Pemisahan Area (Tabel 14) vs Line (Tabel 15)", "Nama PPDM SEIS_ACQTN_*"],
+      "masking_rules": { "applies_when_classification_at_least": "L3", "coordinate_decimals_l3": 2, "coordinate_decimals_l4": 1, "masked_attributes": ["tahun_akuisisi"] },
+      "notes": "Extent survei = L3. Data SEG-Y penuh = L4 (di luar publikasi peta)."
+    }
+  ]
+}

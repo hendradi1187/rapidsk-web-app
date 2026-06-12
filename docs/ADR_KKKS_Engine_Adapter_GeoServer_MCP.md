@@ -1,7 +1,8 @@
-# ADR — Adapter Komunikasi Data Space ↔ KKKS Engine via `geoserver-mcp`
+# ADR — Studio Adapter: Komunikasi Data Space ↔ KKKS Engine via `geoserver-mcp`
 
+> **Nama produk: Studio Adapter** — adapter+studio untuk menghubungkan Data Space rapiDSK ke engine data KKKS, memvalidasi kepatuhan Juknis SKK Migas, dan membantu provisioning/diagnosa (berbantuan AI).
 > Status: **Usulan (Draft)** · Tanggal: 2026-06-08 · Penulis: Tim Frontend (analis)
-> Keputusan terkait: Prioritas **Mode B (AI control-plane)**; tipe engine KKKS **menunggu survei**.
+> Keputusan terkait: Prioritas **Mode B (AI control-plane)**; tipe engine KKKS **menunggu survei**; kepatuhan divalidasi dari `docs/juknis/juknis-ruleset.json`.
 
 ---
 
@@ -106,14 +107,212 @@ Default **`claude-opus-4-8`** dengan **adaptive thinking** (`thinking: {type: "a
 
 ---
 
-## 4. Yang dibangun di Backend (`kkks-engine-adapter`, FastAPI/Python)
+## 3.3 Katalog Kemampuan Studio Adapter (target lengkap)
+
+Studio Adapter pada akhirnya **harus mencakup seluruh capability `geoserver-mcp`** berikut. Tabel ini menetapkan: tool sumber, peran di Studio Adapter, sifat (read vs write yang **wajib di-gate konfirmasi**), dan fase.
+
+| Kelompok kemampuan | Tool `geoserver-mcp` | Peran di Studio Adapter | Sifat | Fase |
+|---|---|---|---|---|
+| **Available Tools / Client Development** | (SDK MCP: `stdio_client` + `async_mcp_tool` + tool-runner) | Lapisan integrasi agent ↔ MCP (fondasi) | infra | 1 |
+| **Resource Endpoints** | `geoserver://catalog/*`, `services/wms`, `services/wfs` | Akses katalog & layanan OGC | read | 1 |
+| **Workspace Management / List Workspaces** | `list_workspaces`, `create_workspace` | Inventarisasi & provisioning ruang kerja KKKS | read / write 🔒 | 1 / 3 |
+| **Datastore & Coveragestore Management** | `create_datastore`, `create_featurestore`, `create_gpkg/shp_datastore`, `create_coveragestore`, `get_datastores`, `delete_coveragestore` | Siapkan sumber data node | write 🔒 | 3 |
+| **Layer Management / Get Layer Information** | `list_layers`, `get_layer_info`, `create_layer`, `delete_resource` | Introspeksi layer (validasi) & provisioning | read / write 🔒 | 1 / 3 |
+| **Layer Group Management** | `create/get/update/delete_layergroup`, `add/remove_layer_to_layergroup` | Komposisi grup layer | write 🔒 | 3 |
+| **User & User Group Management** | `create/delete/get/modify_user`, `*_usergroup` | Kelola akses di node KKKS | write 🔒 (admin) | 3 |
+| **Feature Type & Attribute Management** | `get_featuretypes`, `get_feature_attribute`, `edit_featuretype`, `publish_featurestore(_sqlview)` | **Validasi konformансi Juknis** (atribut SIGI vs `juknis-ruleset.json`) | read (+write 🔒) | 1 |
+| **Query Features** | `query_features` | **Validasi isi + Pull data untuk transfer** (Mode A) | read | 1 / 3 |
+| **Generate Map** | `services/wms` (GetMap) | **Preview peta** dataset (selaras fitur FE "map preview for completed transfers") | read | 2 |
+| **Style Management** | `create_style`, `publish_style`, `create_*_featurestyle`, `create_coveragestyle` | Styling tampilan layer | write 🔒 | 3 |
+| **Style XML Utilities** | `style_*_xml` | Util generate SLD/XML styling | helper | 3 |
+| **System & Service Operations** | `get_status`, `get_version`, `get_manifest`, `get_system_status`, `reload/reset_geoserver`, `update_service` | Health & diagnosa engine | read (+write 🔒 admin) | 1 |
+
+> 🔒 = aksi write/destruktif → **wajib human-in-the-loop confirmation** (tool confirmation / loop manual).
+> Output **Query Features** & **Generate Map** tunduk pada **masking L3/L4** dari `juknis-ruleset.json` (koordinat dikaburkan, atribut sensitif dibuang) sebelum keluar node KKKS.
+> Catatan portabilitas: kelompok ini spesifik GeoServer. Untuk engine non-GeoServer (hasil survei), peta yang sama dipenuhi via driver **OGC API Features/WFS** standar; tool `geoserver-mcp` hanya salah satu driver.
+
+## 3.4 Sequence Diagram Alur (untuk tim BE & FE)
+
+Aktor/komponen yang dipakai di seluruh diagram:
+- **KKKS** / **SKK Migas** — pengguna (operator KKKS / admin regulator) di FE.
+- **FE** — rapiDSK Web (panel Studio Adapter, PublishDatasetDialog, TransferCenter).
+- **SA** — Studio Adapter (service `kkks-engine-adapter`, FastAPI).
+- **Claude** — agent (Anthropic API, tool-runner) — hanya pada alur AI Assist.
+- **MCP** — `geoserver-mcp` (subprocess stdio).
+- **Engine** — engine data KKKS (GeoServer / OGC server).
+- **Ruleset** — `docs/juknis/juknis-ruleset.json`.
+- **Connector** — DS connector/fabric (transfer EDC-style).
+
+### A. Registrasi & Validasi Kepatuhan Engine KKKS (onboarding)
+
+```mermaid
+sequenceDiagram
+    actor U as SKK Migas / KKKS (FE)
+    participant FE as FE (rapiDSK)
+    participant SA as Studio Adapter (BE)
+    participant MCP as geoserver-mcp (stdio)
+    participant E as Engine KKKS
+    participant R as Juknis Ruleset
+
+    U->>FE: Isi koneksi engine (URL, tipe, kredensial)
+    FE->>SA: POST /adapter/engines
+    SA->>SA: Simpan kredensial (server-side, terenkripsi)
+    SA-->>FE: engine_id
+
+    FE->>SA: GET /adapter/engines/{id}/health
+    SA->>MCP: spawn (env: GEOSERVER_URL/USER/PASSWORD)
+    MCP->>E: get_status / get_version
+    E-->>MCP: status, versi
+    MCP-->>SA: hasil
+    SA-->>FE: health (hijau/amber/merah)
+
+    FE->>SA: GET /adapter/engines/{id}/layers
+    SA->>MCP: list_layers / get_featuretypes / get_feature_attribute
+    MCP->>E: REST/WFS
+    E-->>MCP: layer + atribut + CRS + geometri
+    MCP-->>SA: introspeksi
+    SA-->>FE: daftar layer & atribut
+
+    FE->>SA: POST /adapter/validate {engine_id, domain}
+    SA->>R: muat aturan domain (atribut wajib, CRS, geometri, klasifikasi)
+    SA->>SA: bandingkan introspeksi vs Ruleset
+    SA-->>FE: Laporan kepatuhan (lulus/gagal per aturan + alasan)
+    Note over FE,SA: KKKS dinyatakan "compliant Juknis" hanya bila semua aturan lulus
+```
+
+### B. Publish Dataset + Validasi (KKKS di FE)
+
+```mermaid
+sequenceDiagram
+    actor K as Operator KKKS
+    participant FE as FE (PublishDatasetDialog)
+    participant SA as Studio Adapter
+    participant MCP as geoserver-mcp
+    participant E as Engine KKKS
+    participant R as Juknis Ruleset
+
+    K->>FE: Pilih domain + URL endpoint → klik "Validasi & Deteksi Layer"
+    FE->>SA: POST /adapter/validate {url, domain}
+    SA->>MCP: get_featuretypes / get_feature_attribute / query_features (sample)
+    MCP->>E: WFS / OGC API Features
+    E-->>MCP: skema + sample fitur
+    MCP-->>SA: atribut, tipe geometri, CRS
+    SA->>R: aturan domain
+    SA-->>FE: hasil validasi (atribut wajib lengkap? CRS=EPSG:4326? geometri sah?)
+    alt Konform
+        FE->>FE: auto-isi field + aktifkan tombol Publish
+        K->>FE: Publish → status PUBLISHED (alur existing)
+    else Tidak konform
+        FE-->>K: Tampilkan pelanggaran; Publish diblokir
+    end
+```
+
+### C. AI Assist — Diagnosa & Provisioning (Mode B, agent loop)
+
+```mermaid
+sequenceDiagram
+    actor K as Operator KKKS
+    participant FE as FE (panel AI Assist, SSE)
+    participant SA as Studio Adapter
+    participant C as Claude (tool-runner)
+    participant MCP as geoserver-mcp
+    participant E as Engine KKKS
+
+    K->>FE: "Kenapa layer sumur tidak muncul di OGC?"
+    FE->>SA: POST /adapter/assist (SSE)
+    SA->>MCP: spawn (kredensial engine)
+    SA->>C: messages + tools (dari MCP, model claude-opus-4-8)
+    loop Agent loop
+        C-->>SA: tool_use (mis. get_status / get_featuretypes)
+        alt Tool read-only
+            SA->>MCP: jalankan tool
+            MCP->>E: REST/WFS
+            E-->>MCP: hasil
+            MCP-->>SA: hasil
+        else Tool write/destruktif 🔒
+            SA-->>FE: minta konfirmasi (tool confirmation)
+            FE-->>K: Setujui aksi? (mis. create_featurestore)
+            K-->>FE: Setuju
+            FE-->>SA: allow
+            SA->>MCP: jalankan tool
+            MCP->>E: REST
+            E-->>MCP: hasil
+            MCP-->>SA: hasil
+        end
+        SA->>C: tool_result
+    end
+    C-->>SA: jawaban akhir (diagnosa + langkah)
+    SA-->>FE: stream teks (SSE)
+    FE-->>K: Penjelasan & solusi
+```
+
+### D. Transfer Data ke SKK Migas + Masking L3/L4 (Mode A, fase lanjut)
+
+```mermaid
+sequenceDiagram
+    actor K as KKKS (TransferCenter)
+    participant FE as FE (rapiDSK)
+    participant CN as DS Connector/Fabric
+    participant SA as Studio Adapter
+    participant MCP as geoserver-mcp
+    participant E as Engine KKKS
+    participant R as Juknis Ruleset
+    actor S as SKK Migas (Dashboard)
+
+    K->>FE: Klik "Kirim Data" (domain X)
+    FE->>CN: initiate + start transfer
+    CN->>SA: POST /adapter/pull {domain, dataset}
+    SA->>MCP: query_features
+    MCP->>E: WFS / OGC API Features
+    E-->>MCP: fitur (GeoJSON)
+    MCP-->>SA: fitur mentah
+    SA->>R: klasifikasi & aturan masking domain
+    alt L4 (RAHASIA)
+        SA-->>CN: TOLAK — tidak boleh keluar node
+    else L3 (TERBATAS)
+        SA->>SA: masking (koordinat 2 desimal, buang atribut sensitif)
+    else L0–L2
+        SA->>SA: tanpa masking
+    end
+    SA->>SA: hitung checksum_sha256 + record_count
+    SA-->>CN: fitur (ter-masking) + integritas
+    CN-->>FE: status COMPLETED
+    CN-->>S: matriks kepatuhan → sel "Terkirim"
+```
+
+### E. Generate Map — Preview Peta (read-only, ter-masking)
+
+```mermaid
+sequenceDiagram
+    actor U as SKK Migas / KKKS
+    participant FE as FE (preview peta)
+    participant SA as Studio Adapter
+    participant MCP as geoserver-mcp
+    participant E as Engine KKKS
+    participant R as Juknis Ruleset
+
+    U->>FE: Buka preview dataset (mis. transfer COMPLETED)
+    FE->>SA: GET /adapter/map {dataset, bbox}
+    SA->>R: cek klasifikasi (L4 → tolak preview publik)
+    SA->>MCP: services/wms GetMap (atau query_features → render)
+    MCP->>E: WMS/WFS
+    E-->>MCP: image/fitur
+    MCP-->>SA: hasil
+    SA->>SA: terapkan masking bila L3
+    SA-->>FE: peta (ter-masking)
+    FE-->>U: Tampilkan peta
+```
+
+> Catatan untuk implementasi: kredensial engine **selalu** via `env` subprocess MCP (tidak pernah di prompt/FE). Semua aksi 🔒 (write/provisioning) lewat **konfirmasi manusia**. Output **Query Features / Generate Map / Pull** tunduk masking dari **Ruleset** sebelum keluar node KKKS.
+
+## 4. Yang dibangun di Backend — **Studio Adapter** (service `kkks-engine-adapter`, FastAPI/Python)
 
 | Kapabilitas | Endpoint adapter (usulan) | Tool `geoserver-mcp` yang dipakai agent |
 |---|---|---|
 | Registrasi koneksi engine KKKS | `POST /adapter/engines` | — |
 | Health & versi | `GET /adapter/engines/{id}/health` | `get_status`, `get_version` |
 | Introspeksi layer & atribut | `GET /adapter/engines/{id}/layers` | `list_layers`, `get_featuretypes`, `get_feature_attribute` |
-| **Validasi konformансi Juknis** (EPSG:4326, atribut wajib SIGI per domain, klasifikasi) | `POST /adapter/validate` | `get_feature_attribute`, `query_features` + aturan kita |
+| **Validasi konformансi Juknis** (EPSG:4326, atribut wajib SIGI per domain, klasifikasi) | `POST /adapter/validate` | `get_feature_attribute`, `query_features` + **`docs/juknis/juknis-ruleset.json`** sebagai sumber aturan |
 | Chat diagnosa/asistensi setup | `POST /adapter/assist` (SSE) | seluruh toolset (agent loop) |
 | (Fase lanjut/Mode A) Pull fitur untuk transfer (+checksum, record_count) | `POST /adapter/pull` | `query_features` |
 | (Admin) provisioning node | `POST /adapter/provision` | `create_workspace/datastore/featurestore/style` |
