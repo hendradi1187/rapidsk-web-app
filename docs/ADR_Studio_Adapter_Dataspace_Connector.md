@@ -26,6 +26,19 @@ Data Space rapiDSK berpola **Eclipse-Dataspace-Connector (EDC)**: `contract → 
 
 ---
 
+## 2.1 Penyelarasan dengan "DS Adapter" yang sudah ada (existing di kode)
+
+Tim sudah mengimplementasikan **DS Adapter** (tab di `Settings`, khusus PROVIDER/KKKS). Studio Adapter **menumpang & memperluas** registry itu — **bukan menggantinya, tidak ada `/adapter/engines` baru**.
+
+| Aspek | DS Adapter (SUDAH ADA) | Peran Studio Adapter (TAMBAHAN) |
+|---|---|---|
+| Registrasi adapter | `GET/POST/PATCH/DELETE /onboarding/participants/{id}/adapters` — body `{domain_id, type, endpoint:{url}}`, **1 adapter per domain wajib** | **Pakai ulang** registry ini sebagai sumber koneksi engine |
+| Tipe adapter | `GIS_STUDIO, REST_API, OGC_WFS, OGC_WMS, ARCGIS, GEONODE` | Driver mengikuti `type`: `OGC_WFS`/`OGC_WMS`/`ARCGIS`/`GEONODE` → jalur OGC standar; `GIS_STUDIO`/`REST_API` per-driver |
+| Test koneksi | superficial (client-side `fetch HEAD no-cors`) | **Diganti** health nyata (OGC `GetCapabilities`) + **validasi Juknis** |
+| Connection pool | `/onboarding/connection-pools` (CONSUMER/PROVIDER, token, url_consumer/url_provider) = pool connector EDC | Tetap milik connector; output `/adapter/pull` menyuplai data ke transfer |
+
+> Nama: **"Studio Adapter"** = layanan/produk operasional; **`GIS_STUDIO`** = salah satu `type` adapter di registry; **"DS Adapter"** = nama tab/registry existing. Konsisten, bukan duplikat.
+
 ## 3. Arsitektur
 
 ### 3.1 Komponen
@@ -102,22 +115,21 @@ sequenceDiagram
     participant E as Engine KKKS (OGC/GeoServer)
     participant R as Juknis Ruleset
 
-    U->>FE: Isi koneksi engine (URL, tipe, kredensial)
-    FE->>SA: POST /adapter/engines
-    SA->>SA: Simpan kredensial (server-side, terenkripsi)
-    SA-->>FE: engine_id
+    U->>FE: DS Adapter tab — isi {domain_id, type, endpoint.url}
+    FE->>SA: POST /onboarding/participants/{id}/adapters (registry existing)
+    SA-->>FE: adapter_id terdaftar
 
-    FE->>SA: GET /adapter/engines/{id}/health
+    FE->>SA: GET /adapter/{adapter_id}/health
     SA->>E: OGC GetCapabilities / GeoServer /about/version
     E-->>SA: status & versi
     SA-->>FE: health (hijau/amber/merah)
 
-    FE->>SA: GET /adapter/engines/{id}/layers
+    FE->>SA: GET /adapter/{adapter_id}/layers
     SA->>E: OGC collections / WFS DescribeFeatureType
     E-->>SA: layer + atribut + CRS + geometri
     SA-->>FE: daftar layer & atribut
 
-    FE->>SA: POST /adapter/validate {engine_id, domain}
+    FE->>SA: POST /adapter/{adapter_id}/validate {domain}
     SA->>R: muat aturan domain (atribut wajib, CRS, geometri, klasifikasi)
     SA->>SA: bandingkan introspeksi vs Ruleset
     SA-->>FE: Laporan kepatuhan (lulus/gagal per aturan + alasan)
@@ -205,17 +217,19 @@ sequenceDiagram
 
 ## 4. Yang dibangun di Backend — **Studio Adapter** (service `kkks-engine-adapter`, FastAPI/Python)
 
+> `{adapter_id}` di bawah = id record dari **registry DS Adapter existing** (`/onboarding/participants/{id}/adapters`). Registrasi/CRUD **tidak diulang** — Studio Adapter hanya menambah operasi di atasnya.
+
 | Kapabilitas | Endpoint (usulan) | Implementasi |
 |---|---|---|
-| Registrasi koneksi engine KKKS | `POST /adapter/engines` | simpan url/tipe/kredensial server-side |
-| Health & versi | `GET /adapter/engines/{id}/health` | OGC GetCapabilities / GeoServer `/about/version` |
-| Introspeksi layer & atribut | `GET /adapter/engines/{id}/layers` | OGC collections / WFS DescribeFeatureType |
-| **Validasi konformансi Juknis** | `POST /adapter/validate` | introspeksi + sample `GetFeature`, bandingkan vs `juknis-ruleset.json` |
-| Pull fitur untuk transfer (+checksum, record_count, masking) | `POST /adapter/pull` | WFS GetFeature / OGC items → masking L3/L4 → ke connector |
-| Preview peta | `GET /adapter/map` | WMS GetMap / OGC API Maps (ter-masking) |
-| (Admin, driver GeoServer) provisioning | `POST /adapter/provision` | GeoServer REST workspace/datastore/layer/style |
+| Registrasi koneksi engine | **pakai ulang** `…/participants/{id}/adapters` (DS Adapter existing) | tidak ada endpoint baru |
+| Health & versi (ganti test superficial) | `GET /adapter/{adapter_id}/health` | OGC `GetCapabilities` / GeoServer `/about/version` |
+| Introspeksi layer & atribut | `GET /adapter/{adapter_id}/layers` | OGC collections / WFS `DescribeFeatureType` |
+| **Validasi konformансi Juknis** | `POST /adapter/{adapter_id}/validate` | introspeksi + sample `GetFeature`, bandingkan vs `juknis-ruleset.json` |
+| Pull fitur untuk transfer (+checksum, record_count, masking) | `POST /adapter/{adapter_id}/pull` | WFS GetFeature / OGC items → masking L3/L4 → ke connector |
+| Preview peta | `GET /adapter/{adapter_id}/map` | WMS GetMap / OGC API Maps (ter-masking) |
+| (Admin, driver GeoServer) provisioning | `POST /adapter/{adapter_id}/provision` | GeoServer REST workspace/datastore/layer/style |
 
-Output `pull` memetakan langsung ke `TransferItem` (`checksum_sha256`, `record_count`, `total_size`) → connector memanggil adapter saat `start`.
+Output `pull` memetakan langsung ke `TransferItem` (`checksum_sha256`, `record_count`, `total_size`) → connector memanggil Studio Adapter saat `start`. Driver dipilih dari `type` adapter di registry.
 
 ---
 
@@ -225,8 +239,8 @@ Output `pull` memetakan langsung ke `TransferItem` (`checksum_sha256`, `record_c
 |---|---|---|
 | 1 | `PublishDatasetDialog` | Tombol **"Validasi & Deteksi Layer"** → `/adapter/validate` & `/layers`; cegah publish bila tidak konформ |
 | 2 | `Datasets` / `Providers` | **Badge kesehatan engine** dari `/health` |
-| 3 | Halaman baru "Engine KKKS" (grup *Persiapan*, admin) | Registrasi koneksi, **Test Connection**, lihat layer |
-| 4 | `TransferCenter` / preview | Pratinjau peta & metadata (CRS, jumlah fitur) sebelum/ sesudah kirim |
+| 3 | **Perluas DS Adapter tab** (`Settings`, PROVIDER) yang sudah ada | Ganti "Test Connection" superficial → **health nyata + Validasi Juknis**; tampilkan layer & status kepatuhan per domain |
+| 4 | `TransferCenter` / preview | Pratinjau peta & metadata (CRS, jumlah fitur) sebelum/sesudah kirim |
 
 FE hanya berbicara ke **Studio Adapter** (HTTPS); tidak pernah ke engine langsung dan tidak memegang kredensial engine.
 
@@ -256,7 +270,7 @@ FE hanya berbicara ke **Studio Adapter** (HTTPS); tidak pernah ke engine langsun
 |---|---|
 | Engine KKKS bukan GeoServer | Mitigasi: jalur utama OGC API Features/WFS; operasi management GeoServer-only. **Tunggu survei.** |
 | Konsistensi versi/skema engine | Probe `GetCapabilities`/`/about/version` saat registrasi |
-| Integrasi dengan "DS Adapter tab" yang sudah ada di kode | Selaraskan agar tidak duplikat konsep |
+| Integrasi dengan "DS Adapter tab" yang sudah ada | **✅ Diselaraskan (§2.1)** — Studio Adapter memakai ulang registry `/onboarding/participants/{id}/adapters`, tidak membuat endpoint registrasi baru |
 
 ---
 
