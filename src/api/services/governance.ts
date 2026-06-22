@@ -11,7 +11,10 @@ import type {
   OrganizationCreateRequest,
   OrganizationListResponse,
   OrganizationUpdateRequest,
+  Policy,
+  PolicyCreateRequest,
   PolicyListResponse,
+  PolicyUpdateRequest,
 } from "../types/governance";
 
 // GX-Space: /governance/organizations/ , /governance/organizations/{orgId}/domains
@@ -25,7 +28,7 @@ export const organizationsApi = {
     return unwrap(res).map((o: any) => ({
       organization_id: o.id,
       organization_name: o.name,
-      organization_type: o.code,
+      organization_type: o.organization_type,
       description: o.description ?? undefined,
     })) as unknown as OrganizationListResponse;
   },
@@ -42,13 +45,10 @@ export const organizationsApi = {
   },
 
   create: async (data: OrganizationCreateRequest): Promise<Organization> => {
-    const name = data.organization_name.trim();
-    const code = data.code?.trim() || data.organization_type?.trim() || "ORG";
-    const description = data.description?.trim() || `Organisasi ${name}`;
     const res = await apiClient.post("/governance/organizations/", {
-      name,
-      code,
-      description,
+      name: data.organization_name.trim(),
+      code: data.code?.trim(),
+      description: data.description?.trim(),
     });
     return res.data as Organization;
   },
@@ -126,18 +126,33 @@ const levelFromName = (name: string): string | undefined => {
   return m ? m[1] : undefined;
 };
 
+const mapPolicy = (p: any): Policy => ({
+  policy_id: p.policy_id ?? p.id,
+  policy_name: p.name,
+  classification: p.type,
+  level: levelFromRules(p.rules ?? []) ?? levelFromName(p.name),
+  domain: inferDomainFromName(p.name),
+});
+
 // Dataset-policies (domain-scoped) → tipe Policy flat + type + level + domain.
 export const policiesApi = {
   list: async (domainId: string): Promise<PolicyListResponse> => {
     const res = await apiClient.get(`/policy-contract/${domainId}/dataset-policies`);
-    return unwrap(res).map((p: any) => ({
-      policy_id: p.id,
-      policy_name: p.name,
-      classification: p.type,
-      type: p.type,
-      level: levelFromRules(p.rules) ?? levelFromName(p.name),
-      domain: inferDomainFromName(p.name),
-    })) as unknown as PolicyListResponse;
+    return unwrap(res).map(mapPolicy) as unknown as PolicyListResponse;
+  },
+
+  create: async (domainId: string, body: PolicyCreateRequest): Promise<Policy> => {
+    const res = await apiClient.post(`/policy-contract/${domainId}/dataset-policies`, body);
+    return mapPolicy(res.data as any);
+  },
+
+  update: async (domainId: string, policyId: string, body: PolicyUpdateRequest): Promise<Policy> => {
+    const res = await apiClient.patch(`/policy-contract/${domainId}/dataset-policies/${policyId}`, body);
+    return mapPolicy(res.data as any);
+  },
+
+  remove: async (domainId: string, policyId: string): Promise<void> => {
+    await apiClient.delete(`/policy-contract/${domainId}/dataset-policies/${policyId}`);
   },
 };
 

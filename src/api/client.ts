@@ -5,11 +5,12 @@ import {
   isKeycloakConfigured,
 } from "@/auth/keycloak";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getFrontendApiBasePath } from "@/lib/runtime-config";
 
 // API Base URL - can be configured via environment variable
 // Dev: pakai path relatif → lewat Vite proxy (bypass CORS)
 // Prod: set VITE_API_BASE_URL ke URL BE lengkap
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+const API_BASE_URL = getFrontendApiBasePath();
 
 // Create axios instance with default configuration
 export const apiClient: AxiosInstance = axios.create({
@@ -28,7 +29,7 @@ apiClient.interceptors.request.use(
     // Priority 2: localStorage `auth_token` (legacy rapiDSK login fallback).
     let token: string | null = null;
 
-    if (isKeycloakConfigured) {
+    if (isKeycloakConfigured()) {
       const refreshed = await ensureValidToken(30);
       if (refreshed) {
         token = getKeycloakToken();
@@ -82,7 +83,10 @@ apiClient.interceptors.response.use(
           console.error(parsedMessage);
           break;
         case 422:
-          // Validation error - handled by caller
+          // Validation error - handled by caller; detail in error.response.data
+          if (import.meta.env.DEV) {
+            console.error("[422]", error.config?.url, JSON.stringify(error.response.data));
+          }
           break;
         case 500:
           console.error(parsedMessage);

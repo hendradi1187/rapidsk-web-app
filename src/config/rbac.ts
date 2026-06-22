@@ -14,6 +14,7 @@ import {
   Send,
   ClipboardCheck,
   Code2,
+  Link2,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
@@ -57,6 +58,13 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Building2,
     label: "Organizations",
     path: "/organizations",
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    section: "persiapan",
+    icon: Link2,
+    label: "Connection Pools",
+    path: "/connection-pools",
     roles: ["SUPER_ADMIN", "ADMIN"],
   },
   // ── Pemantauan & Operasional ──
@@ -137,7 +145,14 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Code2,
     label: "API Docs",
     path: "/api-docs",
-    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+    roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+  },
+  {
+    section: "lain",
+    icon: Shield,
+    label: "Deployment Config",
+    path: "/deployment-config",
+    roles: ["SUPER_ADMIN", "ADMIN"],
   },
 ];
 
@@ -158,6 +173,7 @@ const buildRoleRoutes = (): Record<AppRole, string[]> => {
     result[role] = [
       ...MENU_ITEMS.filter((m) => m.roles.includes(role)).map((m) => m.path),
       "/settings",
+      ...(role === "SUPER_ADMIN" || role === "ADMIN" ? ["/deployment-config"] : []),
     ];
   }
   return result;
@@ -165,8 +181,15 @@ const buildRoleRoutes = (): Record<AppRole, string[]> => {
 
 const ROLE_ROUTES = buildRoleRoutes();
 
+/**
+ * SUPER_ADMIN selalu boleh akses semua route.
+ * Role lain: cocokkan exact path atau prefix (untuk dynamic route seperti /participants/:id).
+ * Contoh: jika "/participants" diizinkan → "/participants/abc-123" juga diizinkan.
+ */
 export const canAccess = (role: AppRole, path: string): boolean => {
-  return ROLE_ROUTES[role]?.includes(path) ?? false;
+  if (role === "SUPER_ADMIN") return true;
+  const allowed = ROLE_ROUTES[role] ?? [];
+  return allowed.some((r) => r === path || (r !== "/" && path.startsWith(r + "/")));
 };
 
 export const canAccessAny = (roles: AppRole[], path: string): boolean => {

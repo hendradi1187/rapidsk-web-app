@@ -4,6 +4,7 @@ import type {
   Dataset,
   DatasetCreateRequest,
   DatasetListResponse,
+  DatasetUpdateRequest,
 } from "../types/data-catalog";
 
 // GX-Space: /data-catalog/{domainId}/datasets  (envelope {data:[...]})
@@ -34,6 +35,14 @@ const toDataset = (d: any): Dataset => {
     level: levelFromDescription(d.description),
     endpoint_url: d.endpoint?.url,
     version: d.version,
+    description: d.description ?? null,
+    schema_id: d.schema_id,
+    domain_id: d.domain_id,
+    endpoint_auth_strategy: d.endpoint?.auth_strategy ?? null,
+    endpoint_tags: tags,
+    endpoint_documentation_url: d.endpoint_metadata?.documentation_url ?? null,
+    endpoint_data_format: d.endpoint_metadata?.data_format ?? null,
+    endpoint_sla: d.endpoint_metadata?.sla ?? null,
   };
 };
 
@@ -45,7 +54,12 @@ const fetchAll = async (url: string): Promise<any[]> => {
   for (let i = 0; i < 100; i++) {
     const res = await apiClient.get(url, { params: { limit, offset } });
     const body = res?.data;
-    const rows = body?.data ?? body ?? [];
+    // Response: {data: [...], total, has_next, has_prev} per DatasetListResponse spec
+    const rows = Array.isArray(body) ? body
+      : Array.isArray(body?.data) ? body.data
+      : Array.isArray(body?.items) ? body.items
+      : Array.isArray(body?.datasets) ? body.datasets
+      : [];
     out.push(...rows);
     if (!body?.has_next || rows.length === 0) break;
     offset += limit;
@@ -63,6 +77,15 @@ export const datasetsApi = {
   getById: async (domainId: string, id: string): Promise<Dataset> => {
     const res = await apiClient.get(`/data-catalog/${domainId}/datasets/${id}`);
     return toDataset(res.data);
+  },
+
+  update: async (domainId: string, id: string, body: DatasetUpdateRequest): Promise<Dataset> => {
+    const res = await apiClient.patch(`/data-catalog/${domainId}/datasets/${id}`, body);
+    return toDataset(res.data);
+  },
+
+  remove: async (domainId: string, id: string): Promise<void> => {
+    await apiClient.delete(`/data-catalog/${domainId}/datasets/${id}`);
   },
 
   // create lama (rapiDSK shape) tidak dipakai.
@@ -95,7 +118,7 @@ export const datasetsApi = {
         url: body.url,
         access_type: isPublic ? "PUBLIC" : "PRIVATE",
         protocol: body.protocol,
-        auth_strategy: null,
+        auth_strategy: null, // DatasetEndpointAuthStrategy | null — null = no auth
       },
       endpoint_metadata: {
         sla: "best-effort",

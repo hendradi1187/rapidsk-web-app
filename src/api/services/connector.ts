@@ -42,7 +42,7 @@ export const transfersApi = {
     agreement_id: string;
     dataset_id: string;
   }): Promise<{ transfer_process_id: string; status?: string }> => {
-    const res = await apiClient.post(`/connector/initiate`, body);
+    const res = await apiClient.post(`/connector/consumer/initiate`, body);
     const d = res?.data ?? {};
     return {
       transfer_process_id: d.transfer_process_id ?? d.id,
@@ -50,14 +50,20 @@ export const transfersApi = {
     };
   },
 
-  // Jalankan pemindahan data (direct).
-  startDirect: async (transferProcessId: string): Promise<void> => {
-    await apiClient.post(`/connector/transfers/direct/${transferProcessId}/start`);
+  // Jalankan pemindahan data (direct). BE butuh body: domain_id, agreement_id, dataset_id.
+  startDirect: async (
+    transferProcessId: string,
+    body: { domain_id: string; agreement_id: string; dataset_id: string; resume_from_byte?: number },
+  ): Promise<void> => {
+    await apiClient.post(`/connector/consumer/direct/${transferProcessId}/start`, body);
   },
 
-  // Jalankan pemindahan data (persistent).
-  startPersistent: async (transferProcessId: string): Promise<void> => {
-    await apiClient.post(`/connector/transfers/persistent/${transferProcessId}/start`);
+  // Jalankan pemindahan data (persistent). BE butuh body: domain_id, agreement_id, dataset_id.
+  startPersistent: async (
+    transferProcessId: string,
+    body: { domain_id: string; agreement_id: string; dataset_id: string; resume_from_byte?: number },
+  ): Promise<void> => {
+    await apiClient.post(`/connector/consumer/persistent/${transferProcessId}/start`, body);
   },
 
   // Download data persistent.
@@ -65,7 +71,7 @@ export const transfersApi = {
     transferProcessId: string,
   ): Promise<{ blob: Blob; filename: string }> => {
     const res = await apiClient.get(
-      `/connector/transfers/persistent/${transferProcessId}/download`,
+      `/connector/consumer/persistent/${transferProcessId}/download`,
       { responseType: "blob" },
     );
     const disposition = String(res.headers["content-disposition"] ?? "");

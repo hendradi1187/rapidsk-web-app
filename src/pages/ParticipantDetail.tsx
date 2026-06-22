@@ -13,6 +13,7 @@ import {
   useUpdateParticipantAdapter,
   useDeleteParticipantAdapter,
 } from "@/api/hooks/useProviders";
+import { useConnectionPools } from "@/api/hooks/useConnectionPools";
 import { useOrganizations, useOrganizationDomains } from "@/api/hooks/useOrganizations";
 import { usersApi } from "@/api/services/identity";
 import { registrationsApi, type RegistrationItem } from "@/api/services/onboarding";
@@ -50,6 +51,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { findParticipantPool, isPoolReady, resolvePoolMeta } from "@/lib/connection-pool";
+import { useDomain } from "@/context/DomainContext";
 
 interface UserAccountRow {
   id: string;
@@ -60,10 +63,16 @@ interface UserAccountRow {
   is_verified?: boolean;
 }
 
+type BindingState = "VERIFIED" | "INFERRED" | "MISSING";
+
 const normalize = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+const getParticipantOrganizationBindingKey = (participantId: string) =>
+  `participant_org_binding:${participantId}`;
+
 const ParticipantDetail = () => {
+  const { availableDomains } = useDomain();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -71,6 +80,9 @@ const ParticipantDetail = () => {
   const activeTab = searchParams.get("tab") === "adapters" || searchParams.get("tab") === "domains"
     ? searchParams.get("tab")!
     : "info";
+  const storedOrganizationBinding = participantId
+    ? localStorage.getItem(getParticipantOrganizationBindingKey(participantId))
+    : null;
 
   // Participant Detail Info
   const { data: provider, isLoading, isError, refetch: refetchProvider } = useProvider(participantId);
@@ -81,13 +93,28 @@ const ParticipantDetail = () => {
   const { data: orgs } = useOrganizations();
   const matchedOrg = useMemo(() => {
     if (!provider || !orgs) return null;
-    return orgs.find(
+    const byName = orgs.find(
       (o: any) => normalize(o.organization_name) === normalize(provider.organization_name),
     );
+    if (!byName) return null;
+    return { data: byName, source: "name" as const };
   }, [provider, orgs]);
 
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>("");
+  const [isSyncingDomains, setIsSyncingDomains] = useState(false);
+
+  useEffect(() => {
+    const fallbackId = storedOrganizationBinding || matchedOrg?.data.organization_id || "";
+    setSelectedOrganizationId((current) => current || fallbackId);
+  }, [storedOrganizationBinding, matchedOrg?.data.organization_id]);
+
+  const effectiveOrganization = useMemo(() => {
+    if (!orgs || !selectedOrganizationId) return null;
+    return orgs.find((item: any) => item.organization_id === selectedOrganizationId) ?? null;
+  }, [orgs, selectedOrganizationId]);
+
   const { data: orgDomains, isLoading: loadingOrgDomains } = useOrganizationDomains(
-    matchedOrg?.organization_id || null
+    selectedOrganizationId || matchedOrg?.data.organization_id || null
   );
 
   // Participant Domains
@@ -108,6 +135,7 @@ const ParticipantDetail = () => {
   const addAdapterMutation = useAddParticipantAdapter();
   const updateAdapterMutation = useUpdateParticipantAdapter();
   const deleteAdapterMutation = useDeleteParticipantAdapter();
+  const poolsQ = useConnectionPools();
   const usersQ = useQuery({
     queryKey: ["users", "list", "participant-detail"],
     queryFn: () => usersApi.list(),
@@ -157,15 +185,22 @@ const ParticipantDetail = () => {
     if (!provider) return null;
     const regs = (registrationsQ.data ?? []) as RegistrationItem[];
     const byParticipant = regs.find((item) => item.participant_id === provider.id);
-    if (byParticipant) return byParticipant;
-    return (
-      regs.find((item) => normalize(item.organization_name) === normalize(provider.organization_name)) ?? null
-    );
+    if (byParticipant) return { data: byParticipant, source: "participant" as const };
+
+    const operatorEmail = provider.contact_person?.email ?? null;
+    if (operatorEmail) {
+      const byEmail = regs.find((item) => normalize(item.operator_email) === normalize(operatorEmail));
+      if (byEmail) return { data: byEmail, source: "operator_email" as const };
+    }
+
+    const byOrgName =
+      regs.find((item) => normalize(item.organization_name) === normalize(provider.organization_name)) ?? null;
+    return byOrgName ? { data: byOrgName, source: "organization_name" as const } : null;
   }, [provider, registrationsQ.data]);
 
   const operatorEmail =
     provider?.contact_person?.email ||
-    relatedRegistration?.operator_email ||
+    relatedRegistration?.data.operator_email ||
     null;
 
   const operatorUser = useMemo(() => {
@@ -179,9 +214,26 @@ const ParticipantDetail = () => {
     if (operatorUser.is_active && operatorUser.is_verified) return "AKTIF";
     return "BELUM_AKTIF";
   }, [operatorUser]);
+  const participantPools = useMemo(
+    () => ((poolsQ.data ?? []) as Array<any>).filter((item) => item.participant_id === participantId),
+    [poolsQ.data, participantId],
+  );
+  const primaryPool = useMemo(() => findParticipantPool(participantPools, participantId), [participantPools, participantId]);
+  const poolMeta = primaryPool ? resolvePoolMeta(primaryPool) : null;
+  const poolReady = isPoolReady(primaryPool);
 
-  const organizationBindingState = matchedOrg ? "TERIKAT" : "BELUM_COCOK";
-  const registrationBindingState = relatedRegistration ? "TERIKAT" : "TIDAK_DITEMUKAN";
+  const organizationBindingState: BindingState =
+    storedOrganizationBinding && effectiveOrganization
+      ? "VERIFIED"
+      : matchedOrg
+        ? "INFERRED"
+        : "MISSING";
+  const registrationBindingState: BindingState =
+    relatedRegistration?.source === "participant"
+      ? "VERIFIED"
+      : relatedRegistration
+        ? "INFERRED"
+        : "MISSING";
 
   const handleResendInvitation = async () => {
     if (!operatorEmail) {
@@ -200,6 +252,11 @@ const ParticipantDetail = () => {
       setIsResendingInvitation(false);
     }
   };
+
+  const missingOrganizationDomains = useMemo(() => {
+    const assigned = new Set(((participantDomains ?? []) as Array<any>).map((item) => item.domain_id));
+    return ((orgDomains ?? []) as Array<any>).filter((item) => !assigned.has(item.domain_id));
+  }, [orgDomains, participantDomains]);
 
   if (isLoading) {
     return (
@@ -277,6 +334,45 @@ const ParticipantDetail = () => {
       toast.success("Domain berhasil dihapus");
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Gagal menghapus domain"));
+    }
+  };
+
+  const handleSaveOrganizationBinding = () => {
+    if (!selectedOrganizationId) {
+      localStorage.removeItem(getParticipantOrganizationBindingKey(participantId));
+      toast.success("Pilihan organisasi sumber domain dibersihkan.");
+      return;
+    }
+    localStorage.setItem(getParticipantOrganizationBindingKey(participantId), selectedOrganizationId);
+    toast.success("Organisasi sumber domain disimpan untuk participant ini.");
+  };
+
+  const handleResetOrganizationBinding = () => {
+    localStorage.removeItem(getParticipantOrganizationBindingKey(participantId));
+    setSelectedOrganizationId(matchedOrg?.data.organization_id || "");
+    toast.success("Pilihan organisasi sumber domain dikembalikan ke hasil deteksi otomatis.");
+  };
+
+  const handleSyncOrganizationDomains = async () => {
+    if (!missingOrganizationDomains.length) {
+      toast.info("Semua domain organisasi sudah terpasang ke participant ini.");
+      return;
+    }
+
+    try {
+      setIsSyncingDomains(true);
+      for (const domain of missingOrganizationDomains) {
+        await addDomainMutation.mutateAsync({
+          participantId,
+          body: { domain_id: domain.domain_id },
+        });
+      }
+      await refetchDomains();
+      toast.success(`${missingOrganizationDomains.length} domain berhasil dipasang ke participant.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Sinkronisasi domain gagal dijalankan"));
+    } finally {
+      setIsSyncingDomains(false);
     }
   };
 
@@ -432,22 +528,146 @@ const ParticipantDetail = () => {
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">
-                          {matchedOrg?.organization_name || "Belum terhubung ke organization governance"}
+                          {effectiveOrganization?.organization_name || matchedOrg?.data.organization_name || "Belum terhubung ke organization governance"}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {matchedOrg?.organization_id || "Participant masih dicocokkan dari nama organisasi"}
+                          {effectiveOrganization?.organization_id || matchedOrg?.data.organization_id || "Belum ada organisasi governance yang bisa dipastikan"}
                         </p>
                       </div>
                       <Badge
                         variant="outline"
                         className={
-                          organizationBindingState === "TERIKAT"
+                          organizationBindingState === "VERIFIED"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : organizationBindingState === "INFERRED"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }
+                      >
+                        {organizationBindingState === "VERIFIED"
+                          ? "Verified"
+                          : organizationBindingState === "INFERRED"
+                            ? "Inferred"
+                            : "Missing"}
+                      </Badge>
+                    </div>
+                    {storedOrganizationBinding && effectiveOrganization ? (
+                      <p className="mt-2 text-xs text-emerald-700">
+                        Participant ini memakai organisasi sumber domain yang disimpan manual oleh admin.
+                      </p>
+                    ) : null}
+                    {matchedOrg?.source === "name" && (
+                      <p className="mt-2 text-xs text-amber-700">
+                        Relasi ini masih dibaca dari kecocokan nama organisasi, belum dari foreign key eksplisit.
+                      </p>
+                    )}
+                    <div className="mt-4 rounded-lg border border-border bg-background p-3">
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <p className="text-sm font-medium">Atur organisasi sumber di sini</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Kalau participant ini sudah terbuat tetapi organisasi governance-nya belum kebaca, pilih organisasi yang benar lalu simpan.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Organisasi Governance</Label>
+                          <select
+                            value={selectedOrganizationId}
+                            onChange={(e) => setSelectedOrganizationId(e.target.value)}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          >
+                            <option value="">-- Pilih organisasi governance --</option>
+                            {(orgs ?? []).map((organization: any) => (
+                              <option key={organization.organization_id} value={organization.organization_id}>
+                                {organization.organization_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleSaveOrganizationBinding}
+                            disabled={!selectedOrganizationId}
+                          >
+                            <Link2 className="mr-1.5 h-4 w-4" />
+                            Simpan Organisasi
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResetOrganizationBinding}
+                            disabled={!storedOrganizationBinding && !matchedOrg?.data.organization_id}
+                          >
+                            Reset ke Otomatis
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const next = new URLSearchParams(searchParams);
+                              next.set("tab", "domains");
+                              setSearchParams(next, { replace: true });
+                            }}
+                          >
+                            Buka Setup Domain
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Connection Pool Control Plane</p>
+                  <div className="rounded-lg border border-border bg-muted/50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {primaryPool?.name || "Belum ada registry control plane"}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {primaryPool ? `${primaryPool.type} • ${primaryPool.id}` : "Endpoint connector dan JWKS belum tercatat"}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          poolReady
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : "bg-amber-50 text-amber-700 border-amber-200"
                         }
                       >
-                        {organizationBindingState === "TERIKAT" ? "Linked" : "Review"}
+                        {poolReady ? "Ready" : "Missing"}
                       </Badge>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                      <p>Connector endpoint: {poolMeta?.endpoint || "belum ada"}</p>
+                      <p>Well-known JWT URL: {poolMeta?.wellKnownJwtUrl || "belum ada"}</p>
+                      <p>Total registry participant: {participantPools.length}</p>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate("/connection-pools")}
+                      >
+                        <Link2 className="mr-1.5 h-4 w-4" />
+                        Buka Connection Pools
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => poolsQ.refetch()}
+                        disabled={poolsQ.isFetching}
+                      >
+                        {poolsQ.isFetching ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
+                        Refresh Registry
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -481,24 +701,39 @@ const ParticipantDetail = () => {
                         <div>
                           <p className="text-xs text-muted-foreground">Registration Source</p>
                           <p className="text-sm font-medium mt-1">
-                            {relatedRegistration?.organization_name || "Belum terdeteksi"}
+                            {relatedRegistration?.data.organization_name || "Belum terdeteksi"}
                           </p>
                         </div>
                         <Badge
                           variant="outline"
                           className={
-                            registrationBindingState === "TERIKAT"
+                            registrationBindingState === "VERIFIED"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : registrationBindingState === "INFERRED"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
                               : "bg-amber-50 text-amber-700 border-amber-200"
                           }
                         >
-                          {registrationBindingState === "TERIKAT" ? "Linked" : "Review"}
+                          {registrationBindingState === "VERIFIED"
+                            ? "Verified"
+                            : registrationBindingState === "INFERRED"
+                              ? "Inferred"
+                              : "Missing"}
                         </Badge>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {relatedRegistration?.id
-                          ? `Registration ID: ${relatedRegistration.id}`
+                        {relatedRegistration?.data.id
+                          ? `Registration ID: ${relatedRegistration.data.id}`
                           : "Participant belum ketemu sumber registration yang eksplisit."}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {relatedRegistration?.source === "participant"
+                          ? "Terverifikasi dari participant_id pada data registration."
+                          : relatedRegistration?.source === "operator_email"
+                            ? "Diinferensikan dari email operator."
+                            : relatedRegistration?.source === "organization_name"
+                              ? "Diinferensikan dari kecocokan nama organisasi."
+                              : "Belum ada jejak registration yang bisa dipastikan."}
                       </p>
                     </div>
                     <div className="rounded-lg border border-border bg-muted/40 p-4">
@@ -506,7 +741,7 @@ const ParticipantDetail = () => {
                         <div>
                           <p className="text-xs text-muted-foreground">Operator User</p>
                           <p className="text-sm font-medium mt-1 truncate">
-                            {operatorUser?.full_name || provider.contact_person?.name || relatedRegistration?.operator_name || "Belum ada user"}
+                            {operatorUser?.full_name || provider.contact_person?.name || relatedRegistration?.data.operator_name || "Belum ada user"}
                           </p>
                         </div>
                         {operatorStatus === "AKTIF" ? (
@@ -530,15 +765,20 @@ const ParticipantDetail = () => {
                     <div className="rounded-lg border border-border bg-muted/40 p-4">
                       <p className="text-xs text-muted-foreground">Aksi Rekomendasi</p>
                       <div className="mt-2 flex items-start gap-2 text-sm">
-                        {organizationBindingState === "TERIKAT" && operatorStatus === "AKTIF" ? (
+                        {organizationBindingState === "VERIFIED" && registrationBindingState === "VERIFIED" && operatorStatus === "AKTIF" ? (
                           <>
                             <UserCheck className="w-4 h-4 mt-0.5 text-emerald-600" />
                             <span>Binding sudah terbaca rapi di FE untuk participant ini.</span>
                           </>
-                        ) : organizationBindingState === "BELUM_COCOK" ? (
+                        ) : organizationBindingState === "MISSING" ? (
                           <>
                             <TriangleAlert className="w-4 h-4 mt-0.5 text-amber-600" />
-                            <span>Samakan organization governance dengan participant agar domain binding tidak bergantung nama.</span>
+                            <span>Hubungkan participant ini ke governance organization supaya context domain tidak jatuh ke inferensi nama.</span>
+                          </>
+                        ) : registrationBindingState === "INFERRED" || organizationBindingState === "INFERRED" ? (
+                          <>
+                            <TriangleAlert className="w-4 h-4 mt-0.5 text-amber-600" />
+                            <span>Masih ada binding yang dibaca dari email atau nama. Aman untuk dibaca, tapi belum cukup kuat untuk dianggap relasi final.</span>
                           </>
                         ) : (
                           <>
@@ -568,6 +808,87 @@ const ParticipantDetail = () => {
 
           {/* TAB 2: DOMAINS */}
           <TabsContent value="domains" className="mt-0 outline-none space-y-4">
+            <div className="rounded-xl border border-border bg-muted/30 p-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold">Sumber Domain Governance</p>
+                  <p className="text-xs text-muted-foreground">
+                    Pilih organisasi sumber jika hasil deteksi nama participant belum cocok, lalu sinkronkan domainnya ke participant ini.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetOrganizationBinding}
+                    disabled={!storedOrganizationBinding && !matchedOrg?.data.organization_id}
+                  >
+                    Reset ke Otomatis
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveOrganizationBinding}
+                    disabled={!selectedOrganizationId}
+                  >
+                    <Link2 className="mr-1.5 h-4 w-4" />
+                    Simpan Pilihan Organisasi
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="space-y-2">
+                  <Label>Organisasi Sumber</Label>
+                  <select
+                    value={selectedOrganizationId}
+                    onChange={(e) => setSelectedOrganizationId(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">-- Pilih organisasi governance --</option>
+                    {(orgs ?? []).map((organization: any) => (
+                      <option key={organization.organization_id} value={organization.organization_id}>
+                        {organization.organization_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Organisasi aktif: {effectiveOrganization?.organization_name || matchedOrg?.data.organization_name || "belum dipilih"}.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-3 text-sm">
+                  <p className="font-medium">Ringkasan</p>
+                  <p className="mt-2 text-muted-foreground">
+                    Domain organisasi: {loadingOrgDomains ? "memuat..." : (orgDomains?.length ?? 0)}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Sudah terpasang ke participant: {participantDomains?.length ?? 0}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Siap dipasang: {missingOrganizationDomains.length}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAddDomainOpen(true)}
+                  disabled={loadingOrgDomains || !(orgDomains?.length)}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Tambah Satu Domain
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSyncOrganizationDomains}
+                  disabled={isSyncingDomains || missingOrganizationDomains.length === 0}
+                >
+                  {isSyncingDomains ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Link2 className="mr-1.5 h-4 w-4" />}
+                  Sinkronkan Semua Domain yang Belum Terpasang
+                </Button>
+              </div>
+            </div>
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-semibold">Domain Operasional</h3>
@@ -583,7 +904,7 @@ const ParticipantDetail = () => {
                 <Button
                   size="sm"
                   onClick={() => setIsAddDomainOpen(true)}
-                  disabled={loadingOrgDomains}
+                  disabled={loadingOrgDomains || !(orgDomains?.length)}
                 >
                   <Plus className="w-4 h-4 mr-1.5" />
                   Tambah Domain
@@ -818,19 +1139,24 @@ const ParticipantDetail = () => {
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">-- Pilih Domain Governance --</option>
-                  {orgDomains?.map((d: any) => {
+                  {(orgDomains && orgDomains.length > 0 ? orgDomains : availableDomains).map((d: any) => {
                     const isAdded = participantDomains?.some((pd: any) => pd.domain_id === d.domain_id);
                     if (isAdded) return null;
                     return (
                       <option key={d.domain_id} value={d.domain_id}>
-                        {d.domain_name} ({d.code})
+                        {d.domain_name}{d.code ? ` (${d.code})` : ""}
                       </option>
                     );
                   })}
                 </select>
-                {(!orgDomains || orgDomains.length === 0) && (
+                {(!orgDomains || orgDomains.length === 0) && availableDomains.length > 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Organisasi participant belum terhubung — menampilkan domain dari domain aktif. Pilih organisasi sumber di bagian atas untuk filter domain yang tepat.
+                  </p>
+                )}
+                {(!orgDomains || orgDomains.length === 0) && availableDomains.length === 0 && (
                   <p className="text-xs text-rose-500 mt-1">
-                    Tidak ada domain governance yang tersedia untuk organisasi ini. Daftarkan domain terlebih dahulu di menu Organisasi.
+                    Tidak ada domain governance tersedia. Daftarkan domain dulu di menu Organizations.
                   </p>
                 )}
               </div>

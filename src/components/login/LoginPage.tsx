@@ -16,13 +16,12 @@ import {
 import axios from "axios";
 import { authService } from "@/api/services/identity-provider";
 import { organizationsApi } from "@/api/services/governance";
+import { registrationsApi } from "@/api/services/onboarding";
 import { providersApi } from "@/api/services/providers";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8185/api/v1";
-const publicClient = axios.create({ baseURL: API_BASE, timeout: 10000 });
+import { getFrontendApiBasePath } from "@/lib/runtime-config";
 import { useAuth, deriveRole, type AppRole } from "@/context/AuthContext";
 import { decodeJwt } from "@/lib/jwt";
-import { keycloak, isKeycloakConfigured } from "@/auth/keycloak";
+import { getKeycloak, isKeycloakConfigured } from "@/auth/keycloak";
 import {
   getPreferredOrganizationName,
   setPreferredOrganization,
@@ -34,13 +33,11 @@ import { DataFlowAnimation } from "@/components/login/DataFlowAnimation";
 import { BackgroundScene } from "@/components/login/BackgroundScene";
 import { getApiErrorMessage } from "@/lib/api-error";
 
+const API_BASE = getFrontendApiBasePath();
+const publicClient = axios.create({ baseURL: API_BASE, timeout: 10000 });
+
 const APP_VERSION = "4.0.3";
 const BUILD_NUMBER = "2026.06.04";
-
-const FALLBACK_ORGS = [
-  "SKK MIGAS", "Pertamina Hulu Energi", "Medco Energi",
-  "Eni Indonesia", "Chevron Indonesia", "Harbour Energy",
-];
 
 const STATS: { icon: LucideIcon; v: string; s: string }[] = [
   { icon: ShieldCheck, v: "Enterprise Grade", s: "ISO 27001 Aligned" },
@@ -53,10 +50,20 @@ const STATS: { icon: LucideIcon; v: string; s: string }[] = [
 const normalizeOrgKey = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+const clearLoginState = () => {
+  localStorage.removeItem("auth_token");
+  localStorage.removeItem("user_info");
+  localStorage.removeItem("remember_device");
+};
+
+const createLoginBindingError = (message: string) => new Error(`LOGIN_BINDING:${message}`);
+
 interface OrgOption {
   id: string | null;
   name: string;
   participantId: string | null;
+  hasGovernanceOrg: boolean;
+  hasParticipant: boolean;
 }
 
 /**
@@ -99,6 +106,8 @@ export const LoginPage = () => {
             id: option.id ?? current?.id ?? null,
             name: current?.name ?? option.name,
             participantId: option.participantId ?? current?.participantId ?? null,
+            hasGovernanceOrg: option.hasGovernanceOrg || current?.hasGovernanceOrg || false,
+            hasParticipant: option.hasParticipant || current?.hasParticipant || false,
           });
         };
 
@@ -106,7 +115,13 @@ export const LoginPage = () => {
           const data = orgRes.value.data;
           const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
           list.forEach((o: any) => {
-            upsert({ id: o.id ?? o.organization_id, name: o.name ?? o.organization_name, participantId: null });
+            upsert({
+              id: o.id ?? o.organization_id,
+              name: o.name ?? o.organization_name,
+              participantId: null,
+              hasGovernanceOrg: true,
+              hasParticipant: false,
+            });
           });
         }
 
@@ -114,25 +129,31 @@ export const LoginPage = () => {
           const data = provRes.value.data;
           const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
           list.forEach((p: any) => {
-            upsert({ id: null, name: p.provider_name ?? p.name, participantId: p.provider_id ?? p.id ?? null });
+            upsert({
+              id: null,
+              // /onboarding/participants mengembalikan `organization_name` (bukan provider_name/name).
+              name: p.provider_name ?? p.name ?? p.organization_name,
+              participantId: p.provider_id ?? p.id ?? null,
+              hasGovernanceOrg: false,
+              hasParticipant: true,
+            });
           });
         }
 
         if (merged.size === 0) {
-          // Coba cache dari sesi login sebelumnya
           try {
             const cached = JSON.parse(localStorage.getItem("cached_orgs") ?? "[]") as { id: string; name: string }[];
-            cached.forEach((o) => merged.set(o.name, { id: o.id, name: o.name, participantId: null }));
+            cached.forEach((o) => merged.set(normalizeOrgKey(o.name), {
+              id: o.id,
+              name: o.name,
+              participantId: null,
+              hasGovernanceOrg: true,
+              hasParticipant: false,
+            }));
           } catch { /* ignore */ }
-        }
-        if (merged.size === 0) {
-          FALLBACK_ORGS.forEach((name) => merged.set(name, { id: null, name, participantId: null }));
         }
 
         const nextOptions = Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
-        if (preferredOrgName && !nextOptions.some((item) => item.name === preferredOrgName)) {
-          nextOptions.unshift({ id: null, name: preferredOrgName, participantId: null });
-        }
 
         if (!cancelled) {
           setOrgOptions(nextOptions);
@@ -144,7 +165,7 @@ export const LoginPage = () => {
         }
       } catch {
         if (!cancelled) {
-          setOrgOptions(FALLBACK_ORGS.map((name) => ({ id: null, name, participantId: null })));
+          setOrgOptions([]);
           setOrgLoading(false);
         }
       }
@@ -178,47 +199,134 @@ export const LoginPage = () => {
       const role: AppRole = c?.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
       const effectiveOrg = org === "__none__" ? "" : org;
       const selectedOrgKey = normalizeOrgKey(effectiveOrg);
-      let resolvedOrgName = effectiveOrg;
+      const decodedEmail = String(c?.email ?? "").trim().toLowerCase();
+      const tokenParticipantId = (c?.participant_id as string | null | undefined) ?? null;
+      const tokenOrgName = String((c as { category?: { name?: string; code?: string } })?.category?.name ?? c?.category?.code ?? "").trim();
+      let resolvedOrgName =
+        effectiveOrg ||
+        selectedOrgOption?.name ||
+        tokenOrgName;
       let resolvedOrgId: string | null = selectedOrgOption?.id ?? null;
-      let resolvedParticipantId =
-        (c?.participant_id as string | null | undefined) ?? selectedOrgOption?.participantId ?? null;
+      let resolvedParticipantId = tokenParticipantId;
 
       try {
-        const organizations = await organizationsApi.list();
-        // Cache org list untuk login page berikutnya (sebelum auth)
-        localStorage.setItem("cached_orgs", JSON.stringify(
-          organizations.map((o) => ({ id: o.organization_id, name: o.organization_name }))
-        ));
+        const [organizations, registrations, participants] = await Promise.all([
+          organizationsApi.list(),
+          registrationsApi.list().catch(() => []),
+          providersApi.list().catch(() => []),
+        ]);
+
+        localStorage.setItem(
+          "cached_orgs",
+          JSON.stringify(organizations.map((o) => ({ id: o.organization_id, name: o.organization_name }))),
+        );
+
+        const approvedRegistrations = registrations.filter((item) => item.status === "APPROVED");
+        const matchedRegistration =
+          approvedRegistrations.find((item) => item.participant_id && item.participant_id === tokenParticipantId) ??
+          approvedRegistrations.find((item) => decodedEmail && normalizeOrgKey(item.operator_email) === normalizeOrgKey(decodedEmail)) ??
+          approvedRegistrations.find((item) => normalizeOrgKey(item.organization_name) === normalizeOrgKey(tokenOrgName)) ??
+          null;
+
+        if (matchedRegistration) {
+          resolvedOrgName = matchedRegistration.organization_name || resolvedOrgName;
+          if (!resolvedParticipantId && matchedRegistration.participant_id) {
+            resolvedParticipantId = matchedRegistration.participant_id;
+          }
+        }
+
         const matchedOrg =
-          organizations.find(
-            (item) => normalizeOrgKey(item.organization_name) === selectedOrgKey,
-          ) ?? null;
+          organizations.find((item) => item.organization_id === selectedOrgOption?.id) ??
+          organizations.find((item) => normalizeOrgKey(item.organization_name) === selectedOrgKey) ??
+          organizations.find((item) => normalizeOrgKey(item.organization_name) === normalizeOrgKey(resolvedOrgName)) ??
+          (matchedRegistration
+            ? organizations.find(
+                (item) =>
+                  normalizeOrgKey(item.organization_name) === normalizeOrgKey(matchedRegistration.organization_name),
+              ) ?? null
+            : null);
+
         if (matchedOrg) {
           resolvedOrgId = matchedOrg.organization_id;
           resolvedOrgName = matchedOrg.organization_name;
         }
-      } catch {
-        // Keep selected org label as a fallback session hint.
-      }
 
-      if (role !== "SUPER_ADMIN" && !resolvedParticipantId) {
-        try {
-          const participants = await providersApi.list();
-          const matchedParticipant =
-            participants.find(
-              (item) => normalizeOrgKey(item.provider_name) === normalizeOrgKey(resolvedOrgName),
-            ) ??
-            participants.find(
-              (item) => normalizeOrgKey(item.provider_name) === selectedOrgKey,
-            ) ??
-            null;
-          resolvedParticipantId = matchedParticipant?.provider_id ?? null;
-        } catch {
-          // Leave participant empty if backend mapping is not readable here.
+        const matchedParticipant =
+          participants.find((item) => item.provider_id === tokenParticipantId) ??
+          (matchedRegistration?.participant_id
+            ? participants.find((item) => item.provider_id === matchedRegistration.participant_id) ?? null
+            : null) ??
+          participants.find((item) => normalizeOrgKey(item.provider_name) === normalizeOrgKey(tokenOrgName)) ??
+          null;
+
+        if (matchedParticipant?.provider_id) {
+          resolvedParticipantId = matchedParticipant.provider_id;
+          resolvedOrgName = matchedParticipant.provider_name || resolvedOrgName;
         }
+
+        if (role !== "SUPER_ADMIN") {
+          if (!effectiveOrg) {
+            clearLoginState();
+            throw createLoginBindingError("Pilih organisasi yang terdaftar sebelum login dilanjutkan.");
+          }
+
+          const trustedOrgKeys = new Set(
+            [
+              tokenOrgName,
+              matchedRegistration?.organization_name,
+              matchedParticipant?.provider_name,
+            ]
+              .map((value) => normalizeOrgKey(value))
+              .filter(Boolean),
+          );
+
+          const trustedParticipantIds = new Set(
+            [tokenParticipantId, matchedRegistration?.participant_id, matchedParticipant?.provider_id].filter(Boolean),
+          );
+
+          // Hormati binding organisasi yang disimpan admin di ParticipantDetail
+          // (localStorage key `participant_org_binding:{participantId}` → organization_id).
+          // Tanpa ini, akun provider yang governance org-nya beda nama dari nama participant
+          // (mis. participant "PHE" di-bind ke "UAT Test Organization") tidak bisa login.
+          for (const pid of trustedParticipantIds) {
+            const boundOrgId = localStorage.getItem(`participant_org_binding:${pid}`);
+            if (!boundOrgId) continue;
+            const boundOrg = organizations.find((item) => item.organization_id === boundOrgId);
+            const boundKey = normalizeOrgKey(boundOrg?.organization_name);
+            if (boundKey) trustedOrgKeys.add(boundKey);
+          }
+
+          const selectionMatches =
+            trustedOrgKeys.has(selectedOrgKey) ||
+            Boolean(selectedOrgOption?.participantId && trustedParticipantIds.has(selectedOrgOption.participantId));
+
+          if (!selectionMatches) {
+            clearLoginState();
+            throw createLoginBindingError("Organisasi yang dipilih tidak terhubung ke akun ini.");
+          }
+        }
+
+        if (role === "PROVIDER" && !resolvedParticipantId) {
+          clearLoginState();
+          throw createLoginBindingError("Akun provider ini belum terhubung ke participant yang valid.");
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("LOGIN_BINDING:")) {
+          throw new Error(error.message.replace("LOGIN_BINDING:", ""));
+        }
+        // Lookup binding murni jaringan tetap tidak boleh membatalkan login.
       }
 
-      setPreferredOrganization(resolvedOrgId, resolvedOrgName);
+      if (role !== "SUPER_ADMIN" && !effectiveOrg) {
+        clearLoginState();
+        throw new Error("Pilih organisasi yang terdaftar sebelum login dilanjutkan.");
+      }
+
+      if (role === "SUPER_ADMIN") {
+        resolvedParticipantId = null;
+      }
+
+      setPreferredOrganization(resolvedOrgId, resolvedOrgName || null);
       setPreferredParticipantId(role === "SUPER_ADMIN" ? null : resolvedParticipantId);
 
       const user = {
@@ -261,7 +369,8 @@ export const LoginPage = () => {
   };
 
   const handleSSO = () => {
-    if (isKeycloakConfigured && keycloak) {
+    const keycloak = getKeycloak();
+    if (isKeycloakConfigured() && keycloak) {
       keycloak.login();
     } else {
       toast.info("SSO (OIDC) belum diaktifkan", {
@@ -299,12 +408,12 @@ export const LoginPage = () => {
                     <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     {orgLoading
                       ? <span className="text-slate-500 text-sm">Memuat...</span>
-                      : <SelectValue placeholder="Pilih organisasi..." />}
+                      : <SelectValue placeholder={orgOptions.length === 0 ? "Organisasi opsional" : "Pilih organisasi..."} />}
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
                   <SelectItem value="__none__" className="focus:bg-white/10 focus:text-white text-slate-500 italic">
-                    Pilih organisasi...
+                    {orgOptions.length === 0 ? "Lewati pilihan organisasi" : "Pilih organisasi..."}
                   </SelectItem>
                   {orgOptions.map((option) => (
                     <SelectItem
@@ -317,6 +426,11 @@ export const LoginPage = () => {
                   ))}
                 </SelectContent>
               </Select>
+              {!orgLoading && orgOptions.length === 0 ? (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Daftar organisasi sedang tidak tersedia. Login tetap bisa dilanjutkan, lalu binding organisasi bisa disetel setelah masuk.
+                </p>
+              ) : null}
             </div>
 
             <div className="mb-4">

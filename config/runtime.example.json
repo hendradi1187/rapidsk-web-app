@@ -1,0 +1,11 @@
+{
+  "initialized": false,
+  "publicAppUrl": "https://rapidsk.company.local",
+  "apiBaseUrl": "http://45.158.126.171:8185/api/v1",
+  "sso": {
+    "enabled": false,
+    "keycloakUrl": "",
+    "realm": "",
+    "clientId": ""
+  }
+}

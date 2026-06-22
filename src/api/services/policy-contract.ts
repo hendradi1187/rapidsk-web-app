@@ -67,9 +67,6 @@ export const contractsApi = {
   },
 
   // Ajukan kontrak baru (consumer → provider). Lahir berstatus REQUESTED.
-  // BE wajib: consumer_id, provider_id, name(≥3), description(≥3),
-  // contract_policies[], datasets[] (kirim [] mengikuti pola seed — penautan
-  // dataset butuh dataset_policy_id yang tak diekspos jelas oleh BE).
   create: async (
     domainId: string,
     body: {
@@ -77,12 +74,14 @@ export const contractsApi = {
       provider_id: string;
       name: string;
       description: string;
+      datasets?: { dataset_id: string; dataset_policy_id?: string }[];
     },
   ): Promise<ContractDetail> => {
+    const { datasets, ...rest } = body;
     const res = await apiClient.post(`/policy-contract/${domainId}/contracts`, {
-      ...body,
+      ...rest,
       contract_policies: [],
-      datasets: [],
+      datasets: datasets ?? [],
     });
     return res.data as ContractDetail;
   },
@@ -92,7 +91,7 @@ export const contractsApi = {
   updateStatus: async (
     domainId: string,
     contract: { id: string; consumer_id?: string; provider_id?: string; name: string },
-    status: "APPROVED" | "REJECTED" | "ACTIVE",
+    status: "APPROVED" | "REJECTED" | "ACTIVE" | "CANCELLED" | "EXPIRED",
   ): Promise<ContractDetail> => {
     const res = await apiClient.patch(
       `/policy-contract/${domainId}/contracts/${contract.id}`,

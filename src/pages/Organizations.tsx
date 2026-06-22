@@ -70,6 +70,12 @@ const emptyOrganizationForm = {
   description: "",
 };
 
+const autoCode = (name: string): string => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 3) return words.map((w) => w[0]).join("").toUpperCase().slice(0, 20);
+  return words.join("").toUpperCase().slice(0, 20);
+};
+
 const emptyDomainForm = {
   name: "",
   code: "",
@@ -409,6 +415,7 @@ const Organizations = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [formData, setFormData] = useState(emptyOrganizationForm);
+  const [codeAutoFilled, setCodeAutoFilled] = useState(false);
 
   const { data: organizations, isLoading, isError, error, refetch } = useOrganizations();
   const createMutation = useCreateOrganization();
@@ -446,6 +453,7 @@ const Organizations = () => {
 
   const resetForm = () => {
     setFormData(emptyOrganizationForm);
+    setCodeAutoFilled(false);
   };
 
   const openCreateDialog = () => {
@@ -735,20 +743,36 @@ const Organizations = () => {
               <Input
                 id="organization-name"
                 value={formData.organization_name}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, organization_name: e.target.value }))
-                }
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const shouldFill = !formData.code || codeAutoFilled;
+                  setFormData((prev) => ({
+                    ...prev,
+                    organization_name: name,
+                    ...(shouldFill ? { code: autoCode(name) } : {}),
+                  }));
+                  if (shouldFill) setCodeAutoFilled(true);
+                }}
                 placeholder="Contoh: SKK Migas"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="organization-code">Code</Label>
+              <Label htmlFor="organization-code">
+                Code Unik
+                {codeAutoFilled && formData.code && (
+                  <span className="ml-2 text-xs text-muted-foreground font-normal">auto-generated — bisa diubah</span>
+                )}
+              </Label>
               <Input
                 id="organization-code"
                 value={formData.code}
-                onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
-                placeholder="Contoh: SKKMIGAS"
+                onChange={(e) => {
+                  setCodeAutoFilled(false);
+                  setFormData((prev) => ({ ...prev, code: e.target.value.toUpperCase() }));
+                }}
+                placeholder="Contoh: SKKMIGAS (unik, 2–20 karakter)"
               />
+              <p className="text-xs text-muted-foreground">Code harus unik di seluruh data space — tidak bisa duplikat.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="organization-description">Deskripsi</Label>
@@ -756,7 +780,8 @@ const Organizations = () => {
                 id="organization-description"
                 value={formData.description}
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Jelaskan fungsi organisasi ini di dalam data space"
+                placeholder="Jelaskan fungsi organisasi ini di dalam data space (minimal 10 karakter)"
+                rows={3}
               />
             </div>
           </div>

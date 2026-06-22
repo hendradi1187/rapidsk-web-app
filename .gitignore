@@ -17,6 +17,17 @@ dist-ssr
 .env.*.local
 !.env.example
 
+# Runtime wrapper state (generated after setup / admin changes)
+config/runtime.json
+config/license-state.json
+!config/runtime.example.json
+!config/license-state.example.json
+
+# Temporary API/OpenAPI inspection artifacts
+tmp-openapi*.json
+tmp_openapi*.json
+tmp_paths.txt
+
 # Claude Code local state
 .claude/
 

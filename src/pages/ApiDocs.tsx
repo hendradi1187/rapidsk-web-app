@@ -14,14 +14,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CategorySection } from "@/components/api-docs";
 import type { ApiCategory } from "@/components/api-docs";
 import { useOpenApiSpec } from "@/hooks/use-openapi-spec";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8185/api/v1";
-
-// FastAPI exposes /docs and /openapi.json at root (bukan di bawah /api/v1).
-const API_ROOT_URL = API_BASE_URL.replace(/\/api\/v\d+\/?$/, "");
+import { getRuntimeBackendApiBaseUrl } from "@/lib/runtime-config";
 
 export default function ApiDocs() {
+  const apiBaseUrl = getRuntimeBackendApiBaseUrl();
   const [searchQuery, setSearchQuery] = useState("");
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -67,9 +63,8 @@ export default function ApiDocs() {
   const checkConnection = async () => {
     setIsChecking(true);
     try {
-      const response = await fetch(`${API_ROOT_URL}/openapi.json`, {
+      const response = await fetch("/openapi.json", {
         method: "HEAD",
-        mode: "cors",
         signal: AbortSignal.timeout(5000),
       });
       setIsConnected(response.ok);
@@ -110,7 +105,7 @@ export default function ApiDocs() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.open(`${API_ROOT_URL}/docs`, "_blank")}
+            onClick={() => window.open("/docs", "_blank")}
           >
             <ExternalLink className="h-4 w-4 mr-2" />
             Swagger UI
@@ -126,7 +121,7 @@ export default function ApiDocs() {
               <Server className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm font-medium">Base URL:</span>
               <code className="text-sm bg-muted px-2 py-1 rounded">
-                {API_BASE_URL}
+                {apiBaseUrl}
               </code>
             </div>
             <div className="flex items-center gap-2">
