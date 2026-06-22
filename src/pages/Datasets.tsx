@@ -169,14 +169,15 @@ const Datasets = () => {
   };
 
   const applyAdapterCol = (col: { id: string; domain_code: string; title: string }) => {
-    const directUrl = `${adapterEndpoint}/api/v1/ogc/collections/${col.domain_code}/items`;
-    // documentation_url is fetched by the connector BE using POST; route through the FE
-    // server's adapter-service proxy which converts POST→GET before forwarding to the adapter.
-    const proxyDocUrl = `${window.location.origin}/adapter-service/api/v1/ogc/collections/${col.domain_code}/items`;
+    // Connector menarik data dari endpoint.url memakai POST dan butuh Content-Length.
+    // Adapter OGC hanya mendukung GET, jadi endpoint.url DIARAHKAN ke proxy FE
+    // (/adapter-service) yang mengubah POST→GET + menyetel Content-Length sebelum
+    // meneruskan ke adapter. documentation_url disamakan untuk konsistensi.
+    const proxyUrl = `${window.location.origin}/adapter-service/api/v1/ogc/collections/${col.domain_code}/items`;
     setEditForm((f) => ({
       ...f,
-      endpoint_url: directUrl,
-      documentation_url: proxyDocUrl,
+      endpoint_url: proxyUrl,
+      documentation_url: proxyUrl,
       protocol: "OGC_API_FEATURES",
       data_format: "application/geo+json",
     }));

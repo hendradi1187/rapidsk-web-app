@@ -904,13 +904,18 @@ const server = http.createServer(async (req, res) => {
       delete fwdHeaders["content-length"];
       delete fwdHeaders["content-type"];
       const ogcResponse = await fetch(targetUrl, { method: "GET", headers: fwdHeaders, redirect: "manual" });
+      const ogcBody = Buffer.from(await ogcResponse.arrayBuffer());
       const ogcHeaders = {};
       ogcResponse.headers.forEach((value, key) => {
-        if (key.toLowerCase() === "transfer-encoding") return;
+        const k = key.toLowerCase();
+        // Buang transfer-encoding (chunked) & content-length asli; kita set ulang dari
+        // panjang buffer karena connector butuh Content-Length eksplisit untuk transfer.
+        if (k === "transfer-encoding" || k === "content-length") return;
         ogcHeaders[key] = value;
       });
+      ogcHeaders["Content-Length"] = String(ogcBody.length);
       res.writeHead(ogcResponse.status, ogcHeaders);
-      return res.end(Buffer.from(await ogcResponse.arrayBuffer()));
+      return res.end(ogcBody);
     }
 
     if (pathname.startsWith("/adapter-service/")) {
