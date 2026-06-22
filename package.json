@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "start:bundle": "node server/bootstrap.cjs",
+    "start:bundle:win": "start.bat",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

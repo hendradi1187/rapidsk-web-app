@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Bell, Search, User, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { Bell, Search, User, LogOut, Settings as SettingsIcon, ChevronDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,8 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
   const { user, role } = useAuth();
-  const { domainName } = useDomain();
+  const { domainId, domainName, availableDomains, switchDomain } = useDomain();
+  const canSwitchDomain = (role === "SUPER_ADMIN" || role === "ADMIN") && availableDomains.length > 1;
 
   const userName = user?.full_name || "User";
   const organizationName = user?.category?.name || "Organisasi belum terdeteksi";
@@ -74,6 +75,39 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
               className="pl-10 w-64 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-accent"
             />
           </div>
+
+          {/* Domain Switcher — hanya untuk SUPER_ADMIN / ADMIN dengan >1 domain */}
+          {canSwitchDomain && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="hidden md:flex items-center gap-1.5 h-8 text-xs max-w-[200px]">
+                  <Layers className="w-3.5 h-3.5 shrink-0 text-accent" />
+                  <span className="truncate">{domainName ?? "Pilih Domain"}</span>
+                  <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Ganti Domain Aktif</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {availableDomains.map((d) => (
+                  <DropdownMenuItem
+                    key={d.domain_id}
+                    onClick={() => switchDomain(d)}
+                    className={cn("text-sm", d.domain_id === domainId && "bg-accent/10 font-medium")}
+                  >
+                    <Layers className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                    <div className="flex flex-col">
+                      <span>{d.domain_name}</span>
+                      {d.code && <span className="text-xs text-muted-foreground">{d.code}</span>}
+                    </div>
+                    {d.domain_id === domainId && (
+                      <span className="ml-auto text-xs text-accent font-medium">aktif</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Notifications */}
           <Button variant="ghost" size="icon" className="relative">

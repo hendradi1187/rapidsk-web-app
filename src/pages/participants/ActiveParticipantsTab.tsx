@@ -51,8 +51,11 @@ import {
   useProviders,
   useUpdateProvider,
 } from "@/api/hooks/useProviders";
+import { useOrganizations, useOrganizationDomains } from "@/api/hooks/useOrganizations";
+import { providersApi } from "@/api/services/providers";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { Provider } from "@/api/types/providers";
+import type { OrganizationDomain } from "@/api/types/governance";
 
 type ParticipantForm = {
   organization_name: string;
@@ -120,7 +123,15 @@ const ActiveParticipantsTab = () => {
   const [selectedParticipant, setSelectedParticipant] = useState<Provider | null>(null);
   const [formData, setFormData] = useState<ParticipantForm>(emptyForm);
 
+  const [bindOrgId, setBindOrgId] = useState("");
+  const [bindDomainIds, setBindDomainIds] = useState<string[]>([]);
+
   const { data, isLoading, isError, error, refetch } = useProviders();
+  const { data: orgsData } = useOrganizations();
+  const { data: orgDomainsData, isLoading: orgDomainsLoading } = useOrganizationDomains(bindOrgId || null);
+  const orgs = (orgsData ?? []) as Array<{ organization_id: string; organization_name: string }>;
+  const orgDomains = (orgDomainsData ?? []) as OrganizationDomain[];
+
   const createProviderMutation = useCreateProvider();
   const updateProviderMutation = useUpdateProvider();
   const deleteProviderMutation = useDeleteProvider();
@@ -164,6 +175,8 @@ const ActiveParticipantsTab = () => {
 
   const resetForm = () => {
     setFormData(emptyForm);
+    setBindOrgId("");
+    setBindDomainIds([]);
   };
 
   const openCreateDialog = () => {
@@ -195,7 +208,7 @@ const ActiveParticipantsTab = () => {
     }
 
     try {
-      await createProviderMutation.mutateAsync({
+      const created = await createProviderMutation.mutateAsync({
         organization_name: formData.organization_name.trim(),
         organization_type: formData.organization_type,
         address: formData.address.trim(),
@@ -205,9 +218,26 @@ const ActiveParticipantsTab = () => {
           phone: formData.contact_phone.trim(),
         },
       });
+
+      // Bind selected governance domains to the new participant.
+      if (bindDomainIds.length > 0 && created?.id) {
+        const results = await Promise.allSettled(
+          bindDomainIds.map((domainId) =>
+            providersApi.addDomain(created.id, { domain_id: domainId }),
+          ),
+        );
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) {
+          toast.warning(`Participant dibuat, tapi ${failed} domain gagal di-binding. Coba bind manual via detail participant.`);
+        } else {
+          toast.success(`Participant berhasil dibuat dan ${bindDomainIds.length} domain ter-binding.`);
+        }
+      } else {
+        toast.success("Participant berhasil dibuat");
+      }
+
       setIsCreateDialogOpen(false);
       resetForm();
-      toast.success("Participant berhasil dibuat");
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Gagal membuat participant"));
     }
@@ -433,6 +463,14 @@ const ActiveParticipantsTab = () => {
                             <Eye className="w-4 h-4 mr-2" />
                             Detail
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate(`/participants/${participant.provider_id}?tab=domains`)}>
+                            <ShieldCheck className="w-4 h-4 mr-2" />
+                            Kelola Domain
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate(`/participants/${participant.provider_id}?tab=adapters`)}>
+                            <ServerCog className="w-4 h-4 mr-2" />
+                            Kelola Jalur Data
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openDataplaneDialog(participant)}>
                             <HardDriveDownload className="w-4 h-4 mr-2" />
                             Dataplane
@@ -461,7 +499,7 @@ const ActiveParticipantsTab = () => {
       </div>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Tambah Participant</DialogTitle>
             <DialogDescription>
@@ -469,13 +507,77 @@ const ActiveParticipantsTab = () => {
             </DialogDescription>
           </DialogHeader>
           <ParticipantFormContent formData={formData} setFormData={setFormData} />
+
+          {/* Domain binding section */}
+          <div className="border-t pt-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium">Hubungkan ke Domain Governance</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Opsional — binding domain bisa dilakukan setelah participant dibuat via halaman detail.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bind-org">Pilih Organisasi</Label>
+              <select
+                id="bind-org"
+                value={bindOrgId}
+                onChange={(e) => {
+                  setBindOrgId(e.target.value);
+                  setBindDomainIds([]);
+                }}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">-- Tidak dipilih --</option>
+                {orgs.map((org) => (
+                  <option key={org.organization_id} value={org.organization_id}>
+                    {org.organization_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {bindOrgId && (
+              <div className="space-y-2">
+                <Label>Domain yang akan di-binding</Label>
+                {orgDomainsLoading ? (
+                  <p className="text-xs text-muted-foreground">Memuat domain...</p>
+                ) : orgDomains.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Organisasi ini belum punya domain governance.</p>
+                ) : (
+                  <div className="space-y-1.5 rounded-lg border border-border p-3">
+                    {orgDomains.map((domain) => (
+                      <label
+                        key={domain.domain_id}
+                        className="flex items-center gap-2.5 cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50"
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded border-input"
+                          checked={bindDomainIds.includes(domain.domain_id)}
+                          onChange={(e) =>
+                            setBindDomainIds((prev) =>
+                              e.target.checked
+                                ? [...prev, domain.domain_id]
+                                : prev.filter((id) => id !== domain.domain_id),
+                            )
+                          }
+                        />
+                        <span className="text-sm font-medium">{domain.domain_name}</span>
+                        {domain.code && (
+                          <span className="text-xs text-muted-foreground font-mono">({domain.code})</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
               Batal
             </Button>
             <Button onClick={handleCreateParticipant} disabled={createProviderMutation.isPending}>
               {createProviderMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Simpan
+              {bindDomainIds.length > 0 ? `Simpan & Binding ${bindDomainIds.length} Domain` : "Simpan"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -531,9 +633,9 @@ const ActiveParticipantsTab = () => {
       <Dialog open={isDataplaneDialogOpen} onOpenChange={setIsDataplaneDialogOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Dataplane Participant</DialogTitle>
+            <DialogTitle>Kesiapan Participant</DialogTitle>
             <DialogDescription>
-              Status kesiapan transfer dataplane untuk participant yang dipilih.
+              Ringkasan domain kerja dan jalur data yang dipakai participant ini saat proses transfer dijalankan.
             </DialogDescription>
           </DialogHeader>
           {selectedParticipant && (
@@ -555,37 +657,37 @@ const ActiveParticipantsTab = () => {
                     }
                   >
                     {(dataplaneDomainsQ.data?.length ?? 0) > 0 && (dataplaneAdaptersQ.data?.length ?? 0) > 0
-                      ? "Ready for transfer"
-                      : "Needs setup"}
+                      ? "Siap dipakai"
+                      : "Perlu dilengkapi"}
                   </Badge>
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Assigned Domains</p>
+                  <p className="text-xs text-muted-foreground">Domain Terpasang</p>
                   <p className="mt-2 text-3xl font-bold">
                     {dataplaneDomainsQ.isLoading ? "…" : dataplaneDomainsQ.data?.length ?? 0}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Registered Adapters</p>
+                  <p className="text-xs text-muted-foreground">Jalur Data</p>
                   <p className="mt-2 text-3xl font-bold">
                     {dataplaneAdaptersQ.isLoading ? "…" : dataplaneAdaptersQ.data?.length ?? 0}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Transfer Readiness</p>
+                  <p className="text-xs text-muted-foreground">Status Pengiriman</p>
                   <div className="mt-3 flex items-start gap-2 text-sm">
                     {(dataplaneDomainsQ.data?.length ?? 0) > 0 && (dataplaneAdaptersQ.data?.length ?? 0) > 0 ? (
                       <>
                         <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
-                        <span>Participant sudah punya domain dan adapter dasar.</span>
+                        <span>Domain kerja dan jalur data dasar sudah tercatat.</span>
                       </>
                     ) : (
                       <>
                         <TriangleAlert className="mt-0.5 h-4 w-4 text-amber-600" />
-                        <span>Lengkapi domain atau adapter sebelum transfer dijalankan.</span>
+                        <span>Masih ada bagian dasar yang belum tercatat, jadi transfer belum sebaiknya dijalankan.</span>
                       </>
                     )}
                   </div>
@@ -596,7 +698,7 @@ const ActiveParticipantsTab = () => {
                 <div className="rounded-xl border border-border p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-semibold">Domain Dataplane</p>
+                    <p className="text-sm font-semibold">Domain Kerja</p>
                   </div>
                   {dataplaneDomainsQ.isLoading ? (
                     <div className="space-y-2">
@@ -604,13 +706,24 @@ const ActiveParticipantsTab = () => {
                       <Skeleton className="h-10 w-full" />
                     </div>
                   ) : !dataplaneDomainsQ.data || dataplaneDomainsQ.data.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Belum ada domain yang di-assign ke participant ini.</p>
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Belum ada domain kerja yang tercatat langsung di data participant ini.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Kalau di dashboard cakupan datanya sudah terlihat, berarti data operasionalnya ada, tapi binding domain participant di modul onboarding belum ikut tersimpan.
+                      </p>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {dataplaneDomainsQ.data.map((domain: any) => (
                         <div key={domain.id} className="rounded-lg border border-border bg-muted/30 p-3">
-                          <p className="text-sm font-medium">{domain.domain_id}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{domain.status ?? "ACTIVE"}</p>
+                          <p className="text-sm font-medium">
+                            {domain.domain_name ?? domain.domain?.label ?? domain.domain?.name ?? domain.domain_id}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {domain.code ?? domain.domain?.code ?? domain.domain_id}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -620,7 +733,7 @@ const ActiveParticipantsTab = () => {
                 <div className="rounded-xl border border-border p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <ServerCog className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-semibold">Adapters / Endpoint</p>
+                    <p className="text-sm font-semibold">Jalur Data</p>
                   </div>
                   {dataplaneAdaptersQ.isLoading ? (
                     <div className="space-y-2">
@@ -628,7 +741,7 @@ const ActiveParticipantsTab = () => {
                       <Skeleton className="h-10 w-full" />
                     </div>
                   ) : !dataplaneAdaptersQ.data || dataplaneAdaptersQ.data.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Belum ada adapter dataplane terdaftar.</p>
+                    <p className="text-sm text-muted-foreground">Belum ada jalur data yang tercatat untuk participant ini.</p>
                   ) : (
                     <div className="space-y-2">
                       {dataplaneAdaptersQ.data.map((adapter: any) => (
@@ -665,6 +778,28 @@ const ActiveParticipantsTab = () => {
               Refresh Dataplane
             </Button>
             <Button
+              variant="outline"
+              onClick={() => {
+                if (selectedParticipant) {
+                  navigate(`/participants/${selectedParticipant.provider_id}?tab=domains`);
+                }
+              }}
+            >
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Buka Domain
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (selectedParticipant) {
+                  navigate(`/participants/${selectedParticipant.provider_id}?tab=adapters`);
+                }
+              }}
+            >
+              <ServerCog className="mr-2 h-4 w-4" />
+              Buka Jalur Data
+            </Button>
+            <Button
               onClick={() => {
                 if (selectedParticipant) {
                   navigate(`/participants/${selectedParticipant.provider_id}?tab=adapters`);
@@ -672,7 +807,7 @@ const ActiveParticipantsTab = () => {
               }}
             >
               <HardDriveDownload className="mr-2 h-4 w-4" />
-              Kelola Detail Dataplane
+              Buka Detail Participant
             </Button>
           </DialogFooter>
         </DialogContent>

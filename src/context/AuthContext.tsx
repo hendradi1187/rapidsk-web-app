@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-import { keycloak, isKeycloakConfigured } from "@/auth/keycloak";
+import { getKeycloak, isKeycloakConfigured } from "@/auth/keycloak";
 import { useKeycloak } from "@/auth/KeycloakProvider";
 import { decodeJwt } from "@/lib/jwt";
 import {
@@ -141,6 +141,7 @@ export const deriveRole = (
  * (offline_access, uma_authorization, default-roles-*).
  */
 const buildUserFromKeycloak = (): AuthUser | null => {
+  const keycloak = getKeycloak();
   if (!keycloak?.authenticated) return null;
 
   const t = keycloak.tokenParsed as Record<string, unknown> | undefined;
@@ -311,7 +312,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const [user, setUser] = useState<AuthUser | null>(() => {
     // Initial state: try Keycloak first, then legacy storage
-    if (isKeycloakConfigured && keycloak?.authenticated) {
+    const keycloak = getKeycloak();
+    if (isKeycloakConfigured() && keycloak?.authenticated) {
       return buildUserFromKeycloak();
     }
     return loadUserFromStorage();
@@ -319,7 +321,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Re-sync saat Keycloak state berubah (login, logout, token refresh)
   useEffect(() => {
-    if (isKeycloakConfigured && keycloakAuthenticated) {
+    if (isKeycloakConfigured() && keycloakAuthenticated) {
       const fromKc = buildUserFromKeycloak();
       if (fromKc) {
         setUser(fromKc);

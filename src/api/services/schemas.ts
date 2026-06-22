@@ -15,7 +15,7 @@ export const schemasApi = {
     if (!domainId) return [] as unknown as SchemaListResponse;
     const res = await apiClient.get(`/data-catalog/${domainId}/schemas`);
     return unwrap(res).map((s: any) => ({
-      schema_id: s.id,
+      schema_id: s.schema_id ?? s.id,
       vocabulary_id: s.vocabulary_id,
       vocabulary_name: s.vocabulary_name,
       version: s.version,
@@ -27,7 +27,7 @@ export const schemasApi = {
     const res = await apiClient.get(`/data-catalog/${domainId}/schemas/${id}`);
     const s = res.data as any;
     return {
-      schema_id: s.id,
+      schema_id: s.schema_id ?? s.id,
       vocabulary_id: s.vocabulary_id,
       vocabulary_name: s.vocabulary_name,
       version: s.version,
@@ -39,7 +39,7 @@ export const schemasApi = {
     const res = await apiClient.post(`/data-catalog/${domainId}/schemas`, body);
     const s = res.data as any;
     return {
-      schema_id: s.id,
+      schema_id: s.schema_id ?? s.id,
       vocabulary_id: s.vocabulary_id,
       vocabulary_name: s.vocabulary_name,
       version: s.version,
@@ -55,7 +55,7 @@ export const schemasApi = {
     const res = await apiClient.patch(`/data-catalog/${domainId}/schemas/${id}`, body);
     const s = res.data as any;
     return {
-      schema_id: s.id,
+      schema_id: s.schema_id ?? s.id,
       vocabulary_id: s.vocabulary_id,
       vocabulary_name: s.vocabulary_name,
       version: s.version,

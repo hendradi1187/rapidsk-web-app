@@ -83,16 +83,24 @@ export interface PolicyUpdateRequest {
 
 // ============ CONNECTION POOL ============
 
+export interface ConnectionPoolMetadata {
+  // B1 fields — connector transport + auth discovery
+  endpoint?: string;
+  well_known_jwt_url?: string;
+  // Legacy fields — backward compat
+  url_consumer?: string;
+  url_provider?: string;
+  // Allow arbitrary extra fields from backend
+  [key: string]: string | undefined;
+}
+
 export interface ConnectionPoolItem {
   id: string;
   participant_id: string;
   name: string;
   type: "CONSUMER" | "PROVIDER";
   token: string;
-  metadata: {
-    url_consumer: string;
-    url_provider: string;
-  };
+  metadata: ConnectionPoolMetadata;
   created_at?: string;
   updated_at?: string;
 }
@@ -102,18 +110,12 @@ export interface ConnectionPoolCreateRequest {
   name: string;
   type: "CONSUMER" | "PROVIDER";
   token: string;
-  metadata: {
-    url_consumer: string;
-    url_provider: string;
-  };
+  metadata: ConnectionPoolMetadata;
 }
 
 export interface ConnectionPoolUpdateRequest {
   name?: string | null;
   type?: "CONSUMER" | "PROVIDER" | null;
   token?: string | null;
-  metadata?: {
-    url_consumer: string;
-    url_provider: string;
-  } | null;
+  metadata?: ConnectionPoolMetadata | null;
 }

@@ -16,7 +16,7 @@ export const vocabulariesApi = {
     if (!domainId) return [] as unknown as VocabularyListResponse;
     const res = await apiClient.get(`/data-catalog/${domainId}/vocabularies`);
     return unwrap(res).map((v: any) => ({
-      vocabulary_id: v.id,
+      vocabulary_id: v.vocabulary_id ?? v.id,
       name: v.name,
       description: v.description,
       version: v.version,
@@ -28,7 +28,7 @@ export const vocabulariesApi = {
     const res = await apiClient.get(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`);
     const v = res.data as any;
     return {
-      vocabulary_id: v.id,
+      vocabulary_id: v.vocabulary_id ?? v.id,
       name: v.name,
       description: v.description,
       version: v.version,
@@ -40,7 +40,7 @@ export const vocabulariesApi = {
     const res = await apiClient.post(`/data-catalog/${domainId}/vocabularies`, body);
     const v = res.data as any;
     return {
-      vocabulary_id: v.id,
+      vocabulary_id: v.vocabulary_id ?? v.id,
       name: v.name,
       description: v.description,
       version: v.version,
@@ -56,7 +56,7 @@ export const vocabulariesApi = {
     const res = await apiClient.patch(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`, body);
     const v = res.data as any;
     return {
-      vocabulary_id: v.id,
+      vocabulary_id: v.vocabulary_id ?? v.id,
       name: v.name,
       description: v.description,
       version: v.version,

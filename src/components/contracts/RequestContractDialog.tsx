@@ -115,6 +115,7 @@ export function RequestContractDialog({
         provider_id: providerId,
         name: name.trim(),
         description: finalDescription.trim(),
+        ...(datasetId ? { datasets: [{ dataset_id: datasetId }] } : {}),
       });
       toast.success("Permintaan terkirim — menunggu persetujuan KKKS (REQUESTED).");
       onOpenChange(false);

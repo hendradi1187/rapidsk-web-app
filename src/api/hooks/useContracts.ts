@@ -26,6 +26,7 @@ export function useCreateContract() {
       provider_id: string;
       name: string;
       description: string;
+      datasets?: { dataset_id: string; dataset_policy_id?: string }[];
     }) => contractsApi.create(domainId!, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: contractKeys.all });

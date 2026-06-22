@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { organizationsApi } from "@/api/services/governance";
+import { providersApi } from "@/api/services/providers";
 import { getActiveDomainId, setActiveDomainId } from "@/lib/domain";
 import {
   getPreferredOrganizationId,
@@ -8,16 +9,26 @@ import {
   setPreferredOrganization,
 } from "@/lib/session-binding";
 
+export interface AvailableDomain {
+  domain_id: string;
+  domain_name: string;
+  code?: string;
+}
+
 interface DomainContextValue {
   domainId: string | null;
   domainName: string | null;
   ready: boolean;
+  availableDomains: AvailableDomain[];
+  switchDomain: (domain: AvailableDomain) => void;
 }
 
 const DomainContext = createContext<DomainContextValue>({
   domainId: null,
   domainName: null,
   ready: false,
+  availableDomains: [],
+  switchDomain: () => {},
 });
 
 const normalize = (value: string | null | undefined) =>
@@ -27,11 +38,13 @@ const normalize = (value: string | null | undefined) =>
  * Resolusi governance domain aktif: preferred organization yang dipilih user
  * saat login → domain pertama pada organization tersebut. Fallback ke org
  * pertama bila pilihan user belum cocok dengan data governance.
+ * SUPER_ADMIN / ADMIN bisa switch domain lewat switchDomain().
  */
 export const DomainProvider = ({ children }: { children: ReactNode }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, role, participantId } = useAuth();
   const [domainId, setDomainId] = useState<string | null>(getActiveDomainId());
   const [domainName, setDomainName] = useState<string | null>(null);
+  const [availableDomains, setAvailableDomains] = useState<AvailableDomain[]>([]);
   const [ready, setReady] = useState<boolean>(false);
 
   useEffect(() => {
@@ -57,16 +70,50 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
         const chosenOrg =
           items.find((org) => org.organization_id === preferredOrgId) ??
           items.find((org) => normalize(org.organization_name) === normalize(preferredOrgName)) ??
-          items[0];
+          (role === "SUPER_ADMIN" ? items[0] : null);
 
-        const domains = await organizationsApi.listDomains(chosenOrg.organization_id);
-        const first = domains[0] ?? null;
+        if (!chosenOrg) {
+          if (!cancelled) {
+            setDomainId(null);
+            setDomainName(null);
+            setActiveDomainId(null);
+            setReady(true);
+          }
+          return;
+        }
+
+        const domains = (await organizationsApi.listDomains(chosenOrg.organization_id)) as AvailableDomain[];
+
+        // Domain yang di-bind ke participant (onboarding) — prioritas untuk role provider,
+        // karena listDomains(orgId) di BE tidak org-scoped (kembalikan semua domain) sehingga
+        // domains[0] sering bukan domain tempat dataset participant berada.
+        let participantDomainIds: string[] = [];
+        if (participantId) {
+          try {
+            const pDomains = await providersApi.listDomains(participantId);
+            participantDomainIds = (pDomains as Array<{ domain_id: string; status?: string }>)
+              .filter((d) => !d.status || String(d.status).toUpperCase() === "ACTIVE")
+              .map((d) => d.domain_id);
+          } catch { /* fallback ke domain org */ }
+        }
+
         if (!cancelled) {
           setPreferredOrganization(chosenOrg.organization_id, chosenOrg.organization_name);
-          if (first) {
-            setDomainId(first.domain_id);
-            setDomainName(first.domain_name);
-            setActiveDomainId(first.domain_id);
+          setAvailableDomains(domains);
+
+          // Prioritas: untuk provider, domain participant menang (nilai persisted bisa basi).
+          // Untuk admin/super-admin (tanpa participant), pakai domain aktif tersimpan.
+          const persistedId = getActiveDomainId();
+          const persisted = persistedId ? domains.find((d) => d.domain_id === persistedId) : null;
+          const participantDomain = participantDomainIds.length
+            ? domains.find((d) => participantDomainIds.includes(d.domain_id))
+            : null;
+          const target = participantDomain ?? persisted ?? domains[0] ?? null;
+
+          if (target) {
+            setDomainId(target.domain_id);
+            setDomainName(target.domain_name);
+            setActiveDomainId(target.domain_id);
           } else {
             setDomainId(null);
             setDomainName(null);
@@ -81,10 +128,16 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, role, participantId]);
+
+  const switchDomain = useCallback((domain: AvailableDomain) => {
+    setDomainId(domain.domain_id);
+    setDomainName(domain.domain_name);
+    setActiveDomainId(domain.domain_id);
+  }, []);
 
   return (
-    <DomainContext.Provider value={{ domainId, domainName, ready }}>
+    <DomainContext.Provider value={{ domainId, domainName, ready, availableDomains, switchDomain }}>
       {children}
     </DomainContext.Provider>
   );

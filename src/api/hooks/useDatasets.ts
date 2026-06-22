@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { datasetsApi } from "../services/data-catalog";
-import type { DatasetCreateRequest } from "../types/data-catalog";
+import type { DatasetCreateRequest, DatasetUpdateRequest } from "../types/data-catalog";
 import { useDomain } from "@/context/DomainContext";
 
 export const datasetKeys = {
@@ -55,5 +55,29 @@ export function usePublishDataset() {
       classification: string;
     }) => datasetsApi.publish(domainId!, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: datasetKeys.all }),
+  });
+}
+
+export function useUpdateDataset() {
+  const { domainId } = useDomain();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: DatasetUpdateRequest }) =>
+      datasetsApi.update(domainId!, id, body),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: datasetKeys.all });
+      queryClient.invalidateQueries({ queryKey: datasetKeys.detail(variables.id) });
+    },
+  });
+}
+
+export function useDeleteDataset() {
+  const { domainId } = useDomain();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => datasetsApi.remove(domainId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: datasetKeys.all });
+    },
   });
 }

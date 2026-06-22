@@ -21,6 +21,27 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        // Adapter service (8186) — strip /adapter-service prefix before forwarding.
+        // OGC adapter only supports GET on /ogc/collections/*/items; connector BE calls
+        // documentation_url with POST, so we convert POST→GET here transparently.
+        "/adapter-service": {
+          target: (env.VITE_ADAPTER_TARGET || proxyTarget.replace(":8185", ":8186")),
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/adapter-service/, ""),
+          configure: (proxy) => {
+            proxy.on("proxyReq", (proxyReq, req) => {
+              if (
+                req.method === "POST" &&
+                /\/ogc\/collections\/[^/]+\/items/.test(req.url || "")
+              ) {
+                proxyReq.method = "GET";
+                proxyReq.removeHeader("content-length");
+                proxyReq.removeHeader("content-type");
+              }
+            });
+          },
+        },
       },
     },
     preview: {

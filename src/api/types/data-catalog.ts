@@ -25,6 +25,14 @@ export interface Dataset {
   provider_id?: string;     // FK participant (untuk resolve nama via /onboarding/participants)
   endpoint_url?: string;
   version?: string;
+  description?: string | null;
+  schema_id?: string;
+  domain_id?: string;
+  endpoint_auth_strategy?: Record<string, unknown> | null;
+  endpoint_tags?: string[];
+  endpoint_documentation_url?: string | null;
+  endpoint_data_format?: string | null;
+  endpoint_sla?: string | null;
 }
 
 /**
@@ -35,6 +43,28 @@ export interface DatasetCreateRequest {
   dataset_name: string;       // required
   schema_name: string;        // required
   provider_id?: string;       // optional per spec, tapi practical-nya mostly required
+}
+
+export interface DatasetUpdateRequest {
+  provider_id?: string | null;
+  schema_id?: string | null;
+  name?: string | null;
+  endpoint?: {
+    url?: string | null;
+    access_type?: string | null;
+    protocol?: string | null;
+    auth_strategy?: Record<string, unknown> | null; // DatasetEndpointAuthStrategy | null
+  } | null;
+  endpoint_metadata?: {
+    sla?: string | null;
+    tags?: string[];
+    rate_limit?: Record<string, unknown>;
+    data_format?: string | null;
+    documentation_url?: string | null;
+  } | null;
+  description?: string | null;
+  version?: string | null;
+  status?: string | null;
 }
 
 /**

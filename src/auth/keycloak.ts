@@ -1,5 +1,6 @@
 import Keycloak from "keycloak-js";
 import type { KeycloakInitOptions } from "keycloak-js";
+import { getRuntimeSsoConfig } from "@/lib/runtime-config";
 
 /**
  * Keycloak instance singleton — Phase 1B (IAM/SSO integration).
@@ -15,25 +16,34 @@ import type { KeycloakInitOptions } from "keycloak-js";
  * Lihat `docs/SPEKTRUM_Migration_Plan.md` Section 4 (SSO Strategy).
  */
 
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL;
-const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM;
-const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID;
+let keycloakInstance: Keycloak | null = null;
 
-/**
- * `true` jika ketiga env var Keycloak sudah di-set. Dipakai untuk gate UI
- * (mis. tombol "Login with SSO" hanya muncul kalau enabled).
- */
-export const isKeycloakConfigured = Boolean(
-  KEYCLOAK_URL && KEYCLOAK_REALM && KEYCLOAK_CLIENT_ID,
-);
+const resolveConfig = () => getRuntimeSsoConfig();
 
-export const keycloak = isKeycloakConfigured
-  ? new Keycloak({
-      url: KEYCLOAK_URL,
-      realm: KEYCLOAK_REALM,
-      clientId: KEYCLOAK_CLIENT_ID,
-    })
-  : null;
+export const isKeycloakConfigured = (): boolean => {
+  const config = resolveConfig();
+  return Boolean(
+    config.enabled &&
+      config.keycloakUrl &&
+      config.realm &&
+      config.clientId,
+  );
+};
+
+export const getKeycloak = (): Keycloak | null => {
+  if (!isKeycloakConfigured()) return null;
+  if (!keycloakInstance) {
+    const config = resolveConfig();
+    keycloakInstance = new Keycloak({
+      url: config.keycloakUrl,
+      realm: config.realm,
+      clientId: config.clientId,
+    });
+  }
+  return keycloakInstance;
+};
+
+export const keycloak = getKeycloak();
 
 /**
  * Bootstrap Keycloak — dipanggil sekali di main.tsx sebelum render App.
@@ -47,9 +57,10 @@ export const keycloak = isKeycloakConfigured
  * dulu).
  */
 export async function initKeycloak(): Promise<boolean> {
+  const keycloak = getKeycloak();
   if (!keycloak) {
     throw new Error(
-      "Keycloak is not configured. Set VITE_KEYCLOAK_URL, VITE_KEYCLOAK_REALM, VITE_KEYCLOAK_CLIENT_ID in .env",
+      "Keycloak is not configured in runtime setup",
     );
   }
 
@@ -88,6 +99,7 @@ export async function initKeycloak(): Promise<boolean> {
  * current page). Keycloak adapter akan exchange code → JWT secara otomatis.
  */
 export function loginWithKeycloak(redirectUri?: string): void {
+  const keycloak = getKeycloak();
   if (!keycloak) {
     console.warn("[Keycloak] not configured");
     return;
@@ -102,6 +114,7 @@ export function loginWithKeycloak(redirectUri?: string): void {
  * back ke `postLogoutRedirectUri`.
  */
 export function logoutFromKeycloak(postLogoutRedirectUri?: string): void {
+  const keycloak = getKeycloak();
   if (!keycloak) {
     console.warn("[Keycloak] not configured");
     return;
@@ -121,6 +134,7 @@ export function logoutFromKeycloak(postLogoutRedirectUri?: string): void {
 export async function ensureValidToken(
   minValiditySeconds = 30,
 ): Promise<boolean> {
+  const keycloak = getKeycloak();
   if (!keycloak || !keycloak.authenticated) return false;
   try {
     await keycloak.updateToken(minValiditySeconds);
@@ -135,6 +149,7 @@ export async function ensureValidToken(
  * / Keycloak tidak ter-konfigurasi.
  */
 export function getKeycloakToken(): string | null {
+  const keycloak = getKeycloak();
   if (!keycloak || !keycloak.authenticated) return null;
   return keycloak.token ?? null;
 }

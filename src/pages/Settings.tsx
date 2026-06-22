@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -35,16 +37,48 @@ import {
   Loader2,
   Plus,
   Trash2,
+  FileJson2,
+  PackageCheck,
+  Link,
+  Files,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { useConnectionPools, useCreateConnectionPool, useDeleteConnectionPool } from "@/api/hooks/useConnectionPools";
-import { useParticipantAdapters, useAddParticipantAdapter, useUpdateParticipantAdapter, useDeleteParticipantAdapter } from "@/api/hooks/useProviders";
+import { AdapterFlowWizard } from "@/components/settings/AdapterFlowWizard";
+import { useConnectionPools } from "@/api/hooks/useConnectionPools";
+import {
+  useParticipantAdapters,
+  useAddParticipantAdapter,
+  useUpdateParticipantAdapter,
+  useDeleteParticipantAdapter,
+  useParticipantDomains,
+} from "@/api/hooks/useProviders";
 import { useProviders } from "@/api/hooks/useProviders";
+import { useOrganizations, useOrganizationDomains } from "@/api/hooks/useOrganizations";
 import { useAuth } from "@/context/AuthContext";
 import { useDomain } from "@/context/DomainContext";
+import { useRuntime } from "@/context/RuntimeContext";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { DOMAINS } from "@/lib/fulfillment";
+import {
+  getPreferredOrganizationId,
+  getPreferredOrganizationName,
+} from "@/lib/session-binding";
+import { ROLE_LABELS } from "@/config/rbac";
+import { usersService } from "@/api/services/identity-provider";
+import { useDatasets } from "@/api/hooks/useDatasets";
+import {
+  adapterRuntimeApi,
+  type AdapterClassification,
+} from "@/api/services/adapter-runtime";
+
+const DOMAIN_CODE_BY_KEY = {
+  wilayah_kerja: "WK",
+  lapangan: "FLD",
+  seismik: "SEI",
+  sumur: "WLL",
+  fasilitas: "FP",
+} as const;
 
 interface GeoServerEndpoint {
   id: number;
@@ -61,31 +95,88 @@ interface NotificationSetting {
   enabled: boolean;
 }
 
-const ADAPTER_TYPES = ["GIS_STUDIO", "REST_API", "OGC_WFS", "OGC_WMS", "ARCGIS", "GEONODE"];
+const ADMIN_LIKE_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
+const normalizeBindingKey = (value: string | null | undefined) =>
+  String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const Settings = () => {
-  const { participantId, role } = useAuth();
-  const { domainId } = useDomain();
+  const navigate = useNavigate();
+  const { participantId, role, user, setAuthUser } = useAuth();
+  const { domainId, availableDomains } = useDomain();
+  const { runtimeConfig } = useRuntime();
   const { data: connectionPoolsData, isLoading: isLoadingConnectionPools } = useConnectionPools();
   const { data: providersData } = useProviders();
-  const createConnectionPoolMutation = useCreateConnectionPool();
-  const deleteConnectionPoolMutation = useDeleteConnectionPool();
+  const { data: organizationsData } = useOrganizations();
+  const { data: datasetsData } = useDatasets();
 
   // Adapter — hanya PROVIDER
   const { data: adaptersData, isLoading: loadingAdapters, refetch: refetchAdapters } =
     useParticipantAdapters(participantId ?? "");
+  const {
+    data: participantDomainsData,
+    isLoading: isLoadingParticipantDomains,
+  } = useParticipantDomains(participantId ?? "");
   const addAdapterMutation = useAddParticipantAdapter();
   const updateAdapterMutation = useUpdateParticipantAdapter();
   const deleteAdapterMutation = useDeleteParticipantAdapter();
 
   const [adapterDialog, setAdapterDialog] = useState(false);
   const [editingAdapter, setEditingAdapter] = useState<any>(null);
+  const [selectedProcessDomain, setSelectedProcessDomain] = useState("");
   const [adapterForm, setAdapterForm] = useState({
     domain_id: domainId ?? "",
     type: "GIS_STUDIO",
     url: "",
   });
   const [connTestStatus, setConnTestStatus] = useState<Record<string, "idle"|"checking"|"ok"|"error">>({});
+  const [selectedAdapterId, setSelectedAdapterId] = useState("");
+  const [adapterBusyAction, setAdapterBusyAction] = useState<"" | "health" | "metadata" | "geojson" | "shapefile" | "publish">("");
+  const [adapterResult, setAdapterResult] = useState<{
+    type: "idle" | "success" | "error";
+    title: string;
+    payload: unknown;
+  }>({
+    type: "idle",
+    title: "",
+    payload: null,
+  });
+  const [geojsonForm, setGeojsonForm] = useState<{
+    domain: string;
+    classification: AdapterClassification | "";
+    payload: string;
+  }>({
+    domain: "",
+    classification: "",
+    payload: '{\n  "type": "FeatureCollection",\n  "features": []\n}',
+  });
+  const [shapefileForm, setShapefileForm] = useState<{
+    domain: string;
+    classification: AdapterClassification | "";
+    fieldMap: string;
+    constants: string;
+    file: File | null;
+  }>({
+    domain: "",
+    classification: "",
+    fieldMap: "",
+    constants: "",
+    file: null,
+  });
+  const [publishForm, setPublishForm] = useState<{
+    domain: string;
+    name: string;
+    schemaId: string;
+    version: string;
+    level: AdapterClassification;
+    geojson: string;
+  }>({
+    domain: "",
+    name: "",
+    schemaId: "",
+    version: "1.0.0",
+    level: "L2",
+    geojson: "",
+  });
 
   const testAdapterConn = async (id: string, url: string) => {
     setConnTestStatus((p) => ({ ...p, [id]: "checking" }));
@@ -99,7 +190,14 @@ const Settings = () => {
 
   const openAddAdapter = () => {
     setEditingAdapter(null);
-    setAdapterForm({ domain_id: domainId ?? "", type: "GIS_STUDIO", url: "" });
+    const fallbackDomain =
+      resolveDomainKey(
+        effectiveParticipantDomainsData.find((item) => resolveDomainKey(item) === domainId),
+      ) ??
+      resolveDomainKey(effectiveParticipantDomainsData[0]) ??
+      domainId ??
+      "";
+    setAdapterForm({ domain_id: fallbackDomain, type: "GIS_STUDIO", url: "" });
     setAdapterDialog(true);
   };
   const openEditAdapter = (a: any) => {
@@ -109,9 +207,14 @@ const Settings = () => {
   };
   const saveAdapter = async () => {
     if (!participantId) return toast.error("Akun tidak terhubung ke participant.");
+    if (!adapterForm.domain_id) return toast.error("Pilih domain terlebih dahulu.");
     if (!adapterForm.url) return toast.error("URL endpoint wajib diisi.");
     try {
-      const body = { domain_id: adapterForm.domain_id, type: adapterForm.type, endpoint: { url: adapterForm.url } };
+      const body = {
+        domain_id: adapterForm.domain_id,
+        type: "GIS_STUDIO",
+        endpoint: { url: adapterForm.url.trim() },
+      };
       if (editingAdapter) {
         await updateAdapterMutation.mutateAsync({ participantId, id: editingAdapter.id, body });
         toast.success("Adapter diperbarui.");
@@ -136,12 +239,44 @@ const Settings = () => {
     }
   };
 
+  const isAdminLike = ADMIN_LIKE_ROLES.includes(role as (typeof ADMIN_LIKE_ROLES)[number]);
+  const isProvider = role === "PROVIDER";
+  const defaultSettingsTab = isProvider ? "adapter" : "integrations";
+
+  const currentParticipant = useMemo(
+    () => ((providersData ?? []) as Array<any>).find((item) => item.provider_id === participantId) ?? null,
+    [providersData, participantId],
+  );
+
+  const preferredOrganizationId = getPreferredOrganizationId();
+  const preferredOrganizationName = getPreferredOrganizationName();
+
+  const activeGovernanceOrganization = useMemo(() => {
+    const organizations = (organizationsData ?? []) as Array<any>;
+    const participantNameKey = normalizeBindingKey(
+      currentParticipant?.organization_name ?? currentParticipant?.provider_name,
+    );
+    const preferredNameKey = normalizeBindingKey(preferredOrganizationName);
+
+    return (
+      organizations.find((item) => item.organization_id === preferredOrganizationId) ??
+      organizations.find((item) => normalizeBindingKey(item.organization_name) === preferredNameKey) ??
+      organizations.find((item) => normalizeBindingKey(item.organization_name) === participantNameKey) ??
+      null
+    );
+  }, [currentParticipant, organizationsData, preferredOrganizationId, preferredOrganizationName]);
+
+  const {
+    data: governanceDomainsData,
+    isLoading: isLoadingGovernanceDomains,
+  } = useOrganizationDomains(activeGovernanceOrganization?.organization_id ?? null);
+
   // Profile settings state
   const [profileForm, setProfileForm] = useState({
-    name: "Super Admin",
-    email: "admin@rapidsk.id",
-    organization: "SKK Migas",
-    role: "Super Admin",
+    name: "",
+    email: "",
+    organization: "",
+    role: "",
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -188,8 +323,6 @@ const Settings = () => {
   const [isGeoServerDialogOpen, setIsGeoServerDialogOpen] = useState(false);
   const [isIdpDialogOpen, setIsIdpDialogOpen] = useState(false);
   const [isAddEndpointDialogOpen, setIsAddEndpointDialogOpen] = useState(false);
-  const [isConnectionPoolDialogOpen, setIsConnectionPoolDialogOpen] = useState(false);
-  const [isAddConnectionPoolDialogOpen, setIsAddConnectionPoolDialogOpen] = useState(false);
 
   // Password form state
   const [passwordForm, setPasswordForm] = useState({
@@ -209,15 +342,6 @@ const Settings = () => {
     url: "",
     type: "WMS",
   });
-  const [newConnectionPoolForm, setNewConnectionPoolForm] = useState({
-    participant_id: participantId ?? "",
-    name: "",
-    type: "PROVIDER" as "CONSUMER" | "PROVIDER",
-    token: "",
-    url_consumer: "",
-    url_provider: "",
-  });
-
   const connectionPools = useMemo(
     () => (connectionPoolsData ?? []) as Array<{
       id: string;
@@ -235,19 +359,370 @@ const Settings = () => {
     [providersData],
   );
 
+  const governanceDomainFallbackActive =
+    !isLoadingParticipantDomains &&
+    ((participantDomainsData ?? []) as Array<any>).length === 0 &&
+    ((governanceDomainsData ?? []) as Array<any>).length > 0;
+
+  const effectiveParticipantDomainsData = governanceDomainFallbackActive
+    ? ((governanceDomainsData ?? []) as Array<any>)
+    : ((participantDomainsData ?? []) as Array<any>);
+
   const providerNameById = useMemo(() => {
     const map: Record<string, string> = {};
     for (const provider of providers) map[provider.provider_id] = provider.provider_name;
     return map;
   }, [providers]);
 
+  const resolveDomainKey = (item: any) =>
+    String(item?.domain_id ?? item?.domain?.key ?? item?.domain?.id ?? "")
+      .trim();
+
+  const resolveDomainLabel = (item: any, domainKey: string) => {
+    const matched = DOMAINS.find((domain) => domain.key === domainKey);
+    if (matched?.label) {
+      return matched.sub ? `${matched.label} (${matched.sub})` : matched.label;
+    }
+
+    const directLabel = String(
+      item?.domain_name ??
+        item?.domain?.label ??
+        item?.domain?.name ??
+        item?.name ??
+        domainKey,
+    ).trim();
+
+    const directCode = String(item?.code ?? item?.domain?.code ?? "").trim();
+    if (!directLabel) {
+      return "Domain belum dikenali";
+    }
+
+    return directCode && directCode !== directLabel
+      ? `${directLabel} (${directCode})`
+      : directLabel;
+  };
+
+  const resolveDomainCode = (item: any, domainKey: string) => {
+    const directCode = String(item?.code ?? item?.domain?.code ?? "").trim().toUpperCase();
+    if (["WK", "FLD", "SEI", "WLL", "FP"].includes(directCode)) {
+      return directCode as "WK" | "FLD" | "SEI" | "WLL" | "FP";
+    }
+
+    if (domainKey in DOMAIN_CODE_BY_KEY) {
+      return DOMAIN_CODE_BY_KEY[domainKey as keyof typeof DOMAIN_CODE_BY_KEY];
+    }
+
+    const matchedDomain = DOMAINS.find((domain) => domain.key === domainKey);
+    if (matchedDomain?.key && matchedDomain.key in DOMAIN_CODE_BY_KEY) {
+      return DOMAIN_CODE_BY_KEY[matchedDomain.key as keyof typeof DOMAIN_CODE_BY_KEY];
+    }
+
+    return "";
+  };
+
+  const participantDomainOptions = useMemo(() => {
+    const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+    const lookupDomainName = (uuid: string) =>
+      availableDomains.find((d) => d.domain_id === uuid)?.domain_name ?? null;
+
+    return effectiveParticipantDomainsData
+      .map((item) => {
+        const value = resolveDomainKey(item);
+        if (!value) return null;
+
+        const domainKey = String(item?.domain?.key ?? item?.key ?? "").trim();
+        let rawLabel = resolveDomainLabel(item, value);
+        let rawName = String(
+          item?.domain_name ??
+          item?.domain?.label ??
+          item?.domain?.name ??
+          item?.name ??
+          rawLabel,
+        ).trim();
+
+        // If label/name resolved to a bare UUID, replace with human-readable name from DomainContext
+        if (isUuid(rawLabel)) {
+          rawLabel = lookupDomainName(rawLabel) ?? lookupDomainName(value) ?? rawLabel;
+        }
+        if (isUuid(rawName)) {
+          rawName = lookupDomainName(rawName) ?? lookupDomainName(value) ?? rawName;
+        }
+
+        return {
+          value,
+          label: rawLabel,
+          domainCode: resolveDomainCode(item, domainKey || value),
+          domainName: rawName || rawLabel,
+        };
+      })
+      .filter(Boolean) as Array<{ value: string; label: string; domainCode: "WK" | "FLD" | "SEI" | "WLL" | "FP" | ""; domainName: string }>;
+  }, [effectiveParticipantDomainsData, availableDomains]);
+
+  const processDomainOptions = participantDomainOptions;
+  const canOpenParticipantDomainSetup = Boolean(participantId);
+
+  const providerDatasets = useMemo(
+    () => ((datasetsData ?? []) as Array<any>).filter((dataset) => dataset.provider_id === participantId),
+    [datasetsData, participantId],
+  );
+
+  const adapterPublishedPairs = useMemo(() => {
+    const adapterUrls = new Set(
+      ((adaptersData ?? []) as Array<any>)
+        .map((adapter) => String(adapter.endpoint?.url ?? "").trim())
+        .filter(Boolean),
+    );
+
+    return providerDatasets.map((dataset) => ({
+      datasetId: dataset.dataset_id,
+      datasetName: dataset.dataset_name,
+      domain: dataset.domain ?? "—",
+      level: dataset.level ?? "—",
+      endpointUrl: dataset.endpoint_url ?? "—",
+      status: dataset.status ?? "—",
+      isViaAdapter: adapterUrls.has(String(dataset.endpoint_url ?? "").trim()),
+    }));
+  }, [adaptersData, providerDatasets]);
+
+  const registeredAdapters = useMemo(
+    () => ((adaptersData ?? []) as Array<any>).filter((adapter) => String(adapter.endpoint?.url ?? "").trim()),
+    [adaptersData],
+  );
+
+  const adaptersForSelectedDomain = useMemo(
+    () =>
+      registeredAdapters.filter(
+        (adapter) => String(adapter.domain_id ?? adapter.domain?.key ?? "").trim() === selectedProcessDomain,
+      ),
+    [registeredAdapters, selectedProcessDomain],
+  );
+
+  const selectedAdapter = useMemo(
+    () =>
+      adaptersForSelectedDomain.find((adapter) => String(adapter.id) === selectedAdapterId) ??
+      (adaptersForSelectedDomain.length === 1 ? adaptersForSelectedDomain[0] : null),
+    [adaptersForSelectedDomain, selectedAdapterId],
+  );
+
+  const selectedAdapterUrl = String(selectedAdapter?.endpoint?.url ?? "").trim();
+
+  useEffect(() => {
+    if (!processDomainOptions.length) {
+      setSelectedProcessDomain("");
+      return;
+    }
+
+    if (
+      !selectedProcessDomain ||
+      !processDomainOptions.some((domain) => domain.value === selectedProcessDomain)
+    ) {
+      setSelectedProcessDomain(
+        processDomainOptions.find((domain) => domain.value === domainId)?.value ??
+        processDomainOptions[0]?.value ??
+        "",
+      );
+    }
+  }, [processDomainOptions, selectedProcessDomain, domainId]);
+
+  useEffect(() => {
+    if (!adaptersForSelectedDomain.length) {
+      setSelectedAdapterId("");
+      return;
+    }
+
+    if (adaptersForSelectedDomain.length === 1) {
+      setSelectedAdapterId(String(adaptersForSelectedDomain[0].id));
+      return;
+    }
+
+    if (!selectedAdapterId || !adaptersForSelectedDomain.some((adapter) => String(adapter.id) === selectedAdapterId)) {
+      setSelectedAdapterId("");
+    }
+  }, [adaptersForSelectedDomain, selectedAdapterId]);
+
+  useEffect(() => {
+    const fallbackDomain = String(selectedProcessDomain || selectedAdapter?.domain_id || domainId || "");
+    if (!fallbackDomain) return;
+
+    setGeojsonForm((prev) => ({ ...prev, domain: fallbackDomain }));
+    setShapefileForm((prev) => ({ ...prev, domain: fallbackDomain }));
+    setPublishForm((prev) => ({ ...prev, domain: fallbackDomain }));
+  }, [selectedProcessDomain, selectedAdapter?.domain_id, domainId]);
+
+  const setAdapterFeedback = (type: "success" | "error", title: string, payload: unknown) => {
+    setAdapterResult({ type, title, payload });
+  };
+
+  const parseJsonText = (raw: string, fieldLabel: string) => {
+    if (!raw.trim()) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error(`${fieldLabel} harus berupa JSON yang valid.`);
+    }
+  };
+
+  const requireAdapterUrl = () => {
+    if (!selectedAdapterUrl) {
+      throw new Error("Pilih jalur data yang sudah terdaftar terlebih dahulu.");
+    }
+    return selectedAdapterUrl;
+  };
+
+  const runAdapterAction = async (
+    action: "" | "health" | "metadata" | "geojson" | "shapefile" | "publish",
+    runner: (adapterBaseUrl: string) => Promise<any>,
+    successTitle: string,
+  ) => {
+    try {
+      setAdapterBusyAction(action);
+      const adapterBaseUrl = requireAdapterUrl();
+      const response = await runner(adapterBaseUrl);
+      setAdapterFeedback("success", successTitle, response);
+    } catch (error: unknown) {
+      setAdapterFeedback("error", successTitle, {
+        message: getApiErrorMessage(error, "Proses adapter gagal dijalankan"),
+      });
+      toast.error(getApiErrorMessage(error, "Proses adapter gagal dijalankan"));
+    } finally {
+      setAdapterBusyAction("");
+    }
+  };
+
+  const handleAdapterHealthCheck = async () => {
+    await runAdapterAction(
+      "health",
+      (adapterBaseUrl) => adapterRuntimeApi.health(adapterBaseUrl),
+      "Health adapter",
+    );
+  };
+
+  const handleAdapterMetadataFetch = async () => {
+    await runAdapterAction(
+      "metadata",
+      async (adapterBaseUrl) => {
+        if (publishForm.domain.trim()) {
+          return adapterRuntimeApi.metadataByDomain(adapterBaseUrl, publishForm.domain.trim());
+        }
+        return adapterRuntimeApi.metadataAll(adapterBaseUrl);
+      },
+      "Metadata adapter",
+    );
+  };
+
+  const handleGeojsonIngest = async () => {
+    await runAdapterAction(
+      "geojson",
+      async (adapterBaseUrl) => {
+        if (!geojsonForm.domain.trim()) {
+          throw new Error("Domain ingest wajib dipilih.");
+        }
+
+        const payload = parseJsonText(geojsonForm.payload, "Payload GeoJSON");
+        if (!payload || typeof payload !== "object") {
+          throw new Error("Payload GeoJSON wajib diisi.");
+        }
+
+        return adapterRuntimeApi.ingestGeoJson(
+          adapterBaseUrl,
+          geojsonForm.domain.trim(),
+          payload as Record<string, unknown>,
+          geojsonForm.classification,
+        );
+      },
+      "Ingest GeoJSON",
+    );
+  };
+
+  const handleShapefileIngest = async () => {
+    await runAdapterAction(
+      "shapefile",
+      async (adapterBaseUrl) => {
+        if (!shapefileForm.domain.trim()) {
+          throw new Error("Domain shapefile wajib dipilih.");
+        }
+        if (!shapefileForm.file) {
+          throw new Error("File shapefile ZIP wajib dipilih.");
+        }
+
+        return adapterRuntimeApi.ingestShapefile(adapterBaseUrl, shapefileForm.domain.trim(), {
+          file: shapefileForm.file,
+          classification: shapefileForm.classification,
+          fieldMap: shapefileForm.fieldMap,
+          constants: shapefileForm.constants,
+        });
+      },
+      "Ingest shapefile",
+    );
+  };
+
+  const handleAdapterPublish = async () => {
+    await runAdapterAction(
+      "publish",
+      async (adapterBaseUrl) => {
+        if (!publishForm.domain.trim()) {
+          throw new Error("Domain publish wajib dipilih.");
+        }
+        if (!publishForm.name.trim()) {
+          throw new Error("Nama dataset publish wajib diisi.");
+        }
+        if (!publishForm.schemaId.trim()) {
+          throw new Error("Schema ID wajib diisi.");
+        }
+
+        const geojson = parseJsonText(publishForm.geojson, "GeoJSON publish");
+        return adapterRuntimeApi.publish(adapterBaseUrl, publishForm.domain.trim(), {
+          name: publishForm.name.trim(),
+          schema_id: publishForm.schemaId.trim(),
+          version: publishForm.version.trim() || "1.0.0",
+          level: publishForm.level,
+          geojson: geojson && typeof geojson === "object" ? (geojson as Record<string, unknown>) : null,
+        });
+      },
+      "Terbitkan dataset",
+    );
+  };
+
+  useEffect(() => {
+    setProfileForm({
+      name: user?.full_name ?? "",
+      email: user?.email ?? "",
+      organization:
+        currentParticipant?.provider_name ??
+        user?.category?.name ??
+        "",
+      role: ROLE_LABELS[role] ?? role,
+    });
+  }, [currentParticipant?.provider_name, role, user]);
+
   // Handle save profile
   const handleSaveProfile = async () => {
-    setIsSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSaving(false);
-    toast.success("Profile settings saved successfully");
+    if (!user?.id) {
+      toast.error("User aktif tidak ditemukan.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await usersService.update(user.id, {
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+      });
+
+      const nextUser = {
+        ...user,
+        full_name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+      };
+
+      setAuthUser(nextUser);
+      localStorage.setItem("user_info", JSON.stringify(nextUser));
+      toast.success("Profile berhasil diperbarui.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Gagal memperbarui profile"));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Handle save localization
@@ -331,53 +806,6 @@ const Settings = () => {
     toast.success("Endpoint removed successfully");
   };
 
-  const handleAddConnectionPool = async () => {
-    if (
-      !newConnectionPoolForm.participant_id ||
-      !newConnectionPoolForm.name ||
-      !newConnectionPoolForm.token ||
-      !newConnectionPoolForm.url_consumer ||
-      !newConnectionPoolForm.url_provider
-    ) {
-      toast.error("Please fill in all connection pool fields");
-      return;
-    }
-
-    try {
-      await createConnectionPoolMutation.mutateAsync({
-        participant_id: newConnectionPoolForm.participant_id,
-        name: newConnectionPoolForm.name,
-        type: newConnectionPoolForm.type,
-        token: newConnectionPoolForm.token,
-        metadata: {
-          url_consumer: newConnectionPoolForm.url_consumer,
-          url_provider: newConnectionPoolForm.url_provider,
-        },
-      });
-      setNewConnectionPoolForm({
-        participant_id: participantId ?? "",
-        name: "",
-        type: "PROVIDER",
-        token: "",
-        url_consumer: "",
-        url_provider: "",
-      });
-      setIsAddConnectionPoolDialogOpen(false);
-      toast.success("Connection pool added successfully");
-    } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, "Failed to add connection pool"));
-    }
-  };
-
-  const handleRemoveConnectionPool = async (id: string) => {
-    try {
-      await deleteConnectionPoolMutation.mutateAsync(id);
-      toast.success("Connection pool removed successfully");
-    } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, "Failed to remove connection pool"));
-    }
-  };
-
   // Handle save IDP settings
   const handleSaveIdpSettings = async () => {
     setIsSaving(true);
@@ -391,18 +819,18 @@ const Settings = () => {
     <div className="min-h-screen">
       <Header
         title="Settings"
-        subtitle="Manage your account and system preferences"
+        subtitle="Pengaturan akun, koneksi, dan proses kerja"
       />
       <div className="p-6">
-        <Tabs defaultValue="general" className="space-y-6">
+        <Tabs defaultValue={defaultSettingsTab} className="space-y-6">
           <TabsList className="bg-muted">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="general">Akun</TabsTrigger>
+            {!isProvider ? <TabsTrigger value="integrations">Koneksi & Akses</TabsTrigger> : null}
             {(role === "PROVIDER" || role === "ADMIN" || role === "SUPER_ADMIN") && (
-              <TabsTrigger value="adapter">DS Adapter</TabsTrigger>
+              <TabsTrigger value="adapter">Proses Data</TabsTrigger>
             )}
+            {isAdminLike && <TabsTrigger value="security">Keamanan</TabsTrigger>}
+            {isAdminLike && <TabsTrigger value="notifications">Notifikasi</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="general" className="space-y-6">
@@ -410,10 +838,10 @@ const Settings = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <User className="w-5 h-5" />
-                  Profile Settings
+                  Informasi Akun
                 </CardTitle>
                 <CardDescription>
-                  Manage your personal information and preferences
+                  Perbarui identitas operator yang sedang aktif dan lihat keterkaitannya dengan organisasi.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -459,12 +887,16 @@ const Settings = () => {
               </CardContent>
             </Card>
 
+            {isAdminLike && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Globe className="w-5 h-5" />
-                  Localization
+                  Preferensi Tampilan
                 </CardTitle>
+                <CardDescription>
+                  Dipakai untuk pengaturan umum yang tidak mengubah flow bisnis.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -514,8 +946,10 @@ const Settings = () => {
                 </Button>
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
+          {isAdminLike && (
           <TabsContent value="security" className="space-y-6">
             <Card>
               <CardHeader>
@@ -593,7 +1027,9 @@ const Settings = () => {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
+          {isAdminLike && (
           <TabsContent value="notifications" className="space-y-6">
             <Card>
               <CardHeader>
@@ -626,16 +1062,42 @@ const Settings = () => {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
           <TabsContent value="integrations" className="space-y-6">
+            <Card className="border-0 shadow-soft">
+              <CardHeader>
+                <CardTitle className="text-lg">Urutan Koneksi Dasar</CardTitle>
+                <CardDescription>
+                  Mulai dari identitas layanan, lanjut ke sumber data, lalu pastikan jalur pertukaran sudah siap.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 lg:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">Tahap 1</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">Identitas Layanan</p>
+                  <p className="mt-2 text-sm text-slate-600">Pastikan metode login dan identitas layanan sudah sesuai dengan lingkungan yang dipakai.</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">Tahap 2</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">Sumber Data</p>
+                  <p className="mt-2 text-sm text-slate-600">Daftarkan layanan sumber yang akan diakses atau dirutekan oleh participant.</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">Tahap 3</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">Jalur Pertukaran</p>
+                  <p className="mt-2 text-sm text-slate-600">Simpan data koneksi yang dipakai saat proses pertukaran antar participant dijalankan.</p>
+                </div>
+              </CardContent>
+            </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Database className="w-5 h-5" />
-                  Connected Services
+                  Koneksi dan Akses
                 </CardTitle>
                 <CardDescription>
-                  Manage external service connections and integrations
+                  Semua pengaturan teknis dasar dikumpulkan di sini dengan urutan yang lebih jelas.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -643,18 +1105,18 @@ const Settings = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-info/10">
-                        <Database className="w-5 h-5 text-info" />
+                        <Key className="w-5 h-5 text-info" />
                       </div>
                       <div>
-                        <p className="font-medium">GeoServer</p>
+                        <p className="font-medium">Identitas Layanan</p>
                         <p className="text-sm text-muted-foreground">
-                          Connected to {geoServerEndpoints.length} endpoints
+                          {idpSettings.provider === "keycloak" ? "Keycloak" : "Azure AD"}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className="badge-active">Connected</Badge>
-                      <Button variant="outline" size="sm" onClick={() => setIsGeoServerDialogOpen(true)}>
+                      <Button variant="outline" size="sm" onClick={() => setIsIdpDialogOpen(true)}>
                         Configure
                       </Button>
                     </div>
@@ -664,18 +1126,18 @@ const Settings = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-accent/10">
-                        <Key className="w-5 h-5 text-accent" />
+                        <Database className="w-5 h-5 text-accent" />
                       </div>
                       <div>
-                        <p className="font-medium">Identity Provider</p>
+                        <p className="font-medium">Sumber Data</p>
                         <p className="text-sm text-muted-foreground">
-                          {idpSettings.provider === "keycloak" ? "Keycloak" : "Azure AD"}
+                          Terhubung ke {geoServerEndpoints.length} layanan
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className="badge-active">Configured</Badge>
-                      <Button variant="outline" size="sm" onClick={() => setIsIdpDialogOpen(true)}>
+                      <Button variant="outline" size="sm" onClick={() => setIsGeoServerDialogOpen(true)}>
                         Configure
                       </Button>
                     </div>
@@ -688,18 +1150,18 @@ const Settings = () => {
                         <Database className="w-5 h-5 text-success" />
                       </div>
                       <div>
-                        <p className="font-medium">Connection Pools</p>
+                        <p className="font-medium">Jalur Pertukaran</p>
                         <p className="text-sm text-muted-foreground">
-                          {isLoadingConnectionPools ? "Loading connection pools..." : `${connectionPools.length} connector pools configured`}
+                          {isLoadingConnectionPools ? "Memuat registry..." : `${connectionPools.length} registry control plane tersedia`}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">
-                        {isLoadingConnectionPools ? "Loading" : connectionPools.length > 0 ? "Configured" : "Empty"}
+                        {isLoadingConnectionPools ? "Loading" : connectionPools.length > 0 ? "Admin Managed" : "Empty"}
                       </Badge>
-                      <Button variant="outline" size="sm" onClick={() => setIsConnectionPoolDialogOpen(true)}>
-                        Configure
+                      <Button variant="outline" size="sm" onClick={() => navigate("/connection-pools")}>
+                        Buka Modul
                       </Button>
                     </div>
                   </div>
@@ -710,39 +1172,450 @@ const Settings = () => {
 
           {/* ── DS Adapter Tab ─────────────────────────────────────── */}
           <TabsContent value="adapter" className="space-y-6">
+            {!runtimeConfig?.adapterEndpoint && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Service adapter belum diisi di deployment config. Bagian ini memang dipegang admin, jadi provider baru bisa jalan penuh setelah endpoint service dilengkapi.
+              </div>
+            )}
+            {governanceDomainFallbackActive && (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                Domain kerja dibaca dari organisasi governance yang aktif karena endpoint domain participant belum mengembalikan data. Jadi provider tetap bisa lanjut, sambil sinkronisasi participant-domain dirapikan dari sisi backend atau admin.
+              </div>
+            )}
+            {!governanceDomainFallbackActive && !isLoadingParticipantDomains && !isLoadingGovernanceDomains && participantDomainOptions.length === 0 && !activeGovernanceOrganization && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                Organisasi aktif untuk participant ini belum kebaca. Login harus memakai organisasi yang benar, atau admin perlu mengikat participant ke organization governance dulu.
+              </div>
+            )}
+            <AdapterFlowWizard
+              participantId={participantId}
+              adapterEndpoint={runtimeConfig?.adapterEndpoint ?? ""}
+              domainOptions={participantDomainOptions}
+            />
+            {false && (
+            <Card className="shadow-soft border-0">
+              <CardHeader>
+                <CardTitle className="text-lg">Proses Data</CardTitle>
+                <CardDescription>
+                  Setelah jalur data siap, lanjutkan pengecekan koneksi, kirim data, lalu terbitkan dataset dari sini.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="space-y-2">
+                      <Label>Domain</Label>
+                      <Select
+                        value={selectedProcessDomain || undefined}
+                        onValueChange={(value) => setSelectedProcessDomain(value)}
+                        disabled={isLoadingParticipantDomains || processDomainOptions.length === 0}
+                      >
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              isLoadingParticipantDomains
+                                ? "Memuat domain..."
+                                : processDomainOptions.length === 0
+                                  ? "Belum ada domain"
+                                  : "Pilih domain"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {processDomainOptions.length === 0 ? (
+                            <SelectItem value="__no-domain__" disabled>
+                              Belum ada domain yang bisa dipakai
+                            </SelectItem>
+                          ) : (
+                            processDomainOptions.map((domain) => (
+                              <SelectItem key={domain.value} value={domain.value}>
+                                {domain.label}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Domain diambil dari participant yang sedang aktif. Setelah dipilih, jalur data akan tersaring otomatis.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Jalur yang dipakai</Label>
+                      <Select
+                        value={selectedAdapter ? String(selectedAdapter.id) : undefined}
+                        onValueChange={(value) => setSelectedAdapterId(value)}
+                        disabled={!selectedProcessDomain || adaptersForSelectedDomain.length <= 1}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={!selectedProcessDomain ? "Pilih domain dulu" : "Pilih jalur data"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {adaptersForSelectedDomain.length === 0 ? (
+                            <SelectItem value="__none__" disabled>
+                              Belum ada jalur untuk domain ini
+                            </SelectItem>
+                          ) : (
+                            adaptersForSelectedDomain.map((adapter) => (
+                              <SelectItem key={adapter.id} value={String(adapter.id)}>
+                                {adapter.type} · {adapter.endpoint?.url}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {adaptersForSelectedDomain.length === 0
+                          ? "Belum ada jalur data yang terdaftar untuk domain ini."
+                          : adaptersForSelectedDomain.length === 1
+                            ? "Jalur data dipilih otomatis karena hanya ada satu yang cocok."
+                            : "Pilih salah satu jalur data yang tersedia untuk domain ini."}
+                      </p>
+                    </div>
+
+                    {selectedProcessDomain && selectedAdapter ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">{selectedAdapter.domain_id} · {selectedAdapter.type}</p>
+                        <p className="mt-1 break-all">{selectedAdapterUrl}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" onClick={handleAdapterHealthCheck} disabled={adapterBusyAction !== ""}>
+                            {adapterBusyAction === "health" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                            Cek Koneksi
+                          </Button>
+                          <Button type="button" variant="outline" onClick={handleAdapterMetadataFetch} disabled={adapterBusyAction !== ""}>
+                            {adapterBusyAction === "metadata" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Files className="mr-2 h-4 w-4" />}
+                            Lihat Info
+                          </Button>
+                        </div>
+                      </div>
+                    ) : selectedProcessDomain ? (
+                      <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+                        Belum ada jalur data untuk domain ini. Tambahkan dulu jalur data di bagian atas.
+                      </div>
+                    ) : isLoadingParticipantDomains ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
+                        Domain participant sedang dimuat. Tunggu sebentar lalu pilih domain yang tersedia.
+                      </div>
+                    ) : participantDomainOptions.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+                        {isProvider
+                          ? "Participant ini belum punya domain kerja. Proses data baru bisa jalan setelah admin melengkapi domain participant."
+                          : "Domain belum terpasang ke participant ini. Lengkapi dulu domain di data participant, lalu kembali ke halaman ini untuk lanjut proses data."}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                        Pilih domain terlebih dahulu supaya proses di bawah bisa dijalankan.
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div>
+                          <p className="font-semibold text-slate-900">Kirim GeoJSON</p>
+                          <p className="text-xs text-slate-500">Cocok untuk kirim data spasial langsung</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Domain</Label>
+                          <Input
+                            value={geojsonForm.domain}
+                            readOnly
+                            disabled
+                            className="bg-muted"
+                            placeholder="Ikuti domain yang dipilih di atas"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Classification override</Label>
+                          <Select
+                            value={geojsonForm.classification || "__none__"}
+                            onValueChange={(value) =>
+                              setGeojsonForm((prev) => ({
+                                ...prev,
+                                classification: value === "__none__" ? "" : (value as AdapterClassification),
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Ikuti default domain</SelectItem>
+                              <SelectItem value="L0">L0</SelectItem>
+                              <SelectItem value="L1">L1</SelectItem>
+                              <SelectItem value="L2">L2</SelectItem>
+                              <SelectItem value="L3">L3</SelectItem>
+                              <SelectItem value="L4">L4</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Payload GeoJSON</Label>
+                          <Textarea
+                            className="min-h-[220px] font-mono text-xs"
+                            value={geojsonForm.payload}
+                            onChange={(e) => setGeojsonForm((prev) => ({ ...prev, payload: e.target.value }))}
+                            placeholder='{"type":"FeatureCollection","features":[]}'
+                          />
+                        </div>
+                        <Button type="button" onClick={handleGeojsonIngest} disabled={!selectedAdapter || adapterBusyAction !== ""}>
+                          {adapterBusyAction === "geojson" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileJson2 className="mr-2 h-4 w-4" />}
+                          Kirim GeoJSON
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div>
+                          <p className="font-semibold text-slate-900">Upload Shapefile</p>
+                          <p className="text-xs text-slate-500">Cocok untuk unggah arsip shapefile</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Domain</Label>
+                          <Input
+                            value={shapefileForm.domain}
+                            readOnly
+                            disabled
+                            className="bg-muted"
+                            placeholder="Ikuti domain yang dipilih di atas"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Classification override</Label>
+                          <Select
+                            value={shapefileForm.classification || "__none__"}
+                            onValueChange={(value) =>
+                              setShapefileForm((prev) => ({
+                                ...prev,
+                                classification: value === "__none__" ? "" : (value as AdapterClassification),
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Ikuti default domain</SelectItem>
+                              <SelectItem value="L0">L0</SelectItem>
+                              <SelectItem value="L1">L1</SelectItem>
+                              <SelectItem value="L2">L2</SelectItem>
+                              <SelectItem value="L3">L3</SelectItem>
+                              <SelectItem value="L4">L4</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Arsip Shapefile</Label>
+                          <Input
+                            type="file"
+                            accept=".zip,application/zip"
+                            onChange={(e) =>
+                              setShapefileForm((prev) => ({
+                                ...prev,
+                                file: e.target.files?.[0] ?? null,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Field map JSON</Label>
+                          <Textarea
+                            className="min-h-[90px] font-mono text-xs"
+                            value={shapefileForm.fieldMap}
+                            onChange={(e) => setShapefileForm((prev) => ({ ...prev, fieldMap: e.target.value }))}
+                            placeholder='{"well_name":"NAMA_SUMUR","operator":"OPERATOR"}'
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Constants JSON</Label>
+                          <Textarea
+                            className="min-h-[90px] font-mono text-xs"
+                            value={shapefileForm.constants}
+                            onChange={(e) => setShapefileForm((prev) => ({ ...prev, constants: e.target.value }))}
+                            placeholder='{"source":"provider-upload"}'
+                          />
+                        </div>
+                        <Button type="button" onClick={handleShapefileIngest} disabled={!selectedAdapter || adapterBusyAction !== ""}>
+                          {adapterBusyAction === "shapefile" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
+                          Upload Shapefile
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                      <div>
+                          <p className="font-semibold text-slate-900">Terbitkan Dataset</p>
+                          <p className="text-xs text-slate-500">Pakai setelah data siap dipublikasikan</p>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="space-y-2">
+                          <Label>Domain</Label>
+                          <Input
+                            value={publishForm.domain}
+                            readOnly
+                            disabled
+                            className="bg-muted"
+                            placeholder="Ikuti domain yang dipilih di atas"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Nama dataset</Label>
+                          <Input
+                            value={publishForm.name}
+                            onChange={(e) => setPublishForm((prev) => ({ ...prev, name: e.target.value }))}
+                            placeholder="well-location-active"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Schema ID</Label>
+                          <Input
+                            value={publishForm.schemaId}
+                            onChange={(e) => setPublishForm((prev) => ({ ...prev, schemaId: e.target.value }))}
+                            placeholder="well-location-schema"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Version</Label>
+                          <Input
+                            value={publishForm.version}
+                            onChange={(e) => setPublishForm((prev) => ({ ...prev, version: e.target.value }))}
+                            placeholder="1.0.0"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+                        <div className="space-y-2">
+                          <Label>Level</Label>
+                          <Select
+                            value={publishForm.level}
+                            onValueChange={(value) => setPublishForm((prev) => ({ ...prev, level: value as AdapterClassification }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="L0">L0</SelectItem>
+                              <SelectItem value="L1">L1</SelectItem>
+                              <SelectItem value="L2">L2</SelectItem>
+                              <SelectItem value="L3">L3</SelectItem>
+                              <SelectItem value="L4">L4</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>GeoJSON opsional</Label>
+                          <Textarea
+                            className="min-h-[120px] font-mono text-xs"
+                            value={publishForm.geojson}
+                            onChange={(e) => setPublishForm((prev) => ({ ...prev, geojson: e.target.value }))}
+                            placeholder="Kosongkan jika adapter sudah punya hasil validasi sendiri"
+                          />
+                        </div>
+                      </div>
+                      <Button type="button" onClick={handleAdapterPublish} disabled={!selectedAdapter || adapterBusyAction !== ""}>
+                        {adapterBusyAction === "publish" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
+                        Publish Dataset
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-950 p-4 text-slate-100">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Output</p>
+                      <p className="mt-2 text-sm text-slate-300">
+                        Hasil proses ditampilkan apa adanya supaya mudah dicek saat uji alur dan pencatatan defect.
+                      </p>
+                    </div>
+                    <div
+                      className={`rounded-xl border p-3 text-sm ${
+                        adapterResult.type === "error"
+                          ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                          : adapterResult.type === "success"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-50"
+                            : "border-slate-700 bg-slate-900 text-slate-300"
+                      }`}
+                    >
+                      <p className="font-semibold">
+                        {adapterResult.title || "Belum ada proses dijalankan"}
+                      </p>
+                      <pre className="mt-3 max-h-[780px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/30 p-3 text-xs leading-6">
+                        {adapterResult.payload ? JSON.stringify(adapterResult.payload, null, 2) : "Pilih domain, pastikan jalur data tersedia, lalu jalankan proses yang dibutuhkan."}
+                      </pre>
+                    </div>
+                    <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-100">
+                      Beberapa bagian lanjutan memang belum tersedia penuh, jadi tetap ditandai sebagai pekerjaan berikutnya dan tidak ditampilkan seolah sudah selesai.
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            )}
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Database className="w-5 h-5" /> DS Adapter Configuration
+                    <Database className="w-5 h-5" /> Jalur Data
                   </CardTitle>
                   <CardDescription>
-                    Daftarkan adapter yang menghubungkan connector ke sumber data aktual (GeoServer, ArcGIS, GeoNode, dll).
-                    Setiap adapter terikat ke satu domain wajib.
+                    Daftarkan dan kelola jalur data per domain di bagian ini.
                   </CardDescription>
                 </div>
-                <Button onClick={openAddAdapter} disabled={!participantId}>
-                  <Plus className="w-4 h-4 mr-2" /> Tambah Adapter
+                <Button onClick={openAddAdapter} disabled={!participantId || participantDomainOptions.length === 0}>
+                  <Plus className="w-4 h-4 mr-2" /> Tambah Jalur
                 </Button>
               </CardHeader>
               <CardContent>
                 {!participantId && (
                   <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <Shield className="w-4 h-4" /> Akun tidak terhubung ke participant — hanya operator KKKS yang dapat mengelola adapter.
+                    <Shield className="w-4 h-4" /> Akun ini belum terhubung ke participant, jadi jalur data belum bisa diatur.
+                  </div>
+                )}
+
+                {!!participantId && participantDomainOptions.length === 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    <div className="flex items-start gap-2">
+                      <Shield className="mt-0.5 w-4 h-4" />
+                      <div className="space-y-3">
+                        <div>
+                          <p className="font-medium">Domain participant belum ada.</p>
+                          <p className="mt-1">
+                            {isProvider
+                              ? "Jalur data belum bisa dibuat karena participant ini belum dipasangi domain. Lengkapi dulu dari sisi admin."
+                              : "Jalur data belum bisa dibuat sebelum domain ditambahkan ke participant ini."}
+                          </p>
+                          <p className="mt-1">
+                            {isProvider
+                              ? "Provider cukup menunggu domain participant dipasang, lalu kembali ke sini untuk lanjut isi jalur data."
+                              : "Pengaturannya ada di data participant, bagian domain."}
+                          </p>
+                        </div>
+                        {!isProvider && canOpenParticipantDomainSetup ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                            onClick={() => navigate(`/participants/${participantId}?tab=domains`)}
+                          >
+                            Buka Pengaturan Domain
+                          </Button>
+                        ) : (
+                          <p className="text-xs">Hubungi admin untuk melengkapi domain participant terlebih dahulu.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {loadingAdapters && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Memuat adapter…
+                    <Loader2 className="w-4 h-4 animate-spin" /> Memuat jalur data...
                   </div>
                 )}
 
                 {!loadingAdapters && (adaptersData ?? []).length === 0 && participantId && (
                   <div className="text-center py-8 text-muted-foreground">
                     <Database className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                    <p className="text-sm font-medium">Belum ada adapter terdaftar</p>
-                    <p className="text-xs mt-1">Tambah adapter untuk setiap domain yang sumber datanya via GeoServer / ArcGIS / GeoNode.</p>
+                    <p className="text-sm font-medium">Belum ada jalur data</p>
+                    <p className="text-xs mt-1">Tambahkan satu jalur untuk tiap domain yang dipakai participant.</p>
                   </div>
                 )}
 
@@ -757,7 +1630,7 @@ const Settings = () => {
                             <Badge variant="outline" className="text-xs">{domainLabel}</Badge>
                             <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">{a.type ?? "GIS_STUDIO"}</Badge>
                             {connSt === "ok" && <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Online</Badge>}
-                            {connSt === "error" && <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-200">Unreachable</Badge>}
+                            {connSt === "error" && <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-200">Tidak tersambung</Badge>}
                           </div>
                           <p className="text-xs font-mono text-muted-foreground truncate">{a.endpoint?.url ?? "—"}</p>
                         </div>
@@ -785,12 +1658,85 @@ const Settings = () => {
                 </div>
 
                 <div className="mt-4 rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground space-y-1">
-                  <p className="font-medium text-foreground">Cara kerja adapter:</p>
-                  <p>Dataset endpoint → <span className="font-mono bg-muted px-1 rounded">DS Adapter URL</span> → Adapter routing ke GeoServer/ArcGIS → Connector mengambil data sesuai standar SKK Migas.</p>
-                  <p>Set endpoint URL dataset Anda ke URL adapter ini agar transfer data melalui adapter.</p>
-                </div>
-              </CardContent>
-            </Card>
+                    <p className="font-medium text-foreground">Catatan:</p>
+                    <p>Pakai satu jalur yang jelas untuk tiap domain supaya proses kirim data dan penerbitan tidak salah arah.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Link className="w-5 h-5" />
+                    Hasil
+                  </CardTitle>
+                  <CardDescription>
+                    Cek apakah dataset yang ada sudah mengarah ke jalur data yang benar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {!participantId && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                      Akun ini belum punya participant aktif, jadi daftar keterhubungan dataset belum bisa ditampilkan.
+                    </div>
+                  )}
+
+                  {participantId && adapterPublishedPairs.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+                      Belum ada dataset yang bisa dicocokkan ke jalur data yang terdaftar.
+                    </div>
+                  )}
+
+                  {participantId && adapterPublishedPairs.length > 0 && (
+                    <div className="space-y-3">
+                      {adapterPublishedPairs.map((row) => (
+                        <div key={row.datasetId} className="rounded-xl border border-border bg-muted/30 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-900">{row.datasetName}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{row.datasetId}</p>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                row.isViaAdapter
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-slate-50 text-slate-700 border-slate-200"
+                              }
+                            >
+                              {row.isViaAdapter ? "Sudah terhubung" : "Belum terhubung"}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+                            <div>
+                              <p className="text-muted-foreground">Domain</p>
+                              <p className="mt-1 font-medium text-slate-900">{row.domain}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Level</p>
+                              <p className="mt-1 font-medium text-slate-900">{row.level}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Status Dataset</p>
+                              <p className="mt-1 font-medium text-slate-900">{row.status}</p>
+                            </div>
+                          </div>
+                          <p className="mt-3 truncate rounded-lg bg-background px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                            {row.endpointUrl}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+                    Daftar keterhubungan diambil dari dataset milik participant aktif dan dicocokkan dengan jalur data yang sudah didaftarkan.
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
           </TabsContent>
         </Tabs>
 
@@ -798,9 +1744,9 @@ const Settings = () => {
         <Dialog open={adapterDialog} onOpenChange={setAdapterDialog}>
           <DialogContent className="sm:max-w-[460px]">
             <DialogHeader>
-              <DialogTitle>{editingAdapter ? "Edit Adapter" : "Tambah DS Adapter"}</DialogTitle>
+              <DialogTitle>{editingAdapter ? "Ubah Jalur Data" : "Tambah Jalur Data"}</DialogTitle>
               <DialogDescription>
-                Daftarkan endpoint adapter Anda untuk domain tertentu.
+                Daftarkan jalur data untuk domain tertentu.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
@@ -809,20 +1755,19 @@ const Settings = () => {
                 <Select value={adapterForm.domain_id} onValueChange={(v) => setAdapterForm((f) => ({ ...f, domain_id: v }))}>
                   <SelectTrigger><SelectValue placeholder="Pilih domain" /></SelectTrigger>
                   <SelectContent>
-                    {DOMAINS.map((d) => (
-                      <SelectItem key={d.key} value={d.key}>{d.label} <span className="text-muted-foreground text-xs">({d.sub})</span></SelectItem>
+                    {participantDomainOptions.map((domain) => (
+                      <SelectItem key={domain.value} value={domain.value}>
+                        {domain.label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">Hanya domain yang memang sudah terikat ke participant yang bisa dipakai di sini.</p>
               </div>
               <div className="space-y-2">
                 <Label>Tipe Adapter</Label>
-                <Select value={adapterForm.type} onValueChange={(v) => setAdapterForm((f) => ({ ...f, type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ADAPTER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input value="GIS_STUDIO" disabled className="bg-muted" />
+                <p className="text-xs text-muted-foreground">Jenis jalur data dikunci mengikuti flow yang sudah dipakai saat ini.</p>
               </div>
               <div className="space-y-2">
                 <Label>Endpoint URL *</Label>
@@ -831,15 +1776,20 @@ const Settings = () => {
                   onChange={(e) => setAdapterForm((f) => ({ ...f, url: e.target.value }))}
                   placeholder="https://adapter.kkks.co.id/api/v1"
                 />
-                <p className="text-xs text-muted-foreground">URL service adapter Anda. Dataset endpoint harus diarahkan ke URL ini agar transfer via adapter.</p>
+                <p className="text-xs text-muted-foreground">Masukkan alamat layanan yang akan dipakai dataset pada domain ini.</p>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAdapterDialog(false)}>Batal</Button>
               <Button onClick={saveAdapter}
-                disabled={addAdapterMutation.isPending || updateAdapterMutation.isPending || !adapterForm.url}>
+                disabled={
+                  addAdapterMutation.isPending ||
+                  updateAdapterMutation.isPending ||
+                  !adapterForm.url ||
+                  !adapterForm.domain_id
+                }>
                 {(addAdapterMutation.isPending || updateAdapterMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingAdapter ? "Simpan Perubahan" : "Tambah Adapter"}
+                {editingAdapter ? "Simpan Perubahan" : "Tambah Jalur"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1126,162 +2076,6 @@ const Settings = () => {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={isConnectionPoolDialogOpen} onOpenChange={setIsConnectionPoolDialogOpen}>
-          <DialogContent className="sm:max-w-[760px]">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Database className="w-5 h-5" />
-                Connection Pool Configuration
-              </DialogTitle>
-              <DialogDescription>
-                Manage connector onboarding pools without changing the existing transfer flow.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  {isLoadingConnectionPools ? "Loading..." : `${connectionPools.length} connection pools configured`}
-                </p>
-                <Button size="sm" variant="outline" onClick={() => setIsAddConnectionPoolDialogOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Pool
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-[320px] overflow-y-auto">
-                {connectionPools.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                    No connection pools configured yet.
-                  </div>
-                ) : (
-                  connectionPools.map((pool) => (
-                    <div key={pool.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-                      <div className="space-y-1">
-                        <p className="font-medium text-sm">{pool.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Participant: {providerNameById[pool.participant_id] ?? pool.participant_id}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Type: {pool.type}</p>
-                        <p className="text-xs text-muted-foreground">Consumer URL: {pool.metadata?.url_consumer || "—"}</p>
-                        <p className="text-xs text-muted-foreground">Provider URL: {pool.metadata?.url_provider || "—"}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleRemoveConnectionPool(pool.id)}
-                        disabled={deleteConnectionPoolMutation.isPending}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsConnectionPoolDialogOpen(false)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={isAddConnectionPoolDialogOpen} onOpenChange={setIsAddConnectionPoolDialogOpen}>
-          <DialogContent className="sm:max-w-[560px]">
-            <DialogHeader>
-              <DialogTitle>Add Connection Pool</DialogTitle>
-              <DialogDescription>
-                Register connector pool metadata already supported by the live backend.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Participant</Label>
-                <Select
-                  value={newConnectionPoolForm.participant_id}
-                  onValueChange={(value) => setNewConnectionPoolForm({ ...newConnectionPoolForm, participant_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select participant" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {providers.map((provider) => (
-                      <SelectItem key={provider.provider_id} value={provider.provider_id}>
-                        {provider.provider_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input
-                    value={newConnectionPoolForm.name}
-                    onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, name: e.target.value })}
-                    placeholder="Pool name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select
-                    value={newConnectionPoolForm.type}
-                    onValueChange={(value) =>
-                      setNewConnectionPoolForm({
-                        ...newConnectionPoolForm,
-                        type: value as "CONSUMER" | "PROVIDER",
-                      })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PROVIDER">PROVIDER</SelectItem>
-                      <SelectItem value="CONSUMER">CONSUMER</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Token</Label>
-                <Input
-                  value={newConnectionPoolForm.token}
-                  onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, token: e.target.value })}
-                  placeholder="Connection pool token"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Consumer URL</Label>
-                <Input
-                  value={newConnectionPoolForm.url_consumer}
-                  onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, url_consumer: e.target.value })}
-                  placeholder="http://consumer-host"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Provider URL</Label>
-                <Input
-                  value={newConnectionPoolForm.url_provider}
-                  onChange={(e) => setNewConnectionPoolForm({ ...newConnectionPoolForm, url_provider: e.target.value })}
-                  placeholder="http://provider-host"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddConnectionPoolDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddConnectionPool}
-                disabled={createConnectionPoolMutation.isPending}
-                className="bg-accent hover:bg-accent/90"
-              >
-                {createConnectionPoolMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Add Pool
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );
