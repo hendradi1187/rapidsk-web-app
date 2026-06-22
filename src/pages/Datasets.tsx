@@ -387,11 +387,17 @@ const Datasets = () => {
     };
 
     if (endpointChanged && trimmedUrl) {
+      // BE mewajibkan auth_strategy.config selalu ada dengan shape OAuth2
+      // (token_url, client_id_key, scope[]) untuk SEMUA type — null/kosong → 422/500.
+      // Form hanya menangkap `type`, jadi config dikirim kosong (valid untuk NONE).
       payload.endpoint = {
         url: trimmedUrl,
         protocol: normalizedProtocol || null,
         access_type: normalizedAccess || null,
-        auth_strategy: authType === "NONE" ? null : { type: authType },
+        auth_strategy: {
+          type: authType,
+          config: { token_url: "", client_id_key: "", scope: [] },
+        },
       };
     }
 
