@@ -45,10 +45,23 @@ export const registrationsApi = {
   },
   // SuperAdmin.
   list: async (status?: string): Promise<RegistrationItem[]> => {
-    const res = await apiClient.get("/onboarding/registrations", {
-      params: status ? { status } : undefined,
-    });
-    return (res?.data?.data ?? res?.data ?? []) as RegistrationItem[];
+    const limit = 100;
+    let offset = 0;
+    let hasNext = false;
+    const rows: RegistrationItem[] = [];
+
+    do {
+      const res = await apiClient.get("/onboarding/registrations", {
+        params: { ...(status ? { status } : {}), limit, offset },
+      });
+      const batch = (res?.data?.data ?? res?.data ?? []) as RegistrationItem[];
+      rows.push(...batch);
+      hasNext = Boolean(res?.data?.has_next);
+      if (!hasNext || batch.length < limit) break;
+      offset += limit;
+    } while (hasNext);
+
+    return rows;
   },
   update: async (
     id: string,

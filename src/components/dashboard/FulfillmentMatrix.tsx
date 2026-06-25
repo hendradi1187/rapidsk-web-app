@@ -100,7 +100,7 @@ export function FulfillmentMatrix({
   const [onlyIncomplete, setOnlyIncomplete] = useState(false);
   const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 12;
+  const [pageSize, setPageSize] = useState(12);
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase();
     return rows.filter(
@@ -111,10 +111,10 @@ export function FulfillmentMatrix({
     );
   }, [rows, search, onlyIncomplete, onlyOverdue]);
   const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filteredRows, page],
+    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
+    [filteredRows, page, pageSize],
   );
-  useEffect(() => setPage(1), [search, onlyIncomplete, onlyOverdue]);
+  useEffect(() => setPage(1), [search, onlyIncomplete, onlyOverdue, pageSize]);
 
   // Drill-down per KKKS
   type Row = { p: KKKS; cells: { domain: DomainKey; info: CellInfo }[]; fulfilled: number };
@@ -297,7 +297,13 @@ export function FulfillmentMatrix({
             )}
           </table>
         </div>
-        <Pager page={page} total={filteredRows.length} pageSize={PAGE_SIZE} onPage={setPage} />
+        <Pager
+          page={page}
+          total={filteredRows.length}
+          pageSize={pageSize}
+          onPage={setPage}
+          onPageSize={setPageSize}
+        />
       </CardContent>
 
       {/* Drill-down per KKKS */}

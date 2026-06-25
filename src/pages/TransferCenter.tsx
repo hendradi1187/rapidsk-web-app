@@ -20,14 +20,16 @@ import { useContracts } from "@/api/hooks/useContracts";
 import { useAgreements } from "@/api/hooks/useAgreements";
 import { useTransfers } from "@/api/hooks/useTransfers";
 import { useConnectionPools } from "@/api/hooks/useConnectionPools";
+import { useProviders } from "@/api/hooks/useProviders";
 import { useDomain } from "@/context/DomainContext";
 import { useAuth } from "@/context/AuthContext";
-import { contractsApi, agreementsApi, type ContractItem } from "@/api/services/policy-contract";
+import { contractsApi, agreementsApi, type ContractDetail, type ContractItem } from "@/api/services/policy-contract";
 import { transfersApi, type TransferMode } from "@/api/services/connector";
 import { policiesApi } from "@/api/services/governance";
 import { DOMAINS, datasetDomain, contractDomain, type DomainKey } from "@/lib/fulfillment";
 import type { Dataset } from "@/api/types/data-catalog";
 import type { ConnectionPoolItem } from "@/api/types/governance";
+import type { Provider } from "@/api/types/providers";
 import { findParticipantPool, isPoolReady, resolvePoolMeta } from "@/lib/connection-pool";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -51,6 +53,14 @@ const STATUS_STYLE: Record<string, string> = {
   PAUSED: "bg-slate-50 text-slate-700 border-slate-200",
 };
 
+const DATASET_STATUS_STYLE: Record<string, string> = {
+  COMPLETED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  TRANSFERRING: "bg-blue-50 text-blue-700 border-blue-200",
+  INITIATED: "bg-amber-50 text-amber-700 border-amber-200",
+  FAILED: "bg-rose-50 text-rose-700 border-rose-200",
+  READY: "bg-slate-50 text-slate-700 border-slate-200",
+};
+
 const readTransferModeMap = (): Record<string, TransferMode> => {
   try {
     const raw = localStorage.getItem(TRANSFER_MODE_STORAGE_KEY);
@@ -70,32 +80,76 @@ const TransferCenter = () => {
   const { participantId, role } = useAuth();
   const isSuperAdmin = role === "SUPER_ADMIN";
   const [overrideParticipantId, setOverrideParticipantId] = useState<string | null>(null);
+  const [selectedDatasetByDomain, setSelectedDatasetByDomain] = useState<Record<string, string>>({});
+  const [contractDetailsById, setContractDetailsById] = useState<Record<string, ContractDetail>>({});
   const effectiveParticipantId = isSuperAdmin ? overrideParticipantId : participantId;
+  const adminContextReady = !isSuperAdmin || !!effectiveParticipantId;
   const datasetsQ = useDatasets();
   const contractsQ = useContracts();
   const agreementsQ = useAgreements();
   const transfersQ = useTransfers();
   const poolsQ = useConnectionPools();
+  const providersQ = useProviders();
   const { data: dsData } = datasetsQ;
   const { data: cData } = contractsQ;
   const { data: agData } = agreementsQ;
   const { data: trData } = transfersQ;
   const { data: poolsData } = poolsQ;
+  const { data: providersData } = providersQ;
   const polQ = useQuery({
     queryKey: ["dataset-policies", domainId],
     queryFn: () => policiesApi.list(domainId!),
     enabled: !!domainId,
   });
 
-  const datasets = useMemo(
-    () => ((dsData ?? []) as Dataset[]).filter(
-      (d) => (!effectiveParticipantId || d.provider_id === effectiveParticipantId) && String(d.status).toLowerCase() === "published",
-    ),
-    [dsData, effectiveParticipantId],
+  const providers = useMemo(
+    () => ((providersData ?? []) as Provider[]),
+    [providersData],
   );
-  const contracts = ((cData ?? []) as ContractItem[]).filter((c) => !effectiveParticipantId || c.provider_id === effectiveParticipantId);
+  const providerOptions = useMemo(
+    () =>
+      providers
+        .filter((provider) => provider.organization_type === "ENTERPRISE")
+        .sort((left, right) => (left.provider_name ?? "").localeCompare(right.provider_name ?? "")),
+    [providers],
+  );
+  const selectedProvider = useMemo(
+    () => providerOptions.find((provider) => provider.provider_id === effectiveParticipantId) ?? null,
+    [providerOptions, effectiveParticipantId],
+  );
+
+  const datasets = useMemo(
+    () =>
+      adminContextReady
+        ? ((dsData ?? []) as Dataset[]).filter(
+            (dataset) =>
+              (!effectiveParticipantId || dataset.provider_id === effectiveParticipantId) &&
+              String(dataset.status).toLowerCase() === "published",
+          )
+        : [],
+    [adminContextReady, dsData, effectiveParticipantId],
+  );
+  const contracts = useMemo(
+    () =>
+      adminContextReady
+        ? ((cData ?? []) as ContractItem[]).filter(
+            (contract) => !effectiveParticipantId || contract.provider_id === effectiveParticipantId,
+          )
+        : [],
+    [adminContextReady, cData, effectiveParticipantId],
+  );
   const agreements = agData ?? [];
-  const transfers = trData ?? [];
+  const transfers = useMemo(
+    () =>
+      adminContextReady
+        ? (trData ?? []).filter(
+            (transfer) =>
+              !effectiveParticipantId ||
+              datasets.some((dataset) => dataset.dataset_id === transfer.dataset_id),
+          )
+        : [],
+    [adminContextReady, trData, effectiveParticipantId, datasets],
+  );
   const pools = (poolsData ?? []) as ConnectionPoolItem[];
   const dpId = (polQ.data ?? [])[0]?.policy_id as string | undefined;
   const dsName = (id: string) => datasets.find((d) => d.dataset_id === id)?.dataset_name ?? `${id.slice(0, 8)}…`;
@@ -105,20 +159,109 @@ const TransferCenter = () => {
   const poolReady = isPoolReady(myPool);
   const poolMeta = myPool ? resolvePoolMeta(myPool) : null;
 
-  // Kewajiban per domain: dataset published + kontrak ACTIVE + pool ready = siap dikirim
+  useEffect(() => {
+    let cancelled = false;
+    if (!domainId || contracts.length === 0) {
+      setContractDetailsById({});
+      return;
+    }
+
+    const activeContracts = contracts.filter((contract) => contract.status === "ACTIVE");
+    if (activeContracts.length === 0) {
+      setContractDetailsById({});
+      return;
+    }
+
+    void Promise.allSettled(
+      activeContracts.map(async (contract) => {
+        const detail = await contractsApi.get(domainId, contract.id);
+        return [contract.id, detail] as const;
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, ContractDetail> = {};
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          const [contractId, detail] = result.value;
+          next[contractId] = detail;
+        }
+      });
+      setContractDetailsById(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contracts, domainId]);
+
+  // Kewajiban per domain: satu kontrak bisa punya banyak dataset, transfer tetap dipilih satu per proses.
   const rows = useMemo(
     () =>
       DOMAINS.map((dom) => {
-        const ds = datasets.find((d) => datasetDomain(d) === (dom.key as DomainKey));
         const contract = contracts.find((c) => contractDomain(c) === (dom.key as DomainKey) && c.status === "ACTIVE");
-        const sent = !!ds && transfers.some((t) => t.dataset_id === ds.dataset_id && String(t.status).toUpperCase() === "COMPLETED");
-        return { dom, ds, contract, sent, ready: !!ds && !!contract && poolReady };
+        const detail = contract ? contractDetailsById[contract.id] : undefined;
+        const linkedDatasetIds = (detail?.datasets ?? []).map((dataset) => dataset.dataset_id);
+        const linkedDatasets = linkedDatasetIds
+          .map((datasetId) => datasets.find((dataset) => dataset.dataset_id === datasetId))
+          .filter(Boolean) as Dataset[];
+        const fallbackDatasets = datasets.filter((dataset) => datasetDomain(dataset) === (dom.key as DomainKey));
+        const availableDatasets = linkedDatasets.length > 0 ? linkedDatasets : fallbackDatasets;
+        const completedDatasetIds = availableDatasets
+          .filter((dataset) =>
+            transfers.some(
+              (transfer) =>
+                transfer.dataset_id === dataset.dataset_id &&
+                String(transfer.status).toUpperCase() === "COMPLETED",
+            ),
+          )
+          .map((dataset) => dataset.dataset_id);
+        const pendingDatasets = availableDatasets.filter(
+          (dataset) => !completedDatasetIds.includes(dataset.dataset_id),
+        );
+        const selectedDatasetId =
+          selectedDatasetByDomain[dom.key] ??
+          pendingDatasets[0]?.dataset_id ??
+          availableDatasets[0]?.dataset_id ??
+          null;
+        const selectedDataset =
+          availableDatasets.find((dataset) => dataset.dataset_id === selectedDatasetId) ?? null;
+        const datasetStatuses = availableDatasets.map((dataset) => {
+          const history = transfers
+            .filter((transfer) => transfer.dataset_id === dataset.dataset_id)
+            .sort((left, right) => {
+              const leftTime = new Date(left.updated_at ?? left.created_at ?? 0).getTime();
+              const rightTime = new Date(right.updated_at ?? right.created_at ?? 0).getTime();
+              return rightTime - leftTime;
+            });
+          const latest = history[0];
+          const status = latest ? String(latest.status).toUpperCase() : "READY";
+
+          return {
+            dataset,
+            latest,
+            status,
+            sent: status === "COMPLETED",
+            isSelected: dataset.dataset_id === selectedDatasetId,
+          };
+        });
+
+        return {
+          dom,
+          contract,
+          availableDatasets,
+          pendingDatasets,
+          completedDatasetIds,
+          datasetStatuses,
+          selectedDataset,
+          allSent: availableDatasets.length > 0 && pendingDatasets.length === 0,
+          ready: !!contract && !!selectedDataset && poolReady,
+        };
       }),
-    [datasets, contracts, transfers, poolReady],
+    [contractDetailsById, contracts, datasets, poolReady, selectedDatasetByDomain, transfers],
   );
 
-  const readyCount = rows.filter((r) => r.ready && !r.sent).length;
-  const sentCount = rows.filter((r) => r.sent).length;
+  const readyCount = rows.filter((row) => row.ready && !row.allSent).length;
+  const sentCount = rows.filter((row) => row.allSent).length;
 
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [transferModes, setTransferModes] = useState<Record<string, TransferMode>>({});
@@ -249,7 +392,7 @@ const TransferCenter = () => {
   };
 
   const send = async (row: (typeof rows)[number]) => {
-    if (!domainId || !row.ds || !row.contract) return;
+    if (!domainId || !row.selectedDataset || !row.contract) return;
     if (!dpId) return toast.error("Tidak ada dataset-policy (jalankan Setup Juknis dulu).");
     if (!poolReady) {
       const missing = !myPool
@@ -263,7 +406,7 @@ const TransferCenter = () => {
     // Cek apakah ada transfer aktif untuk dataset ini
     const activeTransfer = (transfers as typeof transfers).find(
       (t) =>
-        t.dataset_id === row.ds!.dataset_id &&
+        t.dataset_id === row.selectedDataset.dataset_id &&
         !["COMPLETED", "FAILED"].includes(String(t.status).toUpperCase()),
     );
     if (activeTransfer) {
@@ -277,14 +420,14 @@ const TransferCenter = () => {
     const mode = transferModes[key] ?? "direct";
     const step = (s: string) => setBusy((b) => ({ ...b, [key]: s }));
     try {
-      console.debug("[Transfer] start", { domainId, contractId: row.contract.id, datasetId: row.ds.dataset_id, dpId });
+      console.debug("[Transfer] start", { domainId, contractId: row.contract.id, datasetId: row.selectedDataset.dataset_id, dpId });
 
       step("menautkan dataset");
       try {
         await contractsApi.linkDataset(domainId, {
           id: row.contract.id, consumer_id: row.contract.consumer_id, provider_id: row.contract.provider_id,
           name: row.contract.name, status: row.contract.status,
-        }, row.ds.dataset_id, dpId);
+        }, row.selectedDataset.dataset_id, dpId);
         console.debug("[Transfer] linkDataset OK");
       } catch (e: unknown) {
         console.warn("[Transfer] linkDataset FAILED (non-blocking):", e);
@@ -308,15 +451,15 @@ const TransferCenter = () => {
       }
 
       step("memulai transfer");
-      console.debug("[Transfer] initiate payload:", { domain_id: domainId, agreement_id: ag.id, dataset_id: row.ds.dataset_id });
+      console.debug("[Transfer] initiate payload:", { domain_id: domainId, agreement_id: ag.id, dataset_id: row.selectedDataset.dataset_id });
       const { transfer_process_id } = await transfersApi.initiate({
         domain_id: domainId,
         agreement_id: ag.id,
-        dataset_id: row.ds.dataset_id,
+        dataset_id: row.selectedDataset.dataset_id,
       });
       console.debug("[Transfer] initiated, process_id:", transfer_process_id);
       persistTransferMode(transfer_process_id, mode);
-      const startBody = { domain_id: domainId, agreement_id: ag.id, dataset_id: row.ds.dataset_id };
+      const startBody = { domain_id: domainId, agreement_id: ag.id, dataset_id: row.selectedDataset.dataset_id };
       persistTransferBody(transfer_process_id, startBody);
       if (mode === "persistent") {
         await transfersApi.startPersistent(transfer_process_id, startBody);
@@ -335,11 +478,11 @@ const TransferCenter = () => {
       if (final === "COMPLETED") {
         toast.success(
           mode === "persistent"
-            ? `Data ${row.dom.label} tersimpan via persistent transfer.`
-            : `Data ${row.dom.label} terkirim via direct stream.`,
+            ? `Data ${row.selectedDataset.dataset_name} tersimpan via persistent transfer.`
+            : `Data ${row.selectedDataset.dataset_name} terkirim via direct stream.`,
         );
       }
-      else toast.error(`Transfer ${row.dom.label}: ${final}`);
+      else toast.error(`Transfer ${row.selectedDataset.dataset_name}: ${final}`);
       await refreshOperationalState();
     } catch (e: unknown) {
       const msg = getApiErrorMessage(e, "error");
@@ -414,22 +557,35 @@ const TransferCenter = () => {
             <div className="sm:w-64">
               <Label className="text-xs text-amber-800 mb-1 block">Participant (Provider)</Label>
               <Select
-                value={overrideParticipantId ?? "__none__"}
-                onValueChange={(v) => setOverrideParticipantId(v === "__none__" ? null : v)}
+                value={overrideParticipantId ?? ""}
+                onValueChange={(value) => setOverrideParticipantId(value)}
               >
                 <SelectTrigger className="bg-white border-amber-300 text-sm h-9">
-                  <SelectValue placeholder="Pilih participant..." />
+                  <SelectValue placeholder="Pilih provider..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">— Semua (tanpa filter) —</SelectItem>
-                  {pools.filter((p) => p.participant_id).map((p) => (
-                    <SelectItem key={p.participant_id} value={p.participant_id!}>
-                      {p.name || p.participant_id!.slice(0, 8)} ({p.type})
+                  {providerOptions.map((provider) => (
+                    <SelectItem key={provider.provider_id} value={provider.provider_id}>
+                      {provider.provider_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        )}
+
+        {isSuperAdmin && !adminContextReady && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            Pilih provider dulu. Selama provider belum dipilih, daftar kewajiban dan riwayat transfer sengaja dikosongkan
+            supaya konteks domain tidak nyampur.
+          </div>
+        )}
+
+        {isSuperAdmin && adminContextReady && (
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+            Konteks aktif: <strong>{selectedProvider?.provider_name ?? "Provider terpilih"}</strong>
+            {domainId ? <> · domain aktif <strong>{domainId}</strong></> : <> · domain aktif belum terbaca</>}
           </div>
         )}
 
@@ -456,13 +612,104 @@ const TransferCenter = () => {
                       <p className="text-xs text-muted-foreground">{r.dom.sub}</p>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {r.ds ? <span className="inline-flex items-center gap-1"><Database className="w-3.5 h-3.5 text-muted-foreground" />{r.ds.dataset_name}</span> : <span className="text-slate-400 text-xs">Belum publish dataset</span>}
+                      {r.availableDatasets.length === 0 ? (
+                        <span className="text-slate-400 text-xs">Belum ada dataset pada domain ini</span>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {r.availableDatasets.length > 1 ? (
+                            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Dataset terikat
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  {r.availableDatasets.length} item
+                                </span>
+                              </div>
+                              <select
+                                value={r.selectedDataset?.dataset_id ?? ""}
+                                onChange={(e) =>
+                                  setSelectedDatasetByDomain((current) => ({
+                                    ...current,
+                                    [r.dom.key]: e.target.value,
+                                  }))
+                                }
+                                disabled={!!b}
+                                className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+                              >
+                                {r.availableDatasets.map((dataset) => (
+                                  <option key={dataset.dataset_id} value={dataset.dataset_id}>
+                                    {dataset.dataset_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              <Database className="w-3.5 h-3.5 text-muted-foreground" />
+                              {r.selectedDataset?.dataset_name}
+                            </span>
+                          )}
+                          <div className="space-y-1.5 rounded-xl border border-slate-200 bg-white p-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Status per dataset
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                {r.completedDatasetIds.length}/{r.availableDatasets.length} selesai
+                              </span>
+                            </div>
+                            <div className="max-h-36 space-y-1.5 overflow-y-auto pr-1">
+                              {r.datasetStatuses.map((item) => (
+                                <button
+                                  key={item.dataset.dataset_id}
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedDatasetByDomain((current) => ({
+                                      ...current,
+                                      [r.dom.key]: item.dataset.dataset_id,
+                                    }))
+                                  }
+                                  className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition ${
+                                    item.isSelected
+                                      ? "border-accent bg-accent/5 shadow-sm"
+                                      : "border-slate-200 bg-slate-50/60 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-medium text-slate-900">
+                                      {item.dataset.dataset_name}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                      {item.latest?.record_count != null
+                                        ? `${item.latest.record_count} record`
+                                        : item.sent
+                                          ? "Transfer selesai"
+                                          : item.status === "FAILED"
+                                            ? "Perlu kirim ulang"
+                                            : item.status === "READY"
+                                              ? "Siap dikirim"
+                                              : "Masih diproses"}
+                                    </p>
+                                  </div>
+                                  <Badge
+                                    variant="outline"
+                                    className={DATASET_STATUS_STYLE[item.status] ?? DATASET_STATUS_STYLE.READY}
+                                  >
+                                    {item.status === "READY" ? "SIAP" : item.status}
+                                  </Badge>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <select
                         value={transferModes[r.dom.key] ?? "direct"}
                         onChange={(e) => updateTransferMode(r.dom.key, e.target.value as TransferMode)}
-                        disabled={!!b || r.sent || !r.ready}
+                        disabled={!!b || r.allSent || !r.ready}
                         className="flex h-9 rounded-md border border-input bg-background px-2 py-1 text-xs"
                       >
                         <option value="direct">Direct Stream</option>
@@ -470,10 +717,10 @@ const TransferCenter = () => {
                       </select>
                     </TableCell>
                     <TableCell>
-                      {r.sent ? (
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Terkirim</Badge>
-                      ) : !r.ds ? (
-                        <span className="text-xs text-amber-700">Publish dataset dulu</span>
+                      {r.allSent ? (
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Semua dataset terkirim</Badge>
+                      ) : r.availableDatasets.length === 0 ? (
+                        <span className="text-xs text-amber-700">Publish atau tautkan dataset dulu</span>
                       ) : !r.contract ? (
                         <span className="text-xs text-amber-700">Kontrak belum aktif</span>
                       ) : !poolReady ? (
@@ -482,14 +729,14 @@ const TransferCenter = () => {
                           {!myPool ? "Connection pool belum ada" : !poolMeta?.endpoint ? "Endpoint connector kosong" : "Well-known JWT URL kosong"}
                         </span>
                       ) : (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Siap dikirim</Badge>
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">{r.pendingDatasets.length} dataset siap dipilih</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
                       {b ? (
                         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {b}…</span>
-                      ) : r.sent ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> selesai</span>
+                      ) : r.allSent ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> selesai semua</span>
                       ) : r.ready ? (
                         <Button size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => send(r)}>
                           <Send className="w-4 h-4 mr-1" /> {transferModes[r.dom.key] === "persistent" ? "Start Persistent" : "Start Direct Stream"}
@@ -549,7 +796,9 @@ const TransferCenter = () => {
                       <div className="flex items-center justify-end gap-1.5">
                         {/* Retry untuk FAILED */}
                         {String(t.status).toUpperCase() === "FAILED" && (() => {
-                          const row = rows.find((r) => r.ds?.dataset_id === t.dataset_id);
+                          const row = rows.find((r) =>
+                            r.availableDatasets.some((dataset) => dataset.dataset_id === t.dataset_id),
+                          );
                           return row?.ready ? (
                             <Button size="sm" variant="outline"
                               className="h-7 text-xs text-amber-700 border-amber-200 hover:bg-amber-50"

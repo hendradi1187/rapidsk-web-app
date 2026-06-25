@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { Pager } from "@/components/common/Pager";
 import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -13,11 +14,16 @@ import {
 import { toast } from "sonner";
 import { registrationsApi, participantsApi, type RegistrationItem } from "@/api/services/onboarding";
 import { usersApi, userCategoriesApi, userGroupsApi } from "@/api/services/identity";
-import { contractsApi } from "@/api/services/policy-contract";
-import { organizationsApi } from "@/api/services/governance";
 import { useProviders } from "@/api/hooks/useProviders";
+import { useAuth } from "@/context/AuthContext";
 import { useDomain } from "@/context/DomainContext";
-import { DOMAINS } from "@/lib/fulfillment";
+import {
+  bindParticipantToOrganizationDomains,
+  issueAutoObligationContracts,
+  selectConsumerParticipant,
+  resolveGovernanceOrganization,
+  rankConsumerCandidate,
+} from "@/lib/onboarding-obligations";
 import { getApiErrorMessage } from "@/lib/api-error";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -47,6 +53,7 @@ type ProviderRow = {
 
 const RegistrationsTab = () => {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const { domainId } = useDomain();
   const { data: providers } = useProviders();
 
@@ -59,7 +66,14 @@ const RegistrationsTab = () => {
   const usersQ = useQuery({ queryKey: ["users", "list"], queryFn: () => usersApi.list() });
 
   const regs = (regQ.data ?? []) as RegistrationItem[];
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const count = (s: string) => regs.filter((r) => r.status === s).length;
+  const pagedRegs = useMemo(
+    () => regs.slice((page - 1) * pageSize, page * pageSize),
+    [regs, page, pageSize],
+  );
+  useEffect(() => setPage(1), [regs.length, pageSize]);
 
   // Status akun operator: cocokkan via email (UserResponse tak mengekspos participant_id).
   const userByEmail = useMemo(() => {
@@ -78,14 +92,16 @@ const RegistrationsTab = () => {
   // referensi untuk orkestrasi
   const providerCat = (catQ.data ?? []).find((c) => c.code === "PROVIDER");
   const providerGrp = (grpQ.data ?? []).find((g) => g.code === "PROVIDER");
-  const skkParticipant = useMemo(
+  const preferredConsumerName = user?.category?.name ?? null;
+  const consumerParticipants = useMemo(
     () =>
-      ((providers ?? []) as ProviderRow[]).find(
-        (p) =>
-          (p.organization_type ?? "").toUpperCase().startsWith("GOV") ||
-          /skk\s*migas/i.test(p.provider_name ?? ""),
-      ),
+      ((providers ?? []) as ProviderRow[])
+        .sort((left, right) => rankConsumerCandidate(right) - rankConsumerCandidate(left)),
     [providers],
+  );
+  const skkParticipant = useMemo(
+    () => selectConsumerParticipant(consumerParticipants, preferredConsumerName),
+    [consumerParticipants, preferredConsumerName],
   );
 
   const [busy, setBusy] = useState<Record<string, string>>({}); // id -> langkah
@@ -93,6 +109,7 @@ const RegistrationsTab = () => {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["registrations"] });
     qc.invalidateQueries({ queryKey: ["participants"] });
+    qc.invalidateQueries({ queryKey: ["providers"] });
     qc.invalidateQueries({ queryKey: ["contracts"] });
     qc.invalidateQueries({ queryKey: ["users"] });
   };
@@ -123,11 +140,13 @@ const RegistrationsTab = () => {
   };
 
   const approve = async (reg: RegistrationItem) => {
-    if (!domainId) return toast.error("Domain belum siap.");
     if (!providerCat || !providerGrp)
       return toast.error("Kategori/grup PROVIDER tidak ditemukan di BE.");
     if (!skkParticipant)
-      return toast.error("Participant SKK Migas (consumer) tidak ditemukan.");
+      return toast.error(
+        "Participant consumer/regulator belum ada. Buat dulu participant regulator di /participants, misalnya SKK Migas atau GOV_CENTRAL, baru approval registrasi bisa menerbitkan 5 kewajiban.",
+        { duration: 9000 },
+      );
 
     const step = (s: string) => setBusy((b) => ({ ...b, [reg.id]: s }));
     try {
@@ -144,24 +163,13 @@ const RegistrationsTab = () => {
         },
       });
 
-      // 2. sync governance org — buat kalau belum ada (name-matching)
+      // 2. sync governance org + domain binding participant
       step("sync governance org");
-      try {
-        const existingOrgs = await organizationsApi.list();
-        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const alreadyExists = existingOrgs.some(
-          (o) => normalize(o.organization_name) === normalize(reg.organization_name),
-        );
-        if (!alreadyExists) {
-          await organizationsApi.create({
-            organization_name: reg.organization_name,
-            code: reg.organization_name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20),
-            description: `Organisasi ${reg.organization_name} — dibuat otomatis saat approve registrasi`,
-          });
-        }
-      } catch {
-        // Governance org sync gagal tidak memblokir proses utama
-      }
+      const governanceOrg = await resolveGovernanceOrganization(reg);
+      const organizationDomainIds = await bindParticipantToOrganizationDomains(
+        participant.id,
+        governanceOrg.organization_id,
+      );
 
       // 3. user operator (BE kirim email aktivasi otomatis)
       step("buat akun operator");
@@ -175,23 +183,27 @@ const RegistrationsTab = () => {
         participant_id: participant.id,
       });
 
-      // 4. auto-mandate: 5 kontrak REQUESTED (kewajiban 5 domain)
-      step("terbitkan 5 kewajiban");
-      for (const d of DOMAINS) {
-        await contractsApi.create(domainId, {
-          consumer_id: skkParticipant.provider_id,
-          provider_id: participant.id,
-          name: `[${d.label}] Kewajiban Data — ${reg.organization_name}`,
-          description: `Kewajiban penyediaan data ${d.label} (${d.sub}) sesuai Juknis SKK Migas.`,
-        });
+      // 4. auto-mandate: 5 kontrak per domain Juknis yang terpasang
+      step("terbitkan kewajiban");
+      const targetDomainIds = organizationDomainIds.length > 0
+        ? organizationDomainIds
+        : (domainId ? [domainId] : []);
+      if (targetDomainIds.length === 0) {
+        throw new Error("Domain Juknis belum tersedia untuk organisasi ini. Jalankan setup domain dulu sebelum approval.");
       }
+      await issueAutoObligationContracts({
+        domainIds: targetDomainIds,
+        consumerId: skkParticipant.provider_id,
+        providerId: participant.id,
+        providerName: reg.organization_name,
+      });
 
       // 5. tandai APPROVED + simpan participant_id
       step("finalisasi");
       await registrationsApi.update(reg.id, { status: "APPROVED", participant_id: participant.id });
 
       toast.success(
-        `${reg.organization_name} disetujui — akun operator diundang (email), 5 kewajiban diterbitkan.`,
+        `${reg.organization_name} disetujui — akun operator diundang dan kewajiban kontrak otomatis diterbitkan.`,
       );
       refresh();
     } catch (e: unknown) {
@@ -280,7 +292,7 @@ const RegistrationsTab = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                regs.map((r) => {
+                pagedRegs.map((r) => {
                   const b = busy[r.id];
                   return (
                     <TableRow key={r.id} className="hover:bg-muted/50">
@@ -336,6 +348,15 @@ const RegistrationsTab = () => {
               )}
             </TableBody>
           </Table>
+          <div className="px-4 pb-4">
+            <Pager
+              page={page}
+              total={regs.length}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={setPageSize}
+            />
+          </div>
         </div>
     </div>
   );

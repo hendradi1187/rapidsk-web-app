@@ -8,6 +8,11 @@ import type {
 
 // GX-Space participants (KKKS & SKK Migas) → tipe Provider flat.
 const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
+const getHasNext = (res: any) => Boolean(res?.data?.has_next);
+const getTotal = (res: any): number | null => {
+  const total = res?.data?.total;
+  return typeof total === "number" ? total : null;
+};
 
 export const providersApi = {
   create: async (body: ProviderCreateRequest): Promise<{ id: string }> => {
@@ -16,8 +21,29 @@ export const providersApi = {
   },
 
   list: async (): Promise<ProviderListResponse> => {
-    const res = await apiClient.get("/onboarding/participants");
-    return unwrap(res).map((p: any) => ({
+    const limit = 100;
+    let offset = 0;
+    let total: number | null = null;
+    const rows: any[] = [];
+
+    do {
+      const res = await apiClient.get("/onboarding/participants", {
+        params: { limit, offset },
+      });
+      const batch = unwrap(res);
+      rows.push(...batch);
+      total = getTotal(res);
+      if (!getHasNext(res) || batch.length < limit) break;
+      offset += limit;
+    } while (total === null || offset < total);
+
+    const merged = new Map<string, any>();
+    rows.forEach((item) => {
+      if (!item?.id) return;
+      merged.set(item.id, item);
+    });
+
+    return Array.from(merged.values()).map((p: any) => ({
       provider_id: p.id,
       provider_name: p.organization_name,
       organization_type: p.organization_type,

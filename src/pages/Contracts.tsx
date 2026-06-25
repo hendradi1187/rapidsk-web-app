@@ -64,7 +64,7 @@ const Contracts = () => {
   // Cluster domain + pagination
   const [filterDomain, setFilterDomain] = useState("all");
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 12;
+  const [pageSize, setPageSize] = useState(12);
   const domainCounts = useMemo(() => {
     const c: Record<string, number> = { all: contracts.length };
     for (const d of DOMAINS) c[d.key] = 0;
@@ -79,10 +79,11 @@ const Contracts = () => {
     [contracts, filterDomain],
   );
   const pagedContracts = useMemo(
-    () => filteredContracts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filteredContracts, page],
+    () => filteredContracts.slice((page - 1) * pageSize, page * pageSize),
+    [filteredContracts, page, pageSize],
   );
   useEffect(() => setPage(1), [filterDomain]);
+  useEffect(() => setPage(1), [pageSize]);
 
   // detail dialog
   const [open, setOpen] = useState(false);
@@ -174,7 +175,13 @@ const Contracts = () => {
               </Table>
             )}
             {!isLoading && !isError && (
-              <Pager page={page} total={filteredContracts.length} pageSize={PAGE_SIZE} onPage={setPage} />
+              <Pager
+                page={page}
+                total={filteredContracts.length}
+                pageSize={pageSize}
+                onPage={setPage}
+                onPageSize={setPageSize}
+              />
             )}
           </CardContent>
         </Card>

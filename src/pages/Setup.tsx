@@ -82,7 +82,7 @@ const maskLicenseKey = (value: string) => {
 };
 
 const Setup = () => {
-  const { setBootstrapState } = useRuntime();
+  const { setBootstrapState, source, setupStatus } = useRuntime();
   const [currentStep, setCurrentStep] = useState<WizardStep>(0);
   const [licenseKey, setLicenseKey] = useState("");
   const [publicAppUrl, setPublicAppUrl] = useState(window.location.origin);
@@ -123,9 +123,19 @@ const Setup = () => {
 
   const canMovePastLicense = Boolean(licenseKey.trim() && publicAppUrl.trim());
   const canMovePastEndpoint = Boolean(publicAppUrl.trim() && apiBaseUrl.trim());
-  const canInitialize = !initializing && !hasBlockingErrors && licenseStatus.length > 0 && checks.length > 0;
+  const isBootstrapMissing = source === "fallback";
+  const canInitialize =
+    !isBootstrapMissing &&
+    !initializing &&
+    !hasBlockingErrors &&
+    licenseStatus.length > 0 &&
+    checks.length > 0;
 
   const validateLicense = async () => {
+    if (isBootstrapMissing) {
+      toast.error("Wrapper belum aktif. Jalankan browser bundle supaya validasi lisensi bisa disimpan ke file runtime.");
+      return;
+    }
     setValidatingLicense(true);
     try {
       const result = await runtimeApi.validateLicense({
@@ -153,6 +163,10 @@ const Setup = () => {
   };
 
   const validateSetup = async () => {
+    if (isBootstrapMissing) {
+      toast.error("Wrapper belum aktif. Jalankan browser bundle supaya cek koneksi dan setup tersimpan.");
+      return;
+    }
     setValidatingSetup(true);
     try {
       const result = await runtimeApi.validateSetup({
@@ -179,6 +193,10 @@ const Setup = () => {
   };
 
   const initializeSetup = async () => {
+    if (isBootstrapMissing) {
+      toast.error("Mode dev murni tidak bisa initialize runtime server-side. Jalankan browser bundle dulu.");
+      return;
+    }
     setInitializing(true);
     try {
       const payload = await runtimeApi.initializeSetup({
@@ -534,6 +552,24 @@ const Setup = () => {
             </CardHeader>
 
             <CardContent className="space-y-8">
+              {isBootstrapMissing && (
+                <div className="rounded-3xl border border-amber-300 bg-amber-50 p-5 shadow-[0_18px_45px_rgba(245,158,11,0.10)]">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" />
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-amber-950">Wrapper belum aktif</p>
+                      <p className="text-sm leading-relaxed text-amber-900">
+                        Halaman ini terbuka dari mode `npm run dev`, jadi belum ada server wrapper yang bisa membaca atau
+                        menyimpan `config/runtime.json` dan `config/license-state.json`.
+                      </p>
+                      <p className="text-sm leading-relaxed text-amber-900">
+                        Untuk setup yang benar, build dulu lalu jalankan `npm run start:bundle`.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <AnimatePresence mode="wait">{renderStepContent()}</AnimatePresence>
 
               <div className="flex flex-col gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
@@ -585,7 +621,9 @@ const Setup = () => {
               <CardContent className="space-y-4">
                 {checks.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                    Belum ada hasil validasi koneksi. Jalankan `Validate License` atau `Test Connection` dari wizard untuk melihat kesiapan wrapper dan permission server.
+                    {isBootstrapMissing
+                      ? "Wrapper belum aktif, jadi board ini belum bisa jalan. Pakai browser bundle supaya hasil validasi server-side bisa muncul di sini."
+                      : "Belum ada hasil validasi koneksi. Jalankan `Validate License` atau `Test Connection` dari wizard untuk melihat kesiapan wrapper dan permission server."}
                   </div>
                 ) : (
                   checks.map((check, index) => (
@@ -684,6 +722,24 @@ const Setup = () => {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {[...licenseBlockingErrors, ...blockingErrors].map((error) => (
+                    <p key={error} className="text-sm leading-relaxed text-red-900">
+                      {error}
+                    </p>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {setupStatus.blockingErrors.length > 0 && (
+              <Card className="border-red-300 bg-red-50 shadow-[0_18px_45px_rgba(239,68,68,0.10)]">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-red-900">
+                    <AlertTriangle className="h-5 w-5" />
+                    Runtime Gate
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {setupStatus.blockingErrors.map((error) => (
                     <p key={error} className="text-sm leading-relaxed text-red-900">
                       {error}
                     </p>

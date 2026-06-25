@@ -225,10 +225,10 @@ export function PublishDatasetDialog({
       <DialogContent className="sm:max-w-[560px] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <UploadCloud className="w-5 h-5 text-accent" /> Publish Dataset
+            <UploadCloud className="w-5 h-5 text-accent" /> Tambah Dataset
           </DialogTitle>
           <DialogDescription>
-            Daftarkan produk data Anda untuk salah satu domain wajib. Status langsung PUBLISHED.
+            Lengkapi domain, schema, klasifikasi, versi, dan endpoint dataset. Setelah disimpan, dataset langsung masuk sebagai PUBLISHED.
           </DialogDescription>
         </DialogHeader>
 

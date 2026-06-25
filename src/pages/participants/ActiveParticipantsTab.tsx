@@ -56,6 +56,12 @@ import { providersApi } from "@/api/services/providers";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { Provider } from "@/api/types/providers";
 import type { OrganizationDomain } from "@/api/types/governance";
+import { useAuth } from "@/context/AuthContext";
+import { useDomain } from "@/context/DomainContext";
+import {
+  issueAutoObligationContracts,
+  selectConsumerParticipant,
+} from "@/lib/onboarding-obligations";
 
 type ParticipantForm = {
   organization_name: string;
@@ -116,6 +122,7 @@ const ActiveParticipantsTab = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -127,6 +134,8 @@ const ActiveParticipantsTab = () => {
   const [bindDomainIds, setBindDomainIds] = useState<string[]>([]);
 
   const { data, isLoading, isError, error, refetch } = useProviders();
+  const { user } = useAuth();
+  const { domainId } = useDomain();
   const { data: orgsData } = useOrganizations();
   const { data: orgDomainsData, isLoading: orgDomainsLoading } = useOrganizationDomains(bindOrgId || null);
   const orgs = (orgsData ?? []) as Array<{ organization_id: string; organization_name: string }>;
@@ -136,6 +145,19 @@ const ActiveParticipantsTab = () => {
   const updateProviderMutation = useUpdateProvider();
   const deleteProviderMutation = useDeleteProvider();
   const participants = (data ?? []) as Provider[];
+  const preferredConsumerName = user?.category?.name ?? null;
+  const consumerParticipant = useMemo(
+    () =>
+      selectConsumerParticipant(
+        participants.map((item) => ({
+          provider_id: item.provider_id,
+          provider_name: item.provider_name,
+          organization_type: item.organization_type,
+        })),
+        preferredConsumerName,
+      ),
+    [participants, preferredConsumerName],
+  );
   const selectedParticipantId = selectedParticipant?.provider_id ?? "";
   const dataplaneDomainsQ = useParticipantDomains(selectedParticipantId);
   const dataplaneAdaptersQ = useParticipantAdapters(selectedParticipantId);
@@ -150,18 +172,20 @@ const ActiveParticipantsTab = () => {
     );
   }, [participants, searchQuery]);
 
-  const PAGE_SIZE = 12;
   const paged = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page],
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
   );
 
   useEffect(() => setPage(1), [searchQuery]);
+  useEffect(() => setPage(1), [pageSize]);
+  useEffect(() => setBindDomainIds([]), [bindOrgId]);
 
   const kkksCount = participants.filter((p) => p.organization_type === "ENTERPRISE").length;
   const authorityCount = participants.filter((p) => (p.organization_type || "").startsWith("GOV")).length;
 
   const validateForm = () => {
+    if (!bindOrgId) return "Pilih organisasi governance dulu";
     if (!formData.organization_name.trim()) return "Nama organisasi wajib diisi";
     if (formData.organization_name.trim().length < 3) return "Nama organisasi minimal 3 karakter";
     if (!formData.address.trim()) return "Alamat wajib diisi";
@@ -187,6 +211,7 @@ const ActiveParticipantsTab = () => {
   const openEditDialog = (participant: Provider) => {
     setSelectedParticipant(participant);
     setFormData(toForm(participant));
+    setBindOrgId(localStorage.getItem(`participant_org_binding:${participant.provider_id}`) ?? "");
     setIsEditDialogOpen(true);
   };
 
@@ -219,10 +244,18 @@ const ActiveParticipantsTab = () => {
         },
       });
 
+      if (bindOrgId && created?.id) {
+        localStorage.setItem(`participant_org_binding:${created.id}`, bindOrgId);
+      }
+
       // Bind selected governance domains to the new participant.
-      if (bindDomainIds.length > 0 && created?.id) {
+      const targetDomainIds = (bindDomainIds.length > 0
+        ? bindDomainIds
+        : orgDomains.map((domain) => domain.domain_id).filter(Boolean)) as string[];
+
+      if (targetDomainIds.length > 0 && created?.id) {
         const results = await Promise.allSettled(
-          bindDomainIds.map((domainId) =>
+          targetDomainIds.map((domainId) =>
             providersApi.addDomain(created.id, { domain_id: domainId }),
           ),
         );
@@ -230,10 +263,30 @@ const ActiveParticipantsTab = () => {
         if (failed > 0) {
           toast.warning(`Participant dibuat, tapi ${failed} domain gagal di-binding. Coba bind manual via detail participant.`);
         } else {
-          toast.success(`Participant berhasil dibuat dan ${bindDomainIds.length} domain ter-binding.`);
+          toast.success(`Participant berhasil dibuat dan ${targetDomainIds.length} domain ter-binding.`);
         }
       } else {
         toast.success("Participant berhasil dibuat");
+      }
+
+      if (
+        created?.id &&
+        formData.organization_type === "ENTERPRISE" &&
+        consumerParticipant?.provider_id &&
+        (targetDomainIds.length > 0 || domainId)
+      ) {
+        const obligationDomains = targetDomainIds.length > 0 ? targetDomainIds : (domainId ? [domainId] : []);
+        try {
+          await issueAutoObligationContracts({
+            domainIds: obligationDomains,
+            consumerId: consumerParticipant.provider_id,
+            providerId: created.id,
+            providerName: formData.organization_name.trim(),
+          });
+          toast.success("Permintaan kontrak otomatis berhasil diterbitkan.");
+        } catch (error: unknown) {
+          toast.warning(getApiErrorMessage(error, "Participant dibuat, tetapi kewajiban kontrak otomatis belum berhasil diterbitkan."));
+        }
       }
 
       setIsCreateDialogOpen(false);
@@ -266,6 +319,11 @@ const ActiveParticipantsTab = () => {
           },
         },
       });
+      if (bindOrgId) {
+        localStorage.setItem(`participant_org_binding:${selectedParticipant.provider_id}`, bindOrgId);
+      } else {
+        localStorage.removeItem(`participant_org_binding:${selectedParticipant.provider_id}`);
+      }
       setIsEditDialogOpen(false);
       setSelectedParticipant(null);
       resetForm();
@@ -495,7 +553,15 @@ const ActiveParticipantsTab = () => {
             )}
           </TableBody>
         </Table>
-        {!isLoading && <Pager page={page} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />}
+        {!isLoading && (
+          <Pager
+            page={page}
+            total={filtered.length}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={setPageSize}
+          />
+        )}
       </div>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -506,35 +572,35 @@ const ActiveParticipantsTab = () => {
               Participant aktif bisa dibuat langsung dari sini tanpa lewat queue registration.
             </DialogDescription>
           </DialogHeader>
-          <ParticipantFormContent formData={formData} setFormData={setFormData} />
+          <ParticipantFormContent
+            formData={formData}
+            setFormData={setFormData}
+            organizations={orgs}
+            selectedOrganizationId={bindOrgId}
+            setSelectedOrganizationId={setBindOrgId}
+          />
 
           {/* Domain binding section */}
           <div className="border-t pt-4 space-y-3">
             <div>
               <p className="text-sm font-medium">Hubungkan ke Domain Governance</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Opsional — binding domain bisa dilakukan setelah participant dibuat via halaman detail.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Domain di bawah ini mengikuti organisasi governance yang dipilih pada form participant.
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="bind-org">Pilih Organisasi</Label>
-              <select
-                id="bind-org"
-                value={bindOrgId}
-                onChange={(e) => {
-                  setBindOrgId(e.target.value);
-                  setBindDomainIds([]);
-                }}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">-- Tidak dipilih --</option>
-                {orgs.map((org) => (
-                  <option key={org.organization_id} value={org.organization_id}>
-                    {org.organization_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!bindOrgId ? (
+              <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                Pilih organisasi governance dulu di bagian atas. Setelah itu daftar domain akan muncul di sini.
+              </div>
+            ) : null}
             {bindOrgId && (
               <div className="space-y-2">
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                  <span className="text-muted-foreground">Organisasi aktif: </span>
+                  <span className="font-medium">
+                    {orgs.find((org) => org.organization_id === bindOrgId)?.organization_name ?? "-"}
+                  </span>
+                </div>
                 <Label>Domain yang akan di-binding</Label>
                 {orgDomainsLoading ? (
                   <p className="text-xs text-muted-foreground">Memuat domain...</p>
@@ -591,7 +657,13 @@ const ActiveParticipantsTab = () => {
               Perbarui data operasional participant langsung dari daftar aktif.
             </DialogDescription>
           </DialogHeader>
-          <ParticipantFormContent formData={formData} setFormData={setFormData} />
+          <ParticipantFormContent
+            formData={formData}
+            setFormData={setFormData}
+            organizations={orgs}
+            selectedOrganizationId={bindOrgId}
+            setSelectedOrganizationId={setBindOrgId}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Batal
@@ -819,11 +891,47 @@ const ActiveParticipantsTab = () => {
 const ParticipantFormContent = ({
   formData,
   setFormData,
+  organizations,
+  selectedOrganizationId,
+  setSelectedOrganizationId,
 }: {
   formData: ParticipantForm;
   setFormData: Dispatch<SetStateAction<ParticipantForm>>;
+  organizations: Array<{ organization_id: string; organization_name: string }>;
+  selectedOrganizationId: string;
+  setSelectedOrganizationId: Dispatch<SetStateAction<string>>;
 }) => (
   <div className="space-y-4 py-2">
+    <div className="space-y-2">
+      <Label htmlFor="participant-governance-org">Organisasi Governance</Label>
+      <select
+        id="participant-governance-org"
+        value={selectedOrganizationId}
+        onChange={(e) => {
+          const nextId = e.target.value;
+          setSelectedOrganizationId(nextId);
+          const selectedOrganization =
+            organizations.find((item) => item.organization_id === nextId) ?? null;
+          if (selectedOrganization) {
+            setFormData((prev) => ({
+              ...prev,
+              organization_name: selectedOrganization.organization_name,
+            }));
+          }
+        }}
+        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+      >
+        <option value="">-- Pilih organisasi governance --</option>
+        {organizations.map((organization) => (
+          <option key={organization.organization_id} value={organization.organization_id}>
+            {organization.organization_name}
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-muted-foreground">
+        Sumber organisasi participant diambil dari governance organization yang sama dengan login dan register KKKS.
+      </p>
+    </div>
     <div className="space-y-2">
       <Label htmlFor="participant-name">Nama Organisasi</Label>
       <Input
@@ -831,7 +939,11 @@ const ParticipantFormContent = ({
         value={formData.organization_name}
         onChange={(e) => setFormData((prev) => ({ ...prev, organization_name: e.target.value }))}
         placeholder="Contoh: Pertamina Hulu Energi"
+        disabled={!!selectedOrganizationId}
       />
+      <p className="text-xs text-muted-foreground">
+        Nama participant mengikuti organisasi governance yang dipilih supaya binding domain dan pilihan organisasi saat login tetap konsisten.
+      </p>
     </div>
     <div className="space-y-2">
       <Label htmlFor="participant-type">Tipe Participant</Label>

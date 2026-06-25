@@ -1,19 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Loader2, Lock, User, Eye, EyeOff, LogIn, ShieldCheck, Building2,
   KeyRound, Activity, Users, Repeat, Code2, type LucideIcon,
+  Check, ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from "@/components/ui/select";
 import axios from "axios";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { authService } from "@/api/services/identity-provider";
 import { organizationsApi } from "@/api/services/governance";
 import { registrationsApi } from "@/api/services/onboarding";
@@ -32,13 +38,13 @@ import { DomainCards } from "@/components/login/DomainCards";
 import { DataFlowAnimation } from "@/components/login/DataFlowAnimation";
 import { BackgroundScene } from "@/components/login/BackgroundScene";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { cn } from "@/lib/utils";
 
 const API_BASE = getFrontendApiBasePath();
 const publicClient = axios.create({ baseURL: API_BASE, timeout: 10000 });
 
 const APP_VERSION = "4.0.3";
 const BUILD_NUMBER = "2026.06.04";
-
 const STATS: { icon: LucideIcon; v: string; s: string }[] = [
   { icon: ShieldCheck, v: "Enterprise Grade", s: "ISO 27001 Aligned" },
   { icon: Activity, v: "99.9%", s: "System Availability" },
@@ -49,6 +55,62 @@ const STATS: { icon: LucideIcon; v: string; s: string }[] = [
 
 const normalizeOrgKey = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const readCachedOrganizations = (): OrgOption[] => {
+  try {
+    const cached = JSON.parse(localStorage.getItem("cached_orgs") ?? "[]") as Array<{
+      id: string;
+      name: string;
+    }>;
+    return cached
+      .filter((item) => item?.id && item?.name)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        participantId: null,
+        hasGovernanceOrg: true,
+        hasParticipant: false,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+const fetchGovernanceOrganizations = async (): Promise<OrgOption[]> => {
+  const limit = 100;
+  let offset = 0;
+  let total: number | null = null;
+  const rows: OrgOption[] = [];
+
+  do {
+    const res = await publicClient.get("/governance/organizations/", {
+      params: { limit, offset },
+    });
+    const data = res.data;
+    const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
+    list.forEach((o: any) => {
+      rows.push({
+        id: o.id ?? o.organization_id,
+        name: o.name ?? o.organization_name,
+        participantId: null,
+        hasGovernanceOrg: true,
+        hasParticipant: false,
+      });
+    });
+    total = typeof data?.total === "number" ? data.total : null;
+    if (list.length < limit) break;
+    offset += limit;
+  } while (total === null || offset < total);
+
+  const merged = new Map<string, OrgOption>();
+  [...readCachedOrganizations(), ...rows].forEach((item) => {
+    const key = item.id ?? normalizeOrgKey(item.name);
+    if (!key) return;
+    merged.set(key, item);
+  });
+
+  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+};
 
 const clearLoginState = () => {
   localStorage.removeItem("auth_token");
@@ -71,13 +133,13 @@ interface OrgOption {
  * Panel kiri = form fungsional (auth GX-Space LOCAL JWT). Panel kanan = showcase animasi.
  */
 export const LoginPage = () => {
-  const location = useLocation();
   const navigate = useNavigate();
   const { setAuthUser } = useAuth();
   const preferredOrgName = getPreferredOrganizationName();
   const [org, setOrg] = useState(preferredOrgName || "__none__");
   const [orgOptions, setOrgOptions] = useState<OrgOption[]>([]);
   const [orgLoading, setOrgLoading] = useState(true);
+  const [orgPickerOpen, setOrgPickerOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -91,69 +153,14 @@ export const LoginPage = () => {
 
     const loadOrganizations = async () => {
       try {
-        const [orgRes, provRes] = await Promise.allSettled([
-          publicClient.get("/governance/organizations/"),
-          publicClient.get("/onboarding/participants"),
-        ]);
+        const nextOptions = await fetchGovernanceOrganizations();
 
-        const merged = new Map<string, OrgOption>();
-
-        const upsert = (option: OrgOption) => {
-          const key = normalizeOrgKey(option.name);
-          if (!key) return;
-          const current = merged.get(key);
-          merged.set(key, {
-            id: option.id ?? current?.id ?? null,
-            name: current?.name ?? option.name,
-            participantId: option.participantId ?? current?.participantId ?? null,
-            hasGovernanceOrg: option.hasGovernanceOrg || current?.hasGovernanceOrg || false,
-            hasParticipant: option.hasParticipant || current?.hasParticipant || false,
-          });
-        };
-
-        if (orgRes.status === "fulfilled") {
-          const data = orgRes.value.data;
-          const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
-          list.forEach((o: any) => {
-            upsert({
-              id: o.id ?? o.organization_id,
-              name: o.name ?? o.organization_name,
-              participantId: null,
-              hasGovernanceOrg: true,
-              hasParticipant: false,
-            });
-          });
+        if (nextOptions.length > 0) {
+          localStorage.setItem(
+            "cached_orgs",
+            JSON.stringify(nextOptions.map((item) => ({ id: item.id, name: item.name }))),
+          );
         }
-
-        if (provRes.status === "fulfilled") {
-          const data = provRes.value.data;
-          const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
-          list.forEach((p: any) => {
-            upsert({
-              id: null,
-              // /onboarding/participants mengembalikan `organization_name` (bukan provider_name/name).
-              name: p.provider_name ?? p.name ?? p.organization_name,
-              participantId: p.provider_id ?? p.id ?? null,
-              hasGovernanceOrg: false,
-              hasParticipant: true,
-            });
-          });
-        }
-
-        if (merged.size === 0) {
-          try {
-            const cached = JSON.parse(localStorage.getItem("cached_orgs") ?? "[]") as { id: string; name: string }[];
-            cached.forEach((o) => merged.set(normalizeOrgKey(o.name), {
-              id: o.id,
-              name: o.name,
-              participantId: null,
-              hasGovernanceOrg: true,
-              hasParticipant: false,
-            }));
-          } catch { /* ignore */ }
-        }
-
-        const nextOptions = Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
 
         if (!cancelled) {
           setOrgOptions(nextOptions);
@@ -164,9 +171,14 @@ export const LoginPage = () => {
           });
         }
       } catch {
+        const cachedOptions = readCachedOrganizations().sort((a, b) => a.name.localeCompare(b.name));
         if (!cancelled) {
-          setOrgOptions([]);
+          setOrgOptions(cachedOptions);
           setOrgLoading(false);
+          setOrg((current) => {
+            if (current === "__none__" || cachedOptions.some((item) => item.name === current)) return current;
+            return preferredOrgName || cachedOptions[0]?.name || "__none__";
+          });
         }
       }
     };
@@ -198,10 +210,10 @@ export const LoginPage = () => {
       const grpCode = c?.group?.code ?? "";
       const role: AppRole = c?.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
       const effectiveOrg = org === "__none__" ? "" : org;
-      const selectedOrgKey = normalizeOrgKey(effectiveOrg);
       const decodedEmail = String(c?.email ?? "").trim().toLowerCase();
       const tokenParticipantId = (c?.participant_id as string | null | undefined) ?? null;
       const tokenOrgName = String((c as { category?: { name?: string; code?: string } })?.category?.name ?? c?.category?.code ?? "").trim();
+      const isStrictOrganizationRole = role === "PROVIDER" || role === "ADMIN";
       let resolvedOrgName =
         effectiveOrg ||
         selectedOrgOption?.name ||
@@ -235,6 +247,14 @@ export const LoginPage = () => {
           }
         }
 
+        const fallbackOrgKey = normalizeOrgKey(
+          effectiveOrg ||
+          resolvedOrgName ||
+          matchedRegistration?.organization_name ||
+          tokenOrgName,
+        );
+        const selectedOrgKey = normalizeOrgKey(effectiveOrg) || fallbackOrgKey;
+
         const matchedOrg =
           organizations.find((item) => item.organization_id === selectedOrgOption?.id) ??
           organizations.find((item) => normalizeOrgKey(item.organization_name) === selectedOrgKey) ??
@@ -265,9 +285,9 @@ export const LoginPage = () => {
         }
 
         if (role !== "SUPER_ADMIN") {
-          if (!effectiveOrg) {
+          if (isStrictOrganizationRole && (!effectiveOrg || !selectedOrgOption?.id)) {
             clearLoginState();
-            throw createLoginBindingError("Pilih organisasi yang terdaftar sebelum login dilanjutkan.");
+            throw createLoginBindingError("Akun ini wajib login dengan organisasi yang dipilih dari daftar governance.");
           }
 
           const trustedOrgKeys = new Set(
@@ -296,13 +316,40 @@ export const LoginPage = () => {
             if (boundKey) trustedOrgKeys.add(boundKey);
           }
 
+          const canBypassOrganizationSelection =
+            role === "SUPER_ADMIN" || role === "CONSUMER";
+          const canBindSelectedOrganization =
+            role !== "PROVIDER" &&
+            role !== "ADMIN" &&
+            Boolean(selectedOrgOption?.id) &&
+            Boolean(resolvedParticipantId) &&
+            Boolean(effectiveOrg);
+
+          if (!effectiveOrg && resolvedOrgName) {
+            resolvedOrgName = resolvedOrgName;
+          }
+
+          if (!selectedOrgKey) {
+            clearLoginState();
+            throw createLoginBindingError("Organisasi akun ini belum bisa di-resolve. Lengkapi binding participant atau pilih organisasi yang sesuai.");
+          }
+
           const selectionMatches =
+            canBypassOrganizationSelection ||
             trustedOrgKeys.has(selectedOrgKey) ||
-            Boolean(selectedOrgOption?.participantId && trustedParticipantIds.has(selectedOrgOption.participantId));
+            (!effectiveOrg && trustedOrgKeys.has(fallbackOrgKey)) ||
+            Boolean(selectedOrgOption?.participantId && trustedParticipantIds.has(selectedOrgOption.participantId)) ||
+            canBindSelectedOrganization;
 
           if (!selectionMatches) {
             clearLoginState();
             throw createLoginBindingError("Organisasi yang dipilih tidak terhubung ke akun ini.");
+          }
+
+          if (canBindSelectedOrganization && selectedOrgOption?.id && resolvedParticipantId) {
+            localStorage.setItem(`participant_org_binding:${resolvedParticipantId}`, selectedOrgOption.id);
+            resolvedOrgId = selectedOrgOption.id;
+            resolvedOrgName = selectedOrgOption.name;
           }
         }
 
@@ -314,12 +361,15 @@ export const LoginPage = () => {
         if (error instanceof Error && error.message.startsWith("LOGIN_BINDING:")) {
           throw new Error(error.message.replace("LOGIN_BINDING:", ""));
         }
-        // Lookup binding murni jaringan tetap tidak boleh membatalkan login.
+        if (isStrictOrganizationRole) {
+          clearLoginState();
+          throw new Error("Validasi organisasi untuk akun ini gagal dibuktikan. Pastikan binding participant dan governance organization sudah benar.");
+        }
       }
 
-      if (role !== "SUPER_ADMIN" && !effectiveOrg) {
+      if (role !== "SUPER_ADMIN" && !resolvedOrgName) {
         clearLoginState();
-        throw new Error("Pilih organisasi yang terdaftar sebelum login dilanjutkan.");
+        throw new Error("Organisasi akun ini belum terbaca. Pastikan binding participant dan governance organization sudah ada.");
       }
 
       if (role === "SUPER_ADMIN") {
@@ -402,30 +452,70 @@ export const LoginPage = () => {
 
             <div className="mb-4">
               <Label className="text-xs font-medium text-slate-400">Organization</Label>
-              <Select value={org} onValueChange={setOrg}>
-                <SelectTrigger className="mt-1.5 h-11 bg-[#070b16] border-white/10 text-slate-200 focus:ring-amber-500/40">
-                  <span className="flex items-center gap-2 truncate">
-                    <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                    {orgLoading
-                      ? <span className="text-slate-500 text-sm">Memuat...</span>
-                      : <SelectValue placeholder={orgOptions.length === 0 ? "Organisasi opsional" : "Pilih organisasi..."} />}
-                  </span>
-                </SelectTrigger>
-                <SelectContent className="bg-[#0b1120] border-white/10 text-slate-200">
-                  <SelectItem value="__none__" className="focus:bg-white/10 focus:text-white text-slate-500 italic">
-                    {orgOptions.length === 0 ? "Lewati pilihan organisasi" : "Pilih organisasi..."}
-                  </SelectItem>
-                  {orgOptions.map((option) => (
-                    <SelectItem
-                      key={`${option.id ?? "org"}-${option.participantId ?? "participant"}-${option.name}`}
-                      value={option.name}
-                      className="focus:bg-white/10 focus:text-white"
-                    >
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={orgPickerOpen} onOpenChange={setOrgPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={orgPickerOpen}
+                    className="mt-1.5 h-11 w-full justify-between border-white/10 bg-[#070b16] px-3 text-slate-200 hover:bg-white/5 hover:text-white"
+                  >
+                    <span className="flex min-w-0 items-center gap-2 truncate">
+                      <Building2 className="h-4 w-4 shrink-0 text-amber-400" />
+                      <span className="truncate text-sm">
+                        {orgLoading
+                          ? "Memuat organisasi..."
+                          : org === "__none__"
+                            ? (orgOptions.length === 0 ? "Belum ada organisasi" : "Pilih organisasi...")
+                            : (selectedOrgOption?.name ?? org)}
+                      </span>
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[360px] border border-slate-700 bg-[#111827] p-0 text-slate-100 shadow-2xl" align="start">
+                  <Command className="bg-transparent text-slate-100 [&_[cmdk-input-wrapper]]:border-slate-700 [&_[cmdk-input-wrapper]]:bg-[#0f172a] [&_[cmdk-input-wrapper]_svg]:text-slate-400 [&_[cmdk-input]]:text-slate-100 [&_[cmdk-input]]:placeholder:text-slate-400">
+                    <CommandInput
+                      placeholder="Cari organisasi governance..."
+                      className="text-slate-100 placeholder:text-slate-400"
+                    />
+                    <CommandList className="max-h-72">
+                      <CommandEmpty className="text-slate-400">Organisasi tidak ditemukan.</CommandEmpty>
+                      <CommandItem
+                        value="Pilih organisasi"
+                        onSelect={() => {
+                          setOrg("__none__");
+                          setOrgPickerOpen(false);
+                        }}
+                        className="cursor-pointer text-slate-300 data-[selected=true]:bg-slate-700 data-[selected=true]:text-white"
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", org === "__none__" ? "opacity-100" : "opacity-0")} />
+                        Pilih organisasi...
+                      </CommandItem>
+                      {orgOptions.map((option) => (
+                        <CommandItem
+                          key={`${option.id ?? "org"}-${option.name}`}
+                          value={`${option.name} ${option.id ?? ""}`}
+                          onSelect={() => {
+                            setOrg(option.name);
+                            setOrgPickerOpen(false);
+                          }}
+                          className="cursor-pointer text-slate-100 data-[selected=true]:bg-slate-700 data-[selected=true]:text-white"
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedOrgOption?.id === option.id && org === option.name ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          <span className="truncate">{option.name}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {!orgLoading && orgOptions.length === 0 ? (
                 <p className="mt-1.5 text-xs text-slate-500">
                   Daftar organisasi sedang tidak tersedia. Login tetap bisa dilanjutkan, lalu binding organisasi bisa disetel setelah masuk.
