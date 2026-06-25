@@ -47,7 +47,7 @@ const defaultPublicAppUrl =
   typeof window !== "undefined" ? window.location.origin : "";
 
 const defaultRuntimeConfig: RuntimeConfig = {
-  initialized: true,
+  initialized: false,
   publicAppUrl: defaultPublicAppUrl,
   apiBaseUrl: defaultApiBaseUrl,
   adapterEndpoint: import.meta.env.VITE_ADAPTER_ENDPOINT || "",
@@ -67,14 +67,15 @@ let bootstrapState: RuntimeBootstrapState = {
   source: "fallback",
   ready: true,
   setupStatus: {
-    initialized: true,
-    configValid: true,
-    licenseValid: true,
-    needsSetup: false,
+    initialized: false,
+    configValid: false,
+    licenseValid: false,
+    serverPermissionValid: false,
+    needsSetup: true,
     warnings: [],
-    blockingErrors: [],
+    blockingErrors: ["Bootstrap runtime belum dimuat."],
   },
-  runtimeConfig: defaultRuntimeConfig,
+  runtimeConfig: null,
   licenseState: null,
 };
 
@@ -148,14 +149,19 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
       source: "fallback",
       ready: true,
       setupStatus: {
-        initialized: true,
-        configValid: true,
-        licenseValid: true,
-        needsSetup: false,
-        warnings: ["Bootstrap server tidak terdeteksi, memakai fallback dev/local."],
-        blockingErrors: [],
+        initialized: false,
+        configValid: false,
+        licenseValid: false,
+        serverPermissionValid: false,
+        needsSetup: true,
+        warnings: [
+          "Bootstrap server tidak terdeteksi. Mode dev murni tidak bisa membaca atau menyimpan runtime config server-side.",
+        ],
+        blockingErrors: [
+          "Wrapper belum aktif. Jalankan browser bundle kalau mau setup tersimpan ke config/runtime.json dan config/license-state.json.",
+        ],
       },
-      runtimeConfig: defaultRuntimeConfig,
+      runtimeConfig: null,
       licenseState: null,
     };
     return bootstrapState;

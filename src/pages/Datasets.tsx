@@ -66,7 +66,6 @@ import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   useDatasets,
-  useCreateDataset,
   useDeleteDataset,
   useUpdateDataset,
 } from "@/api/hooks/useDatasets";
@@ -143,7 +142,7 @@ const Datasets = () => {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterDomain, setFilterDomain] = useState<string>("all"); // cluster domain
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 12;
+  const [pageSize, setPageSize] = useState(12);
   const { hasRole, role, participantId } = useAuth();
   const { runtimeConfig } = useRuntime();
   const adapterEndpoint = runtimeConfig?.adapterEndpoint ?? "";
@@ -187,18 +186,10 @@ const Datasets = () => {
   const [publishOpen, setPublishOpen] = useState(false);
 
   // Dialog states
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    dataset_name: "",
-    schema_name: "",
-    provider_id: "",
-  });
   const [editForm, setEditForm] = useState<DatasetEditForm>({
     name: "",
     version: "0.0.1",
@@ -223,7 +214,6 @@ const Datasets = () => {
     refetch,
   } = useDatasets();
 
-  const createMutation = useCreateDataset();
   const updateMutation = useUpdateDataset();
   const deleteMutation = useDeleteDataset();
 
@@ -282,13 +272,13 @@ const Datasets = () => {
 
   // Pagination
   const pagedDatasets = useMemo(
-    () => filteredDatasets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filteredDatasets, page],
+    () => filteredDatasets.slice((page - 1) * pageSize, page * pageSize),
+    [filteredDatasets, page, pageSize],
   );
   // Reset ke halaman 1 saat filter/pencarian berubah
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, filterClassification, filterStatus, filterDomain]);
+  }, [searchQuery, filterClassification, filterStatus, filterDomain, pageSize]);
 
   const hasActiveFilters = filterClassification !== "all" || filterStatus !== "all";
   const clearFilters = () => {
@@ -305,33 +295,6 @@ const Datasets = () => {
   const distinctStatuses = useMemo(() => {
     return Array.from(new Set(scopedDatasets.map((d) => d.status).filter(Boolean)));
   }, [scopedDatasets]);
-
-  const resetForm = () =>
-    setFormData({ dataset_name: "", schema_name: "", provider_id: "" });
-
-  const handleAddDataset = async () => {
-    if (!formData.dataset_name.trim()) {
-      toast.error("Dataset name is required");
-      return;
-    }
-    if (!formData.schema_name.trim()) {
-      toast.error("Schema name is required");
-      return;
-    }
-
-    try {
-      await createMutation.mutateAsync({
-        dataset_name: formData.dataset_name.trim(),
-        schema_name: formData.schema_name.trim(),
-        provider_id: formData.provider_id.trim() || undefined,
-      });
-      setIsAddDialogOpen(false);
-      resetForm();
-      toast.success("Dataset registered successfully");
-    } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, "Failed to register dataset"));
-    }
-  };
 
   const openViewDialog = (dataset: Dataset) => {
     setSelectedDataset(dataset);
@@ -543,6 +506,11 @@ const Datasets = () => {
           </div>
         </div>
 
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+          Dataset baru sekarang dibuat lewat form <strong>Tambah Dataset</strong> supaya pemilihan domain, schema,
+          klasifikasi, versi, dan endpoint konsisten dengan model dataset GX-Space yang juga dipakai saat edit.
+        </div>
+
         {/* Toolbar */}
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto md:flex-1 max-w-2xl">
@@ -662,7 +630,7 @@ const Datasets = () => {
                 onClick={() => setPublishOpen(true)}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Publish Dataset
+                Tambah Dataset
               </Button>
             )}
           </div>
@@ -841,76 +809,16 @@ const Datasets = () => {
         )}
 
         {/* Pagination */}
-        <Pager page={page} total={filteredDatasets.length} pageSize={PAGE_SIZE} onPage={setPage} />
+        <Pager
+          page={page}
+          total={filteredDatasets.length}
+          pageSize={pageSize}
+          onPage={setPage}
+          onPageSize={setPageSize}
+        />
       </div>
 
       <PublishDatasetDialog open={publishOpen} onOpenChange={setPublishOpen} />
-
-      {/* Register Dataset Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Register New Dataset</DialogTitle>
-            <DialogDescription>
-              Add a dataset to the rapiDSK Enterprise catalog.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="dataset_name">Dataset Name *</Label>
-              <Input
-                id="dataset_name"
-                placeholder="e.g. Well Production Q4 2025"
-                value={formData.dataset_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, dataset_name: e.target.value })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schema_name">Schema Name *</Label>
-              <Input
-                id="schema_name"
-                placeholder="e.g. well-production-v1"
-                value={formData.schema_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, schema_name: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Reference ke schema yang sudah didaftarkan di catalog.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="provider_id">Provider ID</Label>
-              <Input
-                id="provider_id"
-                placeholder="UUID dari /providers (opsional)"
-                value={formData.provider_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, provider_id: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Phase 5 akan ganti jadi dropdown dari /providers list.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddDataset}
-              className="bg-accent hover:bg-accent/90"
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Register Dataset
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* View Dataset Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>

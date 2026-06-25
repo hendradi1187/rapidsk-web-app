@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,8 +8,10 @@ import { Loader2, Building2, CheckCircle2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { registrationsApi } from "@/api/services/onboarding";
+import { useOrganizations } from "@/api/hooks/useOrganizations";
 
 const RegisterKKKS = () => {
+  const { data: organizationsData, isLoading: organizationsLoading } = useOrganizations();
   const [form, setForm] = useState({
     organization_name: "",
     wilayah_kerja: "",
@@ -18,12 +20,41 @@ const RegisterKKKS = () => {
     operator_phone: "",
     note: "",
   });
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const organizations = useMemo(
+    () =>
+      ((organizationsData ?? []) as Array<{ organization_id: string; organization_name: string }>)
+        .map((item) => ({
+          organization_id: item.organization_id,
+          organization_name: item.organization_name,
+        }))
+        .sort((left, right) => left.organization_name.localeCompare(right.organization_name)),
+    [organizationsData],
+  );
+  const selectedOrganization = useMemo(
+    () => organizations.find((item) => item.organization_id === selectedOrganizationId) ?? null,
+    [organizations, selectedOrganizationId],
+  );
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  useEffect(() => {
+    if (!selectedOrganization && organizations.length > 0 && !selectedOrganizationId) {
+      setSelectedOrganizationId(organizations[0].organization_id);
+      return;
+    }
+    if (selectedOrganization) {
+      setForm((current) => ({
+        ...current,
+        organization_name: selectedOrganization.organization_name,
+      }));
+    }
+  }, [organizations, selectedOrganization, selectedOrganizationId]);
+
   const valid =
+    !!selectedOrganizationId &&
     form.organization_name.trim().length >= 3 &&
     form.wilayah_kerja.trim().length >= 1 &&
     form.operator_name.trim().length >= 2 &&
@@ -36,13 +67,20 @@ const RegisterKKKS = () => {
     }
     setSubmitting(true);
     try {
+      const noteSegments = [
+        form.note.trim(),
+        selectedOrganization
+          ? `Referensi organisasi governance: ${selectedOrganization.organization_name} (${selectedOrganization.organization_id})`
+          : "",
+      ].filter(Boolean);
+
       await registrationsApi.create({
         organization_name: form.organization_name.trim(),
         wilayah_kerja: form.wilayah_kerja.trim(),
         operator_name: form.operator_name.trim(),
         operator_email: form.operator_email.trim(),
         operator_phone: form.operator_phone.trim() || undefined,
-        note: form.note.trim() || undefined,
+        note: noteSegments.join(" | ") || undefined,
       });
       setDone(true);
     } catch (err: unknown) {
@@ -88,13 +126,54 @@ const RegisterKKKS = () => {
           ) : (
             <>
               <div className="space-y-4">
+                <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+                  <div>
+                    <Label className="text-sm font-medium">Organisasi Governance</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Pilih organisasi yang sudah dibuat di sisi governance. Sumber ini dipakai bersama oleh login, pendaftaran KKKS, dan create participant supaya alurnya tidak pecah.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Daftar Organisasi Governance</Label>
+                    <select
+                      value={selectedOrganizationId}
+                      onChange={(e) => setSelectedOrganizationId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      disabled={organizationsLoading || organizations.length === 0}
+                    >
+                      <option value="">
+                        {organizationsLoading
+                          ? "Memuat organisasi..."
+                          : organizations.length === 0
+                            ? "Belum ada organisasi governance"
+                            : "-- Pilih organisasi --"}
+                      </option>
+                      {organizations.map((organization) => (
+                        <option key={organization.organization_id} value={organization.organization_id}>
+                          {organization.organization_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {organizations.length === 0 && !organizationsLoading ? (
+                    <p className="text-xs text-amber-700">
+                      Belum ada organisasi governance. Buat dulu dari menu organisasi atau setup juknis, baru pengajuan KKKS bisa dikirim.
+                    </p>
+                  ) : null}
+                </div>
                 <div className="space-y-2">
                   <Label>Nama KKKS *</Label>
                   <Input
                     placeholder="mis. PT Pertamina Hulu Energi ONWJ"
                     value={form.organization_name}
                     onChange={(e) => set("organization_name", e.target.value)}
+                    disabled={!!selectedOrganization}
                   />
+                  {selectedOrganization && (
+                    <p className="text-xs text-muted-foreground">
+                      Nama ini mengikuti organisasi governance yang dipilih supaya proses approval tidak perlu nebak ulang.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Wilayah Kerja *</Label>

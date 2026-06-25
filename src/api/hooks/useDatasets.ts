@@ -30,7 +30,7 @@ export function useDataset(id: string | null | undefined) {
   });
 }
 
-/** Create dataset (read-only iteration: dinonaktifkan). */
+/** Legacy create dataset path - tidak dipakai lagi. Pakai usePublishDataset. */
 export function useCreateDataset() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -21,16 +21,63 @@ import type {
 // Envelope: { data: [...], total, ... }
 
 const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
+const getTotal = (res: any): number | null => {
+  const total = res?.data?.total;
+  return typeof total === "number" ? total : null;
+};
+
+const normalizeOrganization = (item: any): Organization => ({
+  organization_id: item.id ?? item.organization_id,
+  organization_name: item.name ?? item.organization_name,
+  organization_type: item.code ?? item.organization_type,
+  description: item.description ?? undefined,
+});
+
+const organizationCodeFromName = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 3) {
+    return words.map((word) => word[0]).join("").toUpperCase().slice(0, 20);
+  }
+  return words.join("").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
+};
+
+const buildOrganizationCreatePayload = (data: OrganizationCreateRequest) => {
+  const organizationName = data.organization_name.trim();
+  const fallbackCode = organizationCodeFromName(organizationName);
+  const fallbackDescription = `Organisasi ${organizationName} di data space`;
+
+  return {
+    name: organizationName,
+    code: data.code?.trim() || fallbackCode,
+    description: data.description?.trim() || fallbackDescription,
+  };
+};
 
 export const organizationsApi = {
   list: async (): Promise<OrganizationListResponse> => {
-    const res = await apiClient.get("/governance/organizations/");
-    return unwrap(res).map((o: any) => ({
-      organization_id: o.id,
-      organization_name: o.name,
-      organization_type: o.organization_type,
-      description: o.description ?? undefined,
-    })) as unknown as OrganizationListResponse;
+    const limit = 100;
+    let offset = 0;
+    let total: number | null = null;
+    const rows: Organization[] = [];
+
+    do {
+      const res = await apiClient.get("/governance/organizations/", {
+        params: { limit, offset },
+      });
+      const batch = unwrap(res).map(normalizeOrganization) as Organization[];
+      rows.push(...batch);
+      total = getTotal(res);
+      if (batch.length < limit) break;
+      offset += limit;
+    } while (total === null || offset < total);
+
+    const merged = new Map<string, Organization>();
+    rows.forEach((item) => {
+      if (!item.organization_id) return;
+      merged.set(item.organization_id, item);
+    });
+
+    return Array.from(merged.values()) as unknown as OrganizationListResponse;
   },
 
   listDomains: async (orgId: string): Promise<OrganizationDomain[]> => {
@@ -45,17 +92,13 @@ export const organizationsApi = {
   },
 
   create: async (data: OrganizationCreateRequest): Promise<Organization> => {
-    const res = await apiClient.post("/governance/organizations/", {
-      name: data.organization_name.trim(),
-      code: data.code?.trim(),
-      description: data.description?.trim(),
-    });
-    return res.data as Organization;
+    const res = await apiClient.post("/governance/organizations/", buildOrganizationCreatePayload(data));
+    return normalizeOrganization(res.data);
   },
 
   update: async (id: string, data: OrganizationUpdateRequest): Promise<Organization> => {
     const res = await apiClient.patch(`/governance/organizations/${id}`, data);
-    return res.data as Organization;
+    return normalizeOrganization(res.data);
   },
 
   remove: async (id: string): Promise<void> => {

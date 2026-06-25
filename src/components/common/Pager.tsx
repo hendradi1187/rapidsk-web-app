@@ -7,11 +7,15 @@ export function Pager({
   total,
   pageSize,
   onPage,
+  pageSizeOptions = [12, 24, 50, 100],
+  onPageSize,
 }: {
   page: number;
   total: number;
   pageSize: number;
   onPage: (p: number) => void;
+  pageSizeOptions?: number[];
+  onPageSize?: (size: number) => void;
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   if (pageCount <= 1) return null;
@@ -35,9 +39,27 @@ export function Pager({
 
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap pt-3">
-      <p className="text-xs text-muted-foreground">
-        {from}–{to} dari {total}
-      </p>
+      <div className="flex items-center gap-3 flex-wrap">
+        <p className="text-xs text-muted-foreground">
+          {from}–{to} dari {total}
+        </p>
+        {onPageSize ? (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Limit</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSize(Number(e.target.value))}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}/hal
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
       <div className="flex items-center gap-1">
         <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => onPage(page - 1)}>
           <ChevronLeft className="w-4 h-4" />

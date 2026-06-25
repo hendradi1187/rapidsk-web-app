@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
+import { Pager } from "@/components/common/Pager";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -118,6 +119,8 @@ const Audit = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState<string>(""); // YYYY-MM-DD; empty = all
   const [filterAction, setFilterAction] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
 
   // Dialog states
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -152,6 +155,11 @@ const Audit = () => {
       return matchesSearch && matchesDate && matchesAction;
     });
   }, [logs, searchQuery, selectedDate, filterAction]);
+  const pagedLogs = useMemo(
+    () => filteredLogs.slice((page - 1) * pageSize, page * pageSize),
+    [filteredLogs, page, pageSize],
+  );
+  useEffect(() => setPage(1), [searchQuery, selectedDate, filterAction, pageSize]);
 
   // Stats — generalized (spec tidak punya status/category breakdown)
   const stats = useMemo(() => {
@@ -455,7 +463,7 @@ const Audit = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredLogs.map((log) => (
+                pagedLogs.map((log) => (
                   <TableRow
                     key={log.audit_id}
                     className="hover:bg-muted/50 cursor-pointer"
@@ -503,8 +511,17 @@ const Audit = () => {
         </div>
 
         {/* Results count */}
-        <div className="text-sm text-muted-foreground">
-          Showing {filteredLogs.length} of {logs.length} logs
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-sm text-muted-foreground">
+            Showing {filteredLogs.length} of {logs.length} logs
+          </div>
+          <Pager
+            page={page}
+            total={filteredLogs.length}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={setPageSize}
+          />
         </div>
 
         {/* View Log Dialog */}

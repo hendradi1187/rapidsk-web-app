@@ -1,9 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import maplibregl, { type GeoJSONSource, NavigationControl, Popup } from "maplibre-gl";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, MapPin, AlertCircle, Maximize2, RefreshCw, CheckCircle2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  MapPin,
+  Maximize2,
+  Mountain,
+  RefreshCw,
+} from "lucide-react";
 import { adapterServiceApi } from "@/api/services/adapter-service";
 
 interface AdapterInfo {
@@ -22,6 +37,13 @@ interface TransferMapPreviewProps {
 }
 
 type DomainCode = "WK" | "FLD" | "SEI" | "WLL" | "FP";
+type ViewMode = "2d" | "tilt";
+type BasemapMode = "map" | "satellite";
+
+type PreviewFeatureCollection = {
+  type: "FeatureCollection";
+  features: any[];
+};
 
 const DOMAIN_META: Record<string, { name: string; color: string }> = {
   WK: { name: "Wilayah Kerja", color: "#f5a623" },
@@ -32,292 +54,724 @@ const DOMAIN_META: Record<string, { name: string; color: string }> = {
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  nama_wk: "Nama WK", status_wk: "Status", lokasi: "Lokasi", provinsi_1: "Provinsi",
-  nama_sumur: "Nama Sumur", jenis_sumur: "Jenis", status_sumur: "Status",
-  total_depth: "Total Depth (m)", kb_elevation: "KB Elevation (m)", operator: "Operator", uwi: "UWI",
-  nama_lapangan: "Nama Lapangan", jenis_fluida: "Fluida", tahun_temuan: "Tahun Temuan",
-  status_lapangan: "Status", field_id: "Field ID",
-  nama_fasilitas: "Nama Fasilitas", jenis_fasilitas: "Jenis", status_fasilitas: "Status",
-  kapasitas: "Kapasitas", satuan_kapasitas: "Satuan", facility_id: "Facility ID",
-  nama_survei: "Nama Survei", dimensi: "Dimensi", metode: "Metode",
-  tahun_akuisisi: "Tahun Akuisisi", survey_id: "Survey ID", sumber_navigasi: "Navigasi",
+  nama_wk: "Nama WK",
+  status_wk: "Status",
+  lokasi: "Lokasi",
+  provinsi_1: "Provinsi",
+  nama_sumur: "Nama Sumur",
+  jenis_sumur: "Jenis",
+  status_sumur: "Status",
+  total_depth: "Total Depth (m)",
+  kb_elevation: "KB Elevation (m)",
+  operator: "Operator",
+  uwi: "UWI",
+  nama_lapangan: "Nama Lapangan",
+  jenis_fluida: "Fluida",
+  tahun_temuan: "Tahun Temuan",
+  status_lapangan: "Status",
+  field_id: "Field ID",
+  nama_fasilitas: "Nama Fasilitas",
+  jenis_fasilitas: "Jenis",
+  status_fasilitas: "Status",
+  kapasitas: "Kapasitas",
+  satuan_kapasitas: "Satuan",
+  facility_id: "Facility ID",
+  nama_survei: "Nama Survei",
+  dimensi: "Dimensi",
+  metode: "Metode",
+  tahun_akuisisi: "Tahun Akuisisi",
+  survey_id: "Survey ID",
+  sumber_navigasi: "Navigasi",
 };
 
-const labelOf = (p: any) =>
-  p?.nama_wk || p?.nama_sumur || p?.nama_lapangan || p?.nama_fasilitas || p?.nama_survei || p?.uwi || "—";
+const MAP_SOURCE_ID = "transfer-preview-source";
+const POLYGON_FILL_LAYER_ID = "transfer-preview-polygon-fill";
+const POLYGON_LINE_LAYER_ID = "transfer-preview-polygon-line";
+const LINE_LAYER_ID = "transfer-preview-line";
+const POINT_LAYER_ID = "transfer-preview-point";
+const ADAPTER_ITEMS_LIMIT = 100;
+const EMPTY_COLLECTION: PreviewFeatureCollection = { type: "FeatureCollection", features: [] };
+
+const createRasterStyle = (basemapMode: BasemapMode) => ({
+  version: 8,
+  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  sources: {
+    basemap: {
+      type: "raster",
+      tiles:
+        basemapMode === "satellite"
+          ? [
+              "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            ]
+          : [
+              "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            ],
+      tileSize: 256,
+      attribution:
+        basemapMode === "satellite"
+          ? "Tiles © Esri"
+          : "© OpenStreetMap contributors",
+    },
+    labels: basemapMode === "satellite"
+      ? {
+          type: "raster",
+          tiles: [
+            "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          attribution: "Labels © Esri",
+        }
+      : undefined,
+  },
+  layers: [
+    {
+      id: "basemap-layer",
+      type: "raster",
+      source: "basemap",
+      minzoom: 0,
+      maxzoom: 19,
+    },
+    ...(basemapMode === "satellite"
+      ? [
+          {
+            id: "labels-layer",
+            type: "raster",
+            source: "labels",
+            minzoom: 0,
+            maxzoom: 19,
+          },
+        ]
+      : []),
+  ],
+});
+
+const labelOf = (properties: any) =>
+  properties?.nama_wk ||
+  properties?.nama_sumur ||
+  properties?.nama_lapangan ||
+  properties?.nama_fasilitas ||
+  properties?.nama_survei ||
+  properties?.uwi ||
+  "Tanpa label";
 
 const codeFromUrl = (url?: string): DomainCode | null => {
   if (!url) return null;
-  const m = url.match(/\/collections\/([^/?]+)\/items/i);
-  const c = m?.[1]?.toUpperCase();
-  return c && DOMAIN_META[c] ? (c as DomainCode) : null;
+  const match = url.match(/\/collections\/([^/?]+)\/items/i);
+  const code = match?.[1]?.toUpperCase();
+  return code && DOMAIN_META[code] ? (code as DomainCode) : null;
 };
 
-const W = 900, H = 600, PAD = 48;
+const collectCoordinates = (node: any, bucket: Array<[number, number]>) => {
+  if (!Array.isArray(node)) return;
+  if (typeof node[0] === "number" && typeof node[1] === "number") {
+    bucket.push([node[0], node[1]]);
+    return;
+  }
+  node.forEach((child) => collectCoordinates(child, bucket));
+};
+
+const computeBounds = (features: any[]): [[number, number], [number, number]] | null => {
+  const coords: Array<[number, number]> = [];
+  features.forEach((feature) => collectCoordinates(feature?.geometry?.coordinates, coords));
+  if (coords.length === 0) return null;
+
+  let minLng = coords[0][0];
+  let maxLng = coords[0][0];
+  let minLat = coords[0][1];
+  let maxLat = coords[0][1];
+
+  coords.forEach(([lng, lat]) => {
+    minLng = Math.min(minLng, lng);
+    maxLng = Math.max(maxLng, lng);
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+  });
+
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ];
+};
+
+const featureCollectionFrom = (features: any[]): PreviewFeatureCollection => ({
+  type: "FeatureCollection",
+  features: features.filter((feature) => feature?.geometry),
+});
+
+const normalizeFeature = (feature: any) => {
+  const id = feature?.id ?? crypto.randomUUID();
+  return {
+    ...feature,
+    id,
+    properties: {
+      ...feature?.properties,
+      __featureId: String(id),
+      __featureLabel: labelOf(feature?.properties),
+    },
+  };
+};
+
+const summarizeValue = (value: unknown) => {
+  if (value == null || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+};
+
+const previewKeysFromFeatures = (items: any[]) => {
+  const ordered = [
+    "nama_wk",
+    "nama_sumur",
+    "nama_lapangan",
+    "nama_fasilitas",
+    "nama_survei",
+    "operator",
+    "status_wk",
+    "status_sumur",
+    "status_lapangan",
+    "status_fasilitas",
+    "uwi",
+    "field_id",
+    "facility_id",
+    "survey_id",
+  ];
+  const found = ordered.filter((key) =>
+    items.some((feature) => {
+      const value = feature?.properties?.[key];
+      return value !== "" && value != null;
+    }),
+  );
+
+  return found.slice(0, 4);
+};
 
 export function TransferMapPreview({
-  open, onOpenChange, datasetName, endpointUrl, transferId,
+  open,
+  onOpenChange,
+  datasetName,
+  endpointUrl,
+  transferId,
 }: TransferMapPreviewProps) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const popupRef = useRef<Popup | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [features, setFeatures] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
-  const [vb, setVb] = useState({ x: 0, y: 0, w: W, h: H });
-  const [tip, setTip] = useState<{ x: number; y: number; label: string } | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  const [basemapMode, setBasemapMode] = useState<BasemapMode>("map");
 
   const code = useMemo(() => codeFromUrl(endpointUrl), [endpointUrl]);
   const meta = code ? DOMAIN_META[code] : null;
   const color = meta?.color ?? "#38bdf8";
+  const previewKeys = useMemo(() => previewKeysFromFeatures(features), [features]);
+
+  const featureCollection = useMemo(
+    () => featureCollectionFrom(features),
+    [features],
+  );
+
+  const applyDataLayers = useCallback(
+    (map: maplibregl.Map) => {
+      if (map.getSource(MAP_SOURCE_ID)) {
+        const source = map.getSource(MAP_SOURCE_ID) as GeoJSONSource;
+        source.setData(featureCollection as any);
+        return;
+      }
+
+      map.addSource(MAP_SOURCE_ID, {
+        type: "geojson",
+        data: featureCollection as any,
+      });
+
+      map.addLayer({
+        id: POLYGON_FILL_LAYER_ID,
+        type: "fill",
+        source: MAP_SOURCE_ID,
+        filter: ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
+        paint: {
+          "fill-color": color,
+          "fill-opacity": 0.24,
+        },
+      });
+
+      map.addLayer({
+        id: POLYGON_LINE_LAYER_ID,
+        type: "line",
+        source: MAP_SOURCE_ID,
+        filter: ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
+        paint: {
+          "line-color": color,
+          "line-width": 2,
+          "line-opacity": 0.95,
+        },
+      });
+
+      map.addLayer({
+        id: LINE_LAYER_ID,
+        type: "line",
+        source: MAP_SOURCE_ID,
+        filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]],
+        paint: {
+          "line-color": color,
+          "line-width": 3,
+          "line-opacity": 0.95,
+        },
+      });
+
+      map.addLayer({
+        id: POINT_LAYER_ID,
+        type: "circle",
+        source: MAP_SOURCE_ID,
+        filter: ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]],
+        paint: {
+          "circle-color": color,
+          "circle-radius": 7,
+          "circle-stroke-color": "#04101f",
+          "circle-stroke-width": 2,
+        },
+      });
+    },
+    [color, featureCollection],
+  );
+
+  const syncMapData = useCallback(
+    (items: PreviewFeatureCollection) => {
+      const map = mapRef.current;
+      if (!map || !map.isStyleLoaded()) return;
+
+      const source = map.getSource(MAP_SOURCE_ID) as GeoJSONSource | undefined;
+      if (!source) return;
+
+      source.setData(items as any);
+
+      const bounds = computeBounds(items.features);
+      if (bounds) {
+        map.fitBounds(bounds, {
+          padding: { top: 48, bottom: 48, left: 48, right: 48 },
+          duration: 700,
+          maxZoom: 13,
+        });
+      }
+    },
+    [],
+  );
 
   const load = useCallback(() => {
-    if (!code) { setError("Endpoint dataset bukan koleksi OGC adapter — tidak ada geometri untuk dipetakan."); return; }
-    setLoading(true); setError(null); setSelected(null); setFeatures([]);
-    adapterServiceApi.listItems(code, { limit: 500 })
-      .then((res: any) => {
-        const fs = Array.isArray(res?.features) ? res.features : [];
-        setFeatures(fs);
-        if (fs.length === 0) setError("Tidak ada fitur untuk ditampilkan.");
+    if (!code) {
+      setError("Endpoint dataset belum mengarah ke koleksi domain yang bisa dipetakan.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSelected(null);
+    popupRef.current?.remove();
+
+    adapterServiceApi
+      .listItems(code, { limit: ADAPTER_ITEMS_LIMIT })
+      .then((response: any) => {
+        const items = Array.isArray(response?.features)
+          ? response.features.map(normalizeFeature)
+          : [];
+
+        setFeatures(items);
+
+        if (items.length === 0) {
+          setError("Belum ada fitur yang bisa dipreview.");
+        }
       })
-      .catch((e: any) => setError(e?.message || "Gagal memuat data peta."))
+      .catch((loadError: any) => {
+        setFeatures([]);
+        setError(loadError?.message || "Gagal memuat data peta.");
+      })
       .finally(() => setLoading(false));
   }, [code]);
 
-  useEffect(() => { if (open) load(); }, [open, load]);
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
 
-  const projector = useMemo(() => {
-    let lon0 = 180, lon1 = -180, lat0 = 90, lat1 = -90;
-    const rec = (x: any) => {
-      if (Array.isArray(x)) {
-        if (typeof x[0] === "number") {
-          lon0 = Math.min(lon0, x[0]); lon1 = Math.max(lon1, x[0]);
-          lat0 = Math.min(lat0, x[1]); lat1 = Math.max(lat1, x[1]);
-        } else x.forEach(rec);
-      }
+  useEffect(() => {
+    if (!open || !mapContainerRef.current || mapRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: createRasterStyle(basemapMode) as any,
+      center: [118, -2.5],
+      zoom: 4.2,
+      pitch: viewMode === "tilt" ? 55 : 0,
+      bearing: viewMode === "tilt" ? -18 : 0,
+      antialias: true,
+      attributionControl: true,
+    });
+
+    mapRef.current = map;
+    map.addControl(new NavigationControl({ showCompass: true }), "top-right");
+
+    map.on("load", () => {
+      applyDataLayers(map);
+
+      const interactiveLayerIds = [
+        POLYGON_FILL_LAYER_ID,
+        POLYGON_LINE_LAYER_ID,
+        LINE_LAYER_ID,
+        POINT_LAYER_ID,
+      ];
+
+      map.on("click", interactiveLayerIds, (event) => {
+        const feature = event.features?.[0];
+        if (!feature) return;
+
+        const matched = features.find(
+          (item) =>
+            String(item?.id) === String(feature.properties?.__featureId) ||
+            labelOf(item?.properties) === feature.properties?.__featureLabel,
+        );
+
+        setSelected(matched ?? feature);
+
+        popupRef.current?.remove();
+        popupRef.current = new Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 14,
+          className: "transfer-preview-popup",
+        })
+          .setLngLat(event.lngLat)
+          .setHTML(
+            `<div style="padding:6px 8px;min-width:120px">
+              <div style="font-weight:600;color:${color};margin-bottom:4px">${feature.properties?.__featureLabel ?? "Fitur"}</div>
+              <div style="font-size:11px;color:#94a3b8">${feature.geometry?.type ?? ""}</div>
+            </div>`,
+          )
+          .addTo(map);
+      });
+
+      interactiveLayerIds.forEach((layerId) => {
+        map.on("mouseenter", layerId, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", layerId, () => {
+          map.getCanvas().style.cursor = "";
+        });
+      });
+
+      syncMapData(featureCollection);
+    });
+
+    map.on("style.load", () => {
+      applyDataLayers(map);
+      syncMapData(featureCollection);
+    });
+
+    map.on("error", () => {
+      setError((current) => current ?? "Basemap gagal dimuat. Cek koneksi internet atau style peta.");
+    });
+
+    return () => {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      map.remove();
+      mapRef.current = null;
     };
-    features.forEach((f) => f.geometry && rec(f.geometry.coordinates));
-    if (lon0 > lon1) { lon0 = 0; lon1 = 1; lat0 = 0; lat1 = 1; }
-    const spanLon = lon1 - lon0 || 0.01, spanLat = lat1 - lat0 || 0.01;
-    const sc = Math.min((W - 2 * PAD) / spanLon, (H - 2 * PAD) / spanLat);
-    const ox = (W - spanLon * sc) / 2, oy = (H - spanLat * sc) / 2;
-    const proj = (lo: number, la: number): [number, number] => [ox + (lo - lon0) * sc, H - (oy + (la - lat0) * sc)];
-    return { proj, lon0, lon1, lat0, lat1, spanLon, spanLat };
-  }, [features]);
+  }, [applyDataLayers, basemapMode, featureCollection, features, open, syncMapData, viewMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setStyle(createRasterStyle(basemapMode) as any);
+  }, [basemapMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.easeTo({
+      pitch: viewMode === "tilt" ? 55 : 0,
+      bearing: viewMode === "tilt" ? -18 : 0,
+      duration: 500,
+    });
+  }, [viewMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    [
+      POLYGON_FILL_LAYER_ID,
+      POLYGON_LINE_LAYER_ID,
+      LINE_LAYER_ID,
+      POINT_LAYER_ID,
+    ].forEach((layerId) => {
+      if (!map.getLayer(layerId)) return;
+
+      if (layerId === POLYGON_FILL_LAYER_ID) {
+        map.setPaintProperty(layerId, "fill-color", color);
+      } else if (layerId === POINT_LAYER_ID) {
+        map.setPaintProperty(layerId, "circle-color", color);
+      } else {
+        map.setPaintProperty(layerId, "line-color", color);
+      }
+    });
+  }, [color]);
+
+  useEffect(() => {
+    syncMapData(featureCollection);
+  }, [featureCollection, syncMapData]);
 
   const fitAll = useCallback(() => {
-    const { proj, lon0, lon1, lat0, lat1 } = projector;
-    const [ax, ay] = proj(lon0, lat0), [bx, by] = proj(lon1, lat1);
-    let x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), y0 = Math.min(ay, by), y1 = Math.max(ay, by);
-    const pw = (x1 - x0) * 0.16 + 30, ph = (y1 - y0) * 0.16 + 30;
-    x0 -= pw; x1 += pw; y0 -= ph; y1 += ph;
-    const ar = W / H; let w = x1 - x0, h = y1 - y0;
-    if (w / h < ar) w = h * ar; else h = w / ar;
-    setVb({ x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h });
-  }, [projector]);
+    const map = mapRef.current;
+    const bounds = computeBounds(features);
+    if (!map || !bounds) return;
 
-  useEffect(() => { if (features.length) fitAll(); }, [features, fitAll]);
+    map.fitBounds(bounds, {
+      padding: { top: 48, bottom: 48, left: 48, right: 48 },
+      duration: 700,
+      maxZoom: 13,
+    });
+  }, [features]);
 
-  const grid = useMemo(() => {
-    const { proj, lon0, lon1, lat0, lat1, spanLon, spanLat } = projector;
-    const nice = (s: number) => {
-      const raw = s / 4, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), n = raw / p;
-      return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7 ? 5 : 10) * p;
-    };
-    const lines: any[] = [];
-    const sLon = nice(spanLon), sLat = nice(spanLat);
-    for (let lo = Math.ceil(lon0 / sLon) * sLon; lo <= lon1; lo += sLon) {
-      const [x] = proj(lo, lat0);
-      lines.push({ x1: x, y1: 0, x2: x, y2: H, lx: x + 3, ly: H - 8, t: lo.toFixed(1) + "°E" });
-    }
-    for (let la = Math.ceil(lat0 / sLat) * sLat; la <= lat1; la += sLat) {
-      const [, y] = proj(lon0, la);
-      lines.push({ x1: 0, y1: y, x2: W, y2: y, lx: 6, ly: y - 4, t: la.toFixed(1) + "°" });
-    }
-    return lines;
-  }, [projector]);
+  const focusFeature = useCallback((feature: any) => {
+    setSelected(feature);
 
-  const ringPath = (ring: number[][]) =>
-    ring.map((c, i) => { const [x, y] = projector.proj(c[0], c[1]); return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); }).join(" ") + " Z";
+    const map = mapRef.current;
+    const bounds = computeBounds([feature]);
+    if (!map || !bounds) return;
 
-  const centroidOf = (geom: any): [number, number] => {
-    let a = 180, b = -180, d = 90, e = -90;
-    const rec = (x: any) => {
-      if (Array.isArray(x)) {
-        if (typeof x[0] === "number") { a = Math.min(a, x[0]); b = Math.max(b, x[0]); d = Math.min(d, x[1]); e = Math.max(e, x[1]); }
-        else x.forEach(rec);
-      }
-    };
-    if (geom) rec(geom.coordinates);
-    return projector.proj((a + b) / 2, (d + e) / 2);
-  };
-
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const svg = svgRef.current; if (!svg) return;
-    const r = svg.getBoundingClientRect();
-    const mx = vb.x + ((e.clientX - r.left) / r.width) * vb.w;
-    const my = vb.y + ((e.clientY - r.top) / r.height) * vb.h;
-    const k = e.deltaY < 0 ? 0.85 : 1.18;
-    const nw = Math.min(W * 2.5, Math.max(30, vb.w * k)), nh = nw * (vb.h / vb.w);
-    setVb({ x: mx - (mx - vb.x) * (nw / vb.w), y: my - (my - vb.y) * (nh / vb.h), w: nw, h: nh });
-  };
-  const onPointerDown = (e: React.PointerEvent) => {
-    drag.current = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y };
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const svg = svgRef.current; if (!svg) return;
-    const r = svg.getBoundingClientRect();
-    const dx = ((e.clientX - drag.current.x) / r.width) * vb.w;
-    const dy = ((e.clientY - drag.current.y) / r.height) * vb.h;
-    setVb((v) => ({ ...v, x: drag.current!.vx - dx, y: drag.current!.vy - dy }));
-  };
-  const onPointerUp = () => { drag.current = null; };
+    map.fitBounds(bounds, {
+      padding: { top: 56, bottom: 56, left: 56, right: 56 },
+      duration: 700,
+      maxZoom: 15,
+    });
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[940px] max-h-[92vh] overflow-hidden p-0 gap-0">
-        <DialogHeader className="px-5 py-4 border-b">
+      <DialogContent className="max-h-[94vh] overflow-hidden p-0 gap-0 sm:max-w-[1380px]">
+        <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <MapPin className="w-4 h-4" style={{ color }} />
+            <MapPin className="h-4 w-4" style={{ color }} />
             Preview Peta — {datasetName}
-            {meta && <Badge variant="outline" className="ml-1 font-mono text-[10px]">{code} · {meta.name}</Badge>}
+            {meta && (
+              <Badge variant="outline" className="ml-1 font-mono text-[10px]">
+                {code} · {meta.name}
+              </Badge>
+            )}
             {!loading && !error && features.length > 0 && (
               <span className="ml-auto flex items-center gap-1 text-xs font-normal text-emerald-600">
-                <CheckCircle2 className="w-3.5 h-3.5" /> {features.length} fitur
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {features.length} fitur
               </span>
             )}
           </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Viewer ini memakai engine map interaktif supaya data transfer lebih gampang dicek dalam mode 2D atau tilt.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="grid md:grid-cols-[1fr_280px] gap-0">
-          {/* MAP */}
-          <div className="relative bg-[#070b16] min-h-[380px]">
-            {loading && (
-              <div className="absolute inset-0 grid place-items-center z-10 text-slate-400">
-                <Loader2 className="w-7 h-7 animate-spin" />
-              </div>
-            )}
-            {error && !loading && (
-              <div className="absolute inset-0 grid place-items-center z-10 text-slate-400 text-sm px-6 text-center">
+        <div className="grid xl:grid-cols-[360px_minmax(0,1fr)_320px] gap-0">
+          <div className="max-h-[64vh] overflow-y-auto border-r bg-white">
+            <div className="border-b px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <AlertCircle className="w-7 h-7 mx-auto mb-2 text-amber-500" />
-                  {error}
-                  {code && (
-                    <div className="mt-3">
-                      <Button size="sm" variant="secondary" className="h-7 text-xs gap-1 bg-slate-800 text-slate-200 hover:text-white" onClick={load}>
-                        <RefreshCw className="w-3 h-3" /> Coba lagi
-                      </Button>
-                    </div>
-                  )}
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Data Hasil Transfer
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Klik record untuk fokus ke item yang sama di peta.
+                  </p>
                 </div>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {features.length} item
+                </Badge>
+              </div>
+            </div>
+
+            {!features.length ? (
+              <div className="px-4 py-6 text-sm text-muted-foreground">
+                Belum ada item hasil validasi yang bisa ditampilkan.
+              </div>
+            ) : (
+              <div className="space-y-2 p-3">
+                {features.map((feature, index) => (
+                  <button
+                    key={String(feature.id)}
+                    type="button"
+                    onClick={() => focusFeature(feature)}
+                    className={`w-full rounded-2xl border p-3 text-left transition ${
+                      selected?.id === feature.id
+                        ? "border-accent bg-accent/5 shadow-sm"
+                        : "border-slate-200 bg-slate-50/50 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">
+                          {labelOf(feature.properties)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Item {index + 1} · {feature.geometry?.type ?? "Geometry"}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
+                        #{index + 1}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-1.5">
+                      {previewKeys.map((key) => (
+                        <div key={key} className="flex items-start justify-between gap-3 text-[12px]">
+                          <span className="text-slate-500">{FIELD_LABELS[key] || key}</span>
+                          <span className="max-w-[180px] text-right text-slate-900">
+                            {summarizeValue(feature.properties?.[key])}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
-            <svg
-              ref={svgRef}
-              viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-              preserveAspectRatio="xMidYMid meet"
-              className="w-full h-[clamp(380px,58vh,560px)] touch-none select-none cursor-grab active:cursor-grabbing"
-              onWheel={onWheel}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerLeave={onPointerUp}
-            >
-              {grid.map((g, i) => (
-                <g key={"g" + i}>
-                  <line x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="rgba(56,189,248,.08)" strokeWidth={1} />
-                  <text x={g.lx} y={g.ly} fill="#3b4a6b" fontSize={10} fontFamily="monospace">{g.t}</text>
-                </g>
-              ))}
-              {features.map((f, i) => {
-                const g = f.geometry; if (!g) return null;
-                const common = {
-                  style: { cursor: "pointer" as const },
-                  onMouseEnter: (e: React.MouseEvent) => setTip({ x: e.clientX, y: e.clientY, label: labelOf(f.properties) }),
-                  onMouseMove: (e: React.MouseEvent) => setTip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t)),
-                  onMouseLeave: () => setTip(null),
-                  onClick: () => setSelected(f),
-                };
-                if (g.type === "Polygon" || g.type === "MultiPolygon") {
-                  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
-                  const d = polys.map((p: any) => p.map(ringPath).join(" ")).join(" ");
-                  const [lx, ly] = centroidOf(g);
-                  return (
-                    <g key={i}>
-                      <path d={d} fill={color + "22"} stroke={color}
-                        strokeWidth={code === "WK" ? 2.2 : 1.6}
-                        strokeDasharray={code === "SEI" ? "5 4" : undefined} {...common} />
-                      <text x={lx} y={ly} textAnchor="middle" fontSize={11} fontWeight={600}
-                        fill="#e6edf7" paintOrder="stroke" stroke="#070b16" strokeWidth={3}
-                        style={{ pointerEvents: "none" }}>{labelOf(f.properties)}</text>
-                    </g>
-                  );
-                }
-                if (g.type === "LineString") {
-                  const d = g.coordinates.map((c: number[], j: number) => {
-                    const [x, y] = projector.proj(c[0], c[1]); return (j ? "L" : "M") + x + " " + y;
-                  }).join(" ");
-                  return <path key={i} d={d} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" {...common} />;
-                }
-                if (g.type === "Point") {
-                  const [x, y] = projector.proj(g.coordinates[0], g.coordinates[1]);
-                  return <circle key={i} cx={x} cy={y} r={6} fill={color} stroke="#070b16" strokeWidth={2} {...common} />;
-                }
-                return null;
-              })}
-              {selected?.geometry && (() => {
-                const [cx, cy] = selected.geometry.type === "Point"
-                  ? projector.proj(selected.geometry.coordinates[0], selected.geometry.coordinates[1])
-                  : centroidOf(selected.geometry);
-                return (
-                  <circle cx={cx} cy={cy} r={16} fill="none" stroke={color} strokeWidth={2} opacity={0.9}>
-                    <animate attributeName="r" values="13;21;13" dur="1.6s" repeatCount="indefinite" />
-                  </circle>
-                );
-              })()}
-            </svg>
-
-            <div className="absolute top-3 left-3 flex gap-1.5">
-              <Button size="sm" variant="secondary" className="h-7 px-2.5 text-xs gap-1 bg-slate-900/80 border border-slate-700 text-slate-200 hover:text-white" onClick={fitAll}>
-                <Maximize2 className="w-3 h-3" /> Fit
-              </Button>
-            </div>
-            <div className="absolute bottom-2 right-3 text-[10px] font-mono text-slate-600">scroll = zoom · drag = geser</div>
           </div>
 
-          {/* SIDE PANEL */}
-          <div className="border-l bg-muted/20 p-4 overflow-y-auto max-h-[58vh]">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Detail Fitur</span>
-              {!!features.length && <Badge variant="outline" className="font-mono text-[10px]">{features.length}</Badge>}
+          <div className="relative min-h-[420px] bg-[#06111f]">
+            <div ref={mapContainerRef} className="h-[clamp(420px,64vh,720px)] w-full" />
+
+            <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1 bg-slate-950/85 text-slate-100 backdrop-blur hover:bg-slate-900"
+                onClick={fitAll}
+                disabled={!features.length}
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+                Fit
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "2d" ? "default" : "secondary"}
+                className={viewMode === "2d" ? "h-8 gap-1" : "h-8 gap-1 bg-slate-950/85 text-slate-100 backdrop-blur hover:bg-slate-900"}
+                onClick={() => setViewMode("2d")}
+              >
+                2D
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "tilt" ? "default" : "secondary"}
+                className={viewMode === "tilt" ? "h-8 gap-1" : "h-8 gap-1 bg-slate-950/85 text-slate-100 backdrop-blur hover:bg-slate-900"}
+                onClick={() => setViewMode("tilt")}
+              >
+                <Mountain className="h-3.5 w-3.5" />
+                Tilt
+              </Button>
+              <Button
+                size="sm"
+                variant={basemapMode === "map" ? "default" : "secondary"}
+                className={basemapMode === "map" ? "h-8 gap-1" : "h-8 gap-1 bg-slate-950/85 text-slate-100 backdrop-blur hover:bg-slate-900"}
+                onClick={() => setBasemapMode("map")}
+              >
+                Peta
+              </Button>
+              <Button
+                size="sm"
+                variant={basemapMode === "satellite" ? "default" : "secondary"}
+                className={basemapMode === "satellite" ? "h-8 gap-1" : "h-8 gap-1 bg-slate-950/85 text-slate-100 backdrop-blur hover:bg-slate-900"}
+                onClick={() => setBasemapMode("satellite")}
+              >
+                Satelit
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1 bg-slate-950/85 text-slate-100 backdrop-blur hover:bg-slate-900"
+                onClick={load}
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Muat ulang
+              </Button>
             </div>
+
+            {loading && (
+              <div className="absolute inset-0 z-20 grid place-items-center bg-[#03111dcc]/70 text-slate-100 backdrop-blur-sm">
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/80 px-4 py-2 text-sm shadow-xl">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Memuat data peta...
+                </div>
+              </div>
+            )}
+
+            {error && !loading && (
+              <div className="absolute inset-x-4 bottom-4 z-20 rounded-2xl border border-amber-500/30 bg-[#120f0b]/95 p-4 text-sm text-amber-100 shadow-2xl backdrop-blur">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+                  <div className="space-y-3">
+                    <p>{error}</p>
+                    {code && (
+                      <Button size="sm" variant="secondary" className="h-8 gap-1" onClick={load}>
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Coba lagi
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="max-h-[64vh] overflow-y-auto border-l bg-muted/20 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Detail Fitur
+              </span>
+              {!!features.length && (
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {features.length}
+                </Badge>
+              )}
+            </div>
+
             {selected ? (
               <div className="space-y-1">
-                <div className="flex items-center gap-2 font-semibold text-sm">
-                  <span className="w-3 h-3 rounded" style={{ background: color }} />
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <span className="h-3 w-3 rounded" style={{ background: color }} />
                   {labelOf(selected.properties)}
                 </div>
-                <div className="text-[11px] font-mono text-muted-foreground mb-3">
+                <div className="mb-3 font-mono text-[11px] text-muted-foreground">
                   {selected.geometry?.type} · {selected.id}
                 </div>
                 <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
                   {Object.entries(selected.properties ?? {})
-                    .filter(([k, v]) => v !== "" && v != null && k !== "wk_id" && k !== "gx_metadata")
-                    .map(([k, v]) => (
-                      <div key={k} className="contents">
-                        <div className="text-muted-foreground font-mono text-[11px]">{FIELD_LABELS[k] || k}</div>
-                        <div className="text-right break-words">{String(v)}</div>
+                    .filter(([key, value]) =>
+                      value !== "" &&
+                      value != null &&
+                      key !== "wk_id" &&
+                      key !== "gx_metadata" &&
+                      !key.startsWith("__"),
+                    )
+                    .map(([key, value]) => (
+                      <div key={key} className="contents">
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {FIELD_LABELS[key] || key}
+                        </div>
+                        <div className="break-words text-right">{String(value)}</div>
                       </div>
                     ))}
                 </div>
               </div>
             ) : (
-              <div className="text-[12.5px] text-muted-foreground leading-relaxed space-y-3">
-                <p>Klik fitur di peta untuk melihat atribut lengkapnya. Scroll untuk zoom, drag untuk geser.</p>
-                <p className="text-[11px] font-mono text-muted-foreground/70">
+              <div className="space-y-3 text-[12.5px] leading-relaxed text-muted-foreground">
+                <p>
+                  Klik fitur di peta untuk melihat atribut lengkapnya. Gunakan tombol <strong>2D</strong> atau{" "}
+                  <strong>Tilt</strong> buat ganti sudut pandang.
+                </p>
+                <p>
+                  Panel kiri menampilkan daftar item hasil transfer supaya operator bisa cek isi datanya tanpa
+                  pindah halaman.
+                </p>
+                <p className="font-mono text-[11px] text-muted-foreground/70">
                   Transfer ID: {transferId.slice(0, 12)}…
                 </p>
               </div>
@@ -325,15 +779,6 @@ export function TransferMapPreview({
           </div>
         </div>
       </DialogContent>
-
-      {tip && (
-        <div
-          className="fixed z-[60] pointer-events-none rounded-lg border border-cyan-500/30 bg-[#090f1e]/95 px-2.5 py-1.5 text-xs shadow-xl"
-          style={{ left: tip.x + 14, top: tip.y + 14 }}
-        >
-          <span className="font-semibold" style={{ color }}>{tip.label}</span>
-        </div>
-      )}
     </Dialog>
   );
 }

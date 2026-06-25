@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Send, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -54,7 +55,7 @@ export function RequestContractDialog({
 
   const [consumerId, setConsumerId] = useState("");
   const [providerId, setProviderId] = useState("");
-  const [datasetId, setDatasetId] = useState("");
+  const [datasetIds, setDatasetIds] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [touchedName, setTouchedName] = useState(false);
@@ -64,7 +65,7 @@ export function RequestContractDialog({
     if (!open) return;
     setConsumerId(defaultConsumer);
     setProviderId("");
-    setDatasetId("");
+    setDatasetIds([]);
     setName("");
     setDescription("");
     setTouchedName(false);
@@ -75,15 +76,29 @@ export function RequestContractDialog({
   const providerName =
     participants.find((p) => p.provider_id === providerId)?.provider_name ?? "";
 
+  const datasetsForProvider = useMemo(
+    () =>
+      ((datasets ?? []) as Array<{ dataset_id: string; dataset_name: string; provider_id?: string }>)
+        .filter((dataset) => !providerId || dataset.provider_id === providerId),
+    [datasets, providerId],
+  );
+
   // Saat pilih dataset: set provider dari dataset + sugesti nama/description.
-  const onSelectDataset = (id: string) => {
-    setDatasetId(id);
+  const toggleDataset = (id: string, checked: boolean) => {
     const ds = (datasets ?? []).find((d) => d.dataset_id === id);
     if (ds?.provider_id) setProviderId(ds.provider_id);
-    if (!touchedName && ds) setName(`Permintaan Data: ${ds.dataset_name}`);
+    setDatasetIds((current) =>
+      checked ? Array.from(new Set([...current, id])) : current.filter((datasetId) => datasetId !== id),
+    );
+    if (!touchedName && ds && checked) setName(`Permintaan Data: ${ds.dataset_name}`);
   };
 
-  const dsName = (datasets ?? []).find((d) => d.dataset_id === datasetId)?.dataset_name;
+  const selectedDatasets = useMemo(
+    () =>
+      ((datasets ?? []) as Array<{ dataset_id: string; dataset_name: string; provider_id?: string }>)
+        .filter((dataset) => datasetIds.includes(dataset.dataset_id)),
+    [datasets, datasetIds],
+  );
 
   // Provider yang bisa dipilih = participant selain consumer.
   const providerOptions = useMemo(
@@ -93,8 +108,8 @@ export function RequestContractDialog({
 
   const finalDescription =
     description.trim() ||
-    (dsName
-      ? `Permintaan akses dataset '${dsName}' oleh ${consumerName || "consumer"} dari ${providerName || "provider"}.`
+    (selectedDatasets.length > 0
+      ? `Permintaan akses ${selectedDatasets.length} dataset oleh ${consumerName || "consumer"} dari ${providerName || "provider"}: ${selectedDatasets.map((dataset) => dataset.dataset_name).join(", ")}.`
       : "");
 
   const valid =
@@ -115,7 +130,9 @@ export function RequestContractDialog({
         provider_id: providerId,
         name: name.trim(),
         description: finalDescription.trim(),
-        ...(datasetId ? { datasets: [{ dataset_id: datasetId }] } : {}),
+        ...(datasetIds.length > 0
+          ? { datasets: datasetIds.map((datasetId) => ({ dataset_id: datasetId })) }
+          : {}),
       });
       toast.success("Permintaan terkirim — menunggu persetujuan KKKS (REQUESTED).");
       onOpenChange(false);
@@ -159,21 +176,34 @@ export function RequestContractDialog({
 
           {/* Dataset (opsional, untuk sugesti) */}
           <div className="space-y-2">
-            <Label>Dataset yang diminta (opsional)</Label>
-            <Select value={datasetId} onValueChange={onSelectDataset}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih dataset" />
-              </SelectTrigger>
-              <SelectContent>
-                {(datasets ?? []).map((d) => (
-                  <SelectItem key={d.dataset_id} value={d.dataset_id}>
-                    {d.dataset_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Dataset yang diminta (opsional, bisa lebih dari satu)</Label>
+            <div className="max-h-52 space-y-2 overflow-y-auto rounded-lg border border-border bg-muted/20 p-3">
+              {datasetsForProvider.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {providerId
+                    ? "Belum ada dataset published dari provider ini."
+                    : "Pilih provider dulu, atau centang dataset untuk mengisi provider otomatis."}
+                </p>
+              ) : (
+                datasetsForProvider.map((dataset) => (
+                  <label
+                    key={dataset.dataset_id}
+                    className="flex cursor-pointer items-start gap-3 rounded-md border border-transparent px-2 py-2 hover:border-border hover:bg-background"
+                  >
+                    <Checkbox
+                      checked={datasetIds.includes(dataset.dataset_id)}
+                      onCheckedChange={(checked) => toggleDataset(dataset.dataset_id, checked === true)}
+                    />
+                    <span className="min-w-0 text-sm">
+                      <span className="block font-medium">{dataset.dataset_name}</span>
+                      <span className="block text-[11px] text-muted-foreground">{dataset.dataset_id}</span>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Memilih dataset mengisi penyedia & menyusun nama/deskripsi otomatis.
+              Dataset yang dicentang akan dilampirkan ke kontrak. Provider ikut terkunci ke pemilik dataset yang dipilih.
             </p>
           </div>
 

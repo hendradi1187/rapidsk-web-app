@@ -119,6 +119,15 @@ const parseLayerOptions = (payload: unknown): LayerOption[] => {
     .filter(Boolean) as LayerOption[];
 };
 
+const resolveGeoServerLayerName = (layer: LayerOption | null) =>
+  String(layer?.raw?.name ?? layer?.raw?.layer_name ?? layer?.value ?? "").trim();
+
+const resolveArcGisLayerId = (layer: LayerOption | null) => {
+  const rawId = layer?.raw?.id ?? layer?.raw?.layer_id ?? layer?.value;
+  const layerId = Number(rawId);
+  return Number.isInteger(layerId) && layerId >= 0 ? layerId : null;
+};
+
 const prettyJson = (payload: unknown) =>
   payload ? JSON.stringify(payload, null, 2) : "Belum ada proses dijalankan.";
 
@@ -369,7 +378,18 @@ export function AdapterFlowWizard({ participantId, adapterEndpoint, domainOption
     const payload = await runAction("Ambil daftar layer", () =>
       adapterServiceApi.listLayers(selectedConnection.provider as AdapterProvider, selectedConnectionId),
     );
-    const options = parseLayerOptions(payload);
+    const options = parseLayerOptions(payload).map((item) => {
+      if (selectedConnection.provider !== "arcgis") {
+        return item;
+      }
+
+      const arcGisId = resolveArcGisLayerId(item);
+      return {
+        ...item,
+        value: arcGisId !== null ? String(arcGisId) : item.value,
+        label: item.label,
+      };
+    });
     setLayerOptions(options);
     setSelectedLayerValue(options[0]?.value ?? "");
     if (options.length === 0) {
@@ -384,13 +404,22 @@ export function AdapterFlowWizard({ participantId, adapterEndpoint, domainOption
     }
 
     if (selectedConnection.provider === "geoserver") {
+      const layerName = resolveGeoServerLayerName(selectedLayer);
+      if (!layerName) {
+        toast.error("Nama layer GeoServer belum kebaca.");
+        return;
+      }
       await runAction("Preview layer", () =>
-        adapterServiceApi.previewGeoServerLayer(selectedConnection.id, selectedLayer.value),
+        adapterServiceApi.previewGeoServerLayer(selectedConnection.id, layerName),
       );
       return;
     }
 
-    const layerId = Number(selectedLayer.raw?.id ?? selectedLayer.raw?.layer_id ?? selectedLayer.value);
+    const layerId = resolveArcGisLayerId(selectedLayer);
+    if (layerId === null) {
+      toast.error("Layer ArcGIS belum punya layer_id yang valid.");
+      return;
+    }
     await runAction("Preview layer", () =>
       adapterServiceApi.previewArcGisLayer(selectedConnection.id, layerId),
     );
@@ -403,13 +432,22 @@ export function AdapterFlowWizard({ participantId, adapterEndpoint, domainOption
     }
 
     if (selectedConnection.provider === "geoserver") {
+      const layerName = resolveGeoServerLayerName(selectedLayer);
+      if (!layerName) {
+        toast.error("Nama layer GeoServer belum kebaca.");
+        return;
+      }
       await runAction("Struktur layer", () =>
-        adapterServiceApi.describeGeoServerLayer(selectedConnection.id, selectedLayer.value),
+        adapterServiceApi.describeGeoServerLayer(selectedConnection.id, layerName),
       );
       return;
     }
 
-    const layerId = Number(selectedLayer.raw?.id ?? selectedLayer.raw?.layer_id ?? selectedLayer.value);
+    const layerId = resolveArcGisLayerId(selectedLayer);
+    if (layerId === null) {
+      toast.error("Layer ArcGIS belum punya layer_id yang valid.");
+      return;
+    }
     await runAction("Struktur layer", () =>
       adapterServiceApi.describeArcGisLayer(selectedConnection.id, layerId),
     );
@@ -481,7 +519,8 @@ export function AdapterFlowWizard({ participantId, adapterEndpoint, domainOption
       }
 
       if (selectedConnection.provider === "geoserver") {
-        if (!selectedLayer.value.trim()) {
+        const layerName = resolveGeoServerLayerName(selectedLayer);
+        if (!layerName) {
           toast.error("Nama layer GeoServer wajib terisi.");
           return;
         }
@@ -489,14 +528,14 @@ export function AdapterFlowWizard({ participantId, adapterEndpoint, domainOption
           adapterServiceApi.ingestGeoServer({
             ...basePayload,
             connection_id: selectedConnection.id,
-            layer_name: selectedLayer.value,
+            layer_name: layerName,
             cql_filter: remoteQuery.cqlFilter.trim() || null,
             srs_name: remoteQuery.srsName.trim() || null,
           }),
         ) as AdapterIngestionTask;
       } else {
-        const layerId = Number(selectedLayer.raw?.id ?? selectedLayer.raw?.layer_id ?? selectedLayer.value);
-        if (!Number.isInteger(layerId) || layerId < 0) {
+        const layerId = resolveArcGisLayerId(selectedLayer);
+        if (layerId === null) {
           toast.error("Layer ArcGIS belum valid. Muat ulang layer lalu pilih lagi.");
           return;
         }

@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
 import {
   useProvider,
@@ -15,6 +15,7 @@ import {
 } from "@/api/hooks/useProviders";
 import { useConnectionPools } from "@/api/hooks/useConnectionPools";
 import { useOrganizations, useOrganizationDomains } from "@/api/hooks/useOrganizations";
+import { useProviders } from "@/api/hooks/useProviders";
 import { usersApi } from "@/api/services/identity";
 import { registrationsApi, type RegistrationItem } from "@/api/services/onboarding";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,11 @@ import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { findParticipantPool, isPoolReady, resolvePoolMeta } from "@/lib/connection-pool";
 import { useDomain } from "@/context/DomainContext";
+import { useAuth } from "@/context/AuthContext";
+import {
+  issueAutoObligationContracts,
+  selectConsumerParticipant,
+} from "@/lib/onboarding-obligations";
 
 interface UserAccountRow {
   id: string;
@@ -73,6 +79,8 @@ const getParticipantOrganizationBindingKey = (participantId: string) =>
 
 const ParticipantDetail = () => {
   const { availableDomains } = useDomain();
+  const qc = useQueryClient();
+  const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -91,6 +99,8 @@ const ParticipantDetail = () => {
 
   // Matched Organization & Domains
   const { data: orgs } = useOrganizations();
+  const { data: providers } = useProviders();
+  const preferredConsumerName = user?.category?.name ?? null;
   const matchedOrg = useMemo(() => {
     if (!provider || !orgs) return null;
     const byName = orgs.find(
@@ -218,9 +228,22 @@ const ParticipantDetail = () => {
     () => ((poolsQ.data ?? []) as Array<any>).filter((item) => item.participant_id === participantId),
     [poolsQ.data, participantId],
   );
+  const consumerParticipant = useMemo(
+    () =>
+      selectConsumerParticipant(
+        ((providers ?? []) as Array<any>).map((item) => ({
+          provider_id: item.provider_id,
+          provider_name: item.provider_name,
+          organization_type: item.organization_type,
+        })),
+        preferredConsumerName,
+      ),
+    [providers, preferredConsumerName],
+  );
   const primaryPool = useMemo(() => findParticipantPool(participantPools, participantId), [participantPools, participantId]);
   const poolMeta = primaryPool ? resolvePoolMeta(primaryPool) : null;
   const poolReady = isPoolReady(primaryPool);
+  const [isIssuingObligations, setIsIssuingObligations] = useState(false);
 
   const organizationBindingState: BindingState =
     storedOrganizationBinding && effectiveOrganization
@@ -373,6 +396,44 @@ const ParticipantDetail = () => {
       toast.error(getApiErrorMessage(err, "Sinkronisasi domain gagal dijalankan"));
     } finally {
       setIsSyncingDomains(false);
+    }
+  };
+
+  const handleIssueObligations = async () => {
+    if (!consumerParticipant?.provider_id) {
+      toast.error("Participant consumer/regulator belum tersedia untuk menerbitkan permintaan kontrak.");
+      return;
+    }
+
+    const targetDomainIds = ((participantDomains ?? []) as Array<any>)
+      .map((item) => item.domain_id)
+      .filter(Boolean);
+
+    if (targetDomainIds.length === 0) {
+      toast.error("Participant ini belum punya domain. Sinkronkan domain dari organization governance dulu.");
+      return;
+    }
+
+    try {
+      setIsIssuingObligations(true);
+      const result = await issueAutoObligationContracts({
+        domainIds: targetDomainIds,
+        consumerId: consumerParticipant.provider_id,
+        providerId: participantId,
+        providerName: provider.organization_name || provider.contact_person?.name || participantId,
+      });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+      if (result.created === 0) {
+        toast.info("Semua kewajiban kontrak untuk participant ini sudah pernah diterbitkan.");
+      } else {
+        toast.success(
+          `${result.created} kontrak kewajiban berhasil diterbitkan${result.skipped ? `, ${result.skipped} dilewati karena sudah ada` : ""}.`,
+        );
+      }
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Gagal menerbitkan kewajiban kontrak otomatis"));
+    } finally {
+      setIsIssuingObligations(false);
     }
   };
 
@@ -541,7 +602,7 @@ const ParticipantDetail = () => {
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : organizationBindingState === "INFERRED"
                               ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
                         }
                       >
                         {organizationBindingState === "VERIFIED"
@@ -711,7 +772,7 @@ const ParticipantDetail = () => {
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : registrationBindingState === "INFERRED"
                                 ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
                           }
                         >
                           {registrationBindingState === "VERIFIED"
@@ -887,7 +948,24 @@ const ParticipantDetail = () => {
                   {isSyncingDomains ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Link2 className="mr-1.5 h-4 w-4" />}
                   Sinkronkan Semua Domain yang Belum Terpasang
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleIssueObligations}
+                  disabled={isIssuingObligations || loadingDomains || !participantDomains?.length}
+                >
+                  {isIssuingObligations ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-1.5 h-4 w-4" />
+                  )}
+                  Terbitkan Permintaan Kontrak Otomatis
+                </Button>
               </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Setelah Juknis diterapkan, domain governance tersimpan di organization yang dipilih di setup.
+                Tombol ini membaca domain yang sudah ditempel ke participant lalu menerbitkan permintaan kontrak consumer secara otomatis.
+              </p>
             </div>
             <div className="flex justify-between items-center">
               <div>

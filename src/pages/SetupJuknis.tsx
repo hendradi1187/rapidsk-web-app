@@ -35,6 +35,12 @@ const DEFAULT_ROWS = [
   { key: "seismik", label: "Survei Seismik", sub: "Seismic", classification: "L3", retention_years: 5 },
 ];
 
+const setupOrgCode = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 3) return words.map((word) => word[0]).join("").toUpperCase().slice(0, 20);
+  return words.join("").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
+};
+
 const Stepper = ({ step }: { step: number }) => (
   <div className="flex items-center gap-2 flex-wrap">
     {STEPS.map((s, i) => (
@@ -67,12 +73,34 @@ const SetupJuknis = () => {
     if (!orgId && orgs.length > 0) setOrgId(orgs[0].organization_id);
   }, [orgs, orgId]);
 
+  useEffect(() => {
+    if (orgs.length === 0) return;
+    try {
+      localStorage.setItem(
+        "cached_orgs",
+        JSON.stringify(
+          orgs.map((org) => ({
+            id: org.organization_id,
+            name: org.organization_name,
+          })),
+        ),
+      );
+    } catch {
+      // ignore storage issue
+    }
+  }, [orgs]);
+
   const createOrg = async () => {
     if (newOrgName.trim().length < 3) return toast.error("Nama organisasi minimal 3 karakter.");
     setCreatingOrg(true);
     try {
-      await organizationsApi.create({ organization_name: newOrgName.trim() });
+      const created = await organizationsApi.create({
+        organization_name: newOrgName.trim(),
+        code: setupOrgCode(newOrgName),
+        description: `Organisasi ${newOrgName.trim()} untuk governance dan penerapan paket Juknis.`,
+      });
       await orgQ.refetch();
+      setOrgId(created.organization_id);
       setNewOrgName("");
       toast.success("Organisasi dibuat.");
     } catch (e: unknown) {

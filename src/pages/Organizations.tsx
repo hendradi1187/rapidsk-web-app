@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
+import { Pager } from "@/components/common/Pager";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -416,6 +417,8 @@ const Organizations = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [formData, setFormData] = useState(emptyOrganizationForm);
   const [codeAutoFilled, setCodeAutoFilled] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
 
   const { data: organizations, isLoading, isError, error, refetch } = useOrganizations();
   const createMutation = useCreateOrganization();
@@ -434,6 +437,10 @@ const Organizations = () => {
         .some((value) => value!.toLowerCase().includes(query)),
     );
   }, [organizations, searchQuery]);
+  const pagedOrganizations = useMemo(
+    () => filteredOrganizations.slice((page - 1) * pageSize, page * pageSize),
+    [filteredOrganizations, page, pageSize],
+  );
 
   const regulatorCount = useMemo(
     () =>
@@ -450,6 +457,24 @@ const Organizations = () => {
       ).length,
     [organizations],
   );
+
+  useEffect(() => {
+    if (!organizations || organizations.length === 0) return;
+    try {
+      localStorage.setItem(
+        "cached_orgs",
+        JSON.stringify(
+          organizations.map((org) => ({
+            id: org.organization_id,
+            name: org.organization_name,
+          })),
+        ),
+      );
+    } catch {
+      // ignore storage issue
+    }
+  }, [organizations]);
+  useEffect(() => setPage(1), [searchQuery, pageSize]);
 
   const resetForm = () => {
     setFormData(emptyOrganizationForm);
@@ -662,7 +687,7 @@ const Organizations = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredOrganizations.map((organization) => {
+                pagedOrganizations.map((organization) => {
                   const code = organization.organization_type ?? "-";
                   const roleLabel = ROLE_BY_CODE[(organization.organization_type ?? "").toUpperCase()];
 
@@ -726,6 +751,13 @@ const Organizations = () => {
               )}
             </TableBody>
           </Table>
+          <Pager
+            page={page}
+            total={filteredOrganizations.length}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={setPageSize}
+          />
         </div>
       </div>
 

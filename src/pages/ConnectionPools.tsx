@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
+import { Pager } from "@/components/common/Pager";
 import { useAuth } from "@/context/AuthContext";
 import { useProviders } from "@/api/hooks/useProviders";
 import {
@@ -101,6 +102,8 @@ const ConnectionPools = () => {
   const [form, setForm] = useState<PoolForm>(emptyForm);
   const [inspection, setInspection] = useState<PoolInspectionResult | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
 
   const { data, isLoading, isError, error, refetch } = useConnectionPools();
   const { data: providersData } = useProviders();
@@ -139,12 +142,17 @@ const ConnectionPools = () => {
         .some((value) => String(value).toLowerCase().includes(q));
     });
   }, [pools, providerNameById, search]);
+  const pagedPools = useMemo(
+    () => filteredPools.slice((page - 1) * pageSize, page * pageSize),
+    [filteredPools, page, pageSize],
+  );
 
   const resetForm = () => {
     setForm(emptyForm);
     setEditingPool(null);
     setInspection(null);
   };
+  useEffect(() => setPage(1), [search, pageSize]);
 
   const openCreate = () => {
     resetForm();
@@ -422,7 +430,7 @@ const ConnectionPools = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPools.map((pool) => (
+                pagedPools.map((pool) => (
                   <TableRow key={pool.id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="min-w-0">
@@ -469,6 +477,13 @@ const ConnectionPools = () => {
               )}
             </TableBody>
           </Table>
+          <Pager
+            page={page}
+            total={filteredPools.length}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={setPageSize}
+          />
         </div>
       </div>
 
