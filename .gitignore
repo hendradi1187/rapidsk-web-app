@@ -20,8 +20,10 @@ dist-ssr
 # Runtime wrapper state (generated after setup / admin changes)
 config/runtime.json
 config/license-state.json
+config/public-organizations.json
 !config/runtime.example.json
 !config/license-state.example.json
+!config/public-organizations.example.json
 
 # Temporary API/OpenAPI inspection artifacts
 tmp-openapi*.json

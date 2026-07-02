@@ -8,6 +8,7 @@ import {
   getPreferredOrganizationName,
   setPreferredOrganization,
 } from "@/lib/session-binding";
+import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
 
 export interface AvailableDomain {
   domain_id: string;
@@ -67,26 +68,6 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 
         const preferredOrgId = getPreferredOrganizationId();
         const preferredOrgName = getPreferredOrganizationName();
-        const chosenOrg =
-          items.find((org) => org.organization_id === preferredOrgId) ??
-          items.find((org) => normalize(org.organization_name) === normalize(preferredOrgName)) ??
-          (role === "SUPER_ADMIN" ? items[0] : null);
-
-        if (!chosenOrg) {
-          if (!cancelled) {
-            setDomainId(null);
-            setDomainName(null);
-            setActiveDomainId(null);
-            setReady(true);
-          }
-          return;
-        }
-
-        const domains = (await organizationsApi.listDomains(chosenOrg.organization_id)) as AvailableDomain[];
-
-        // Domain yang di-bind ke participant (onboarding) — prioritas untuk role provider,
-        // karena listDomains(orgId) di BE tidak org-scoped (kembalikan semua domain) sehingga
-        // domains[0] sering bukan domain tempat dataset participant berada.
         let participantDomainIds: string[] = [];
         if (participantId) {
           try {
@@ -97,12 +78,43 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           } catch { /* fallback ke domain org */ }
         }
 
+        const organizationDomainsById =
+          participantDomainIds.length > 0
+            ? await organizationsApi.listDomainsMap(items.map((org) => org.organization_id))
+            : {};
+        const binding = resolveGovernanceOrganizationBinding({
+          organizations: items,
+          domainsByOrganizationId: organizationDomainsById,
+          participantDomainIds,
+          preferredOrganizationId: preferredOrgId,
+          preferredOrganizationName: preferredOrgName,
+        });
+        const chosenOrg =
+          binding.organization ??
+          items.find((org) => org.organization_id === preferredOrgId) ??
+          items.find((org) => normalize(org.organization_name) === normalize(preferredOrgName)) ??
+          (role === "SUPER_ADMIN" ? items[0] : null);
+
+        if (!chosenOrg) {
+          if (!cancelled) {
+            setAvailableDomains([]);
+            setDomainId(null);
+            setDomainName(null);
+            setActiveDomainId(null);
+            setReady(true);
+          }
+          return;
+        }
+
+        const domains =
+          participantDomainIds.length > 0
+            ? ((organizationDomainsById[chosenOrg.organization_id] ?? []) as AvailableDomain[])
+            : ((await organizationsApi.listDomains(chosenOrg.organization_id)) as AvailableDomain[]);
+
         if (!cancelled) {
           setPreferredOrganization(chosenOrg.organization_id, chosenOrg.organization_name);
           setAvailableDomains(domains);
 
-          // Prioritas: untuk provider, domain participant menang (nilai persisted bisa basi).
-          // Untuk admin/super-admin (tanpa participant), pakai domain aktif tersimpan.
           const persistedId = getActiveDomainId();
           const persisted = persistedId ? domains.find((d) => d.domain_id === persistedId) : null;
           const participantDomain = participantDomainIds.length

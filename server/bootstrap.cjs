@@ -9,6 +9,7 @@ const DIST_DIR = path.join(ROOT_DIR, "dist");
 const CONFIG_DIR = path.join(ROOT_DIR, "config");
 const RUNTIME_CONFIG_PATH = path.join(CONFIG_DIR, "runtime.json");
 const LICENSE_STATE_PATH = path.join(CONFIG_DIR, "license-state.json");
+const PUBLIC_ORGANIZATIONS_CACHE_PATH = path.join(CONFIG_DIR, "public-organizations.json");
 const PORT = Number(process.env.RAPIDSK_PORT || process.env.PORT || 8282);
 const HOST = process.env.RAPIDSK_HOST || "0.0.0.0";
 const LICENSE_SERVER_URL = process.env.RAPIDSK_LICENSE_SERVER_URL || "";
@@ -143,6 +144,53 @@ const sanitizeLicenseState = (licenseState) => {
     expiresAt: licenseState.expiresAt || null,
     lastValidationAt: licenseState.lastValidationAt || null,
   };
+};
+
+// Normalisasi shape organisasi publik dari dua sumber:
+// 1. respons backend governance
+// 2. cache wrapper `public-organizations.json`
+// Jadi fungsi ini bukan "input manual", tapi adapter ringan agar FE selalu dapat
+// shape `{ id, name }` yang konsisten.
+const sanitizePublicOrganizations = (payload) => {
+  const rows = Array.isArray(payload) ? payload : payload?.organizations;
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map((item) => ({
+      id: String(item?.id ?? item?.organization_id ?? "").trim(),
+      name: String(item?.name ?? item?.organization_name ?? "").trim(),
+    }))
+    .filter((item) => item.id && item.name);
+};
+
+const fetchPublicOrganizationsFromBackend = async () => {
+  const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
+  const apiBaseUrl = normalizeBaseUrl(runtimeConfig?.apiBaseUrl);
+  if (!isValidHttpUrl(apiBaseUrl)) {
+    return [];
+  }
+
+  const apiRoot = apiBaseUrl.replace(/\/api\/v\d+\/?$/, "");
+  const targetUrl = `${apiRoot}/api/v1/governance/organizations/?limit=100&offset=0`;
+
+  try {
+    const response = await fetchWithTimeout(targetUrl, { method: "GET" }, 5000);
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = await response.json();
+    const organizations = sanitizePublicOrganizations(payload?.data ?? payload);
+    if (organizations.length > 0) {
+      await writeJsonFile(PUBLIC_ORGANIZATIONS_CACHE_PATH, {
+        updatedAt: new Date().toISOString(),
+        organizations,
+      });
+    }
+    return organizations;
+  } catch {
+    return [];
+  }
 };
 
 const getSetupStatus = async () => {
@@ -697,6 +745,17 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, getPublicRuntimeConfig(runtimeConfig));
     }
 
+    if (req.method === "GET" && pathname === "/public/organizations") {
+      let organizations = await fetchPublicOrganizationsFromBackend();
+      if (organizations.length === 0) {
+        organizations = sanitizePublicOrganizations(await readJsonFile(PUBLIC_ORGANIZATIONS_CACHE_PATH));
+      }
+      return sendJson(res, 200, {
+        data: organizations,
+        total: organizations.length,
+      });
+    }
+
     if (req.method === "POST" && pathname === "/setup/license/validate") {
       const body = await parseRequestBody(req);
       const result = await performLicenseValidation(body);
@@ -844,6 +903,20 @@ const server = http.createServer(async (req, res) => {
       const body = await parseRequestBody(req);
       const result = await inspectConnectionPoolTargets(body);
       return sendJson(res, result.ok ? 200 : 422, result);
+    }
+
+    if (pathname === "/admin/public-organizations/cache") {
+      if (!requireAuthenticated(req, res)) return;
+      if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" });
+      const body = await parseRequestBody(req);
+      const organizations = sanitizePublicOrganizations(body);
+      await writeJsonFile(PUBLIC_ORGANIZATIONS_CACHE_PATH, {
+        updatedAt: new Date().toISOString(),
+        organizations,
+      });
+      return sendJson(res, 200, {
+        cached: organizations.length,
+      });
     }
 
     if (pathname === "/adapter-runtime/check-source") {

@@ -1,0 +1,9 @@
+{
+  "updatedAt": "2026-06-25T00:00:00.000Z",
+  "organizations": [
+    {
+      "id": "example-org-id",
+      "name": "Example Governance Organization"
+    }
+  ]
+}

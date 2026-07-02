@@ -53,6 +53,32 @@ const buildOrganizationCreatePayload = (data: OrganizationCreateRequest) => {
   };
 };
 
+const syncPublicOrganizationsCache = async (organizations: Organization[]) => {
+  if (typeof window === "undefined" || organizations.length === 0) return;
+
+  const token = localStorage.getItem("auth_token");
+  if (!token) return;
+
+  try {
+    await fetch("/admin/public-organizations/cache", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        organizations: organizations.map((organization) => ({
+          id: organization.organization_id,
+          name: organization.organization_name,
+        })),
+      }),
+    });
+  } catch {
+    // Cache wrapper boleh gagal diam-diam, jangan ganggu flow utama.
+  }
+};
+
 export const organizationsApi = {
   list: async (): Promise<OrganizationListResponse> => {
     const limit = 100;
@@ -77,7 +103,9 @@ export const organizationsApi = {
       merged.set(item.organization_id, item);
     });
 
-    return Array.from(merged.values()) as unknown as OrganizationListResponse;
+    const organizations = Array.from(merged.values()) as Organization[];
+    void syncPublicOrganizationsCache(organizations);
+    return organizations as unknown as OrganizationListResponse;
   },
 
   listDomains: async (orgId: string): Promise<OrganizationDomain[]> => {
@@ -89,6 +117,23 @@ export const organizationsApi = {
       status: d.status,
       description: d.description ?? undefined,
     }));
+  },
+
+  listDomainsMap: async (orgIds: string[]): Promise<Record<string, OrganizationDomain[]>> => {
+    const uniqueIds = Array.from(new Set(orgIds.filter(Boolean)));
+    const results = await Promise.allSettled(
+      uniqueIds.map(async (organizationId) => ({
+        organizationId,
+        domains: await organizationsApi.listDomains(organizationId),
+      })),
+    );
+
+    return results.reduce<Record<string, OrganizationDomain[]>>((acc, result) => {
+      if (result.status === "fulfilled") {
+        acc[result.value.organizationId] = result.value.domains;
+      }
+      return acc;
+    }, {});
   },
 
   create: async (data: OrganizationCreateRequest): Promise<Organization> => {
