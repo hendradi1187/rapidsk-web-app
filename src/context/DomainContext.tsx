@@ -16,11 +16,17 @@ export interface AvailableDomain {
   code?: string;
 }
 
+export type DomainSource = "participant_binding" | "governance_fallback" | "none";
+
 interface DomainContextValue {
   domainId: string | null;
   domainName: string | null;
   ready: boolean;
   availableDomains: AvailableDomain[];
+  domainSource: DomainSource;
+  activeOrganizationId: string | null;
+  activeOrganizationName: string | null;
+  participantDomainCount: number;
   switchDomain: (domain: AvailableDomain) => void;
 }
 
@@ -29,6 +35,10 @@ const DomainContext = createContext<DomainContextValue>({
   domainName: null,
   ready: false,
   availableDomains: [],
+  domainSource: "none",
+  activeOrganizationId: null,
+  activeOrganizationName: null,
+  participantDomainCount: 0,
   switchDomain: () => {},
 });
 
@@ -46,6 +56,10 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
   const [domainId, setDomainId] = useState<string | null>(getActiveDomainId());
   const [domainName, setDomainName] = useState<string | null>(null);
   const [availableDomains, setAvailableDomains] = useState<AvailableDomain[]>([]);
+  const [domainSource, setDomainSource] = useState<DomainSource>("none");
+  const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
+  const [activeOrganizationName, setActiveOrganizationName] = useState<string | null>(null);
+  const [participantDomainCount, setParticipantDomainCount] = useState(0);
   const [ready, setReady] = useState<boolean>(false);
 
   useEffect(() => {
@@ -62,7 +76,14 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           organization_name: string;
         }>;
         if (items.length === 0) {
-          if (!cancelled) setReady(true);
+          if (!cancelled) {
+            setAvailableDomains([]);
+            setDomainSource("none");
+            setActiveOrganizationId(null);
+            setActiveOrganizationName(null);
+            setParticipantDomainCount(0);
+            setReady(true);
+          }
           return;
         }
 
@@ -100,6 +121,10 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
             setAvailableDomains([]);
             setDomainId(null);
             setDomainName(null);
+            setDomainSource("none");
+            setActiveOrganizationId(null);
+            setActiveOrganizationName(null);
+            setParticipantDomainCount(participantDomainIds.length);
             setActiveDomainId(null);
             setReady(true);
           }
@@ -114,6 +139,10 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
         if (!cancelled) {
           setPreferredOrganization(chosenOrg.organization_id, chosenOrg.organization_name);
           setAvailableDomains(domains);
+          setDomainSource(participantDomainIds.length > 0 ? "participant_binding" : "governance_fallback");
+          setActiveOrganizationId(chosenOrg.organization_id);
+          setActiveOrganizationName(chosenOrg.organization_name);
+          setParticipantDomainCount(participantDomainIds.length);
 
           const persistedId = getActiveDomainId();
           const persisted = persistedId ? domains.find((d) => d.domain_id === persistedId) : null;
@@ -134,7 +163,13 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           setReady(true);
         }
       } catch {
-        if (!cancelled) setReady(true);
+        if (!cancelled) {
+          setDomainSource("none");
+          setActiveOrganizationId(null);
+          setActiveOrganizationName(null);
+          setParticipantDomainCount(0);
+          setReady(true);
+        }
       }
     })();
     return () => {
@@ -149,7 +184,19 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <DomainContext.Provider value={{ domainId, domainName, ready, availableDomains, switchDomain }}>
+    <DomainContext.Provider
+      value={{
+        domainId,
+        domainName,
+        ready,
+        availableDomains,
+        domainSource,
+        activeOrganizationId,
+        activeOrganizationName,
+        participantDomainCount,
+        switchDomain,
+      }}
+    >
       {children}
     </DomainContext.Provider>
   );

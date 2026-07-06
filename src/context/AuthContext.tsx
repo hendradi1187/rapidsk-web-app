@@ -1,7 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { getKeycloak, isKeycloakConfigured } from "@/auth/keycloak";
 import { useKeycloak } from "@/auth/KeycloakProvider";
+import { iamApi } from "@/api/services/iam";
 import { decodeJwt } from "@/lib/jwt";
+import { samePermissions } from "@/lib/effective-permissions";
 import {
   getPreferredOrganizationName,
   getPreferredParticipantId,
@@ -238,6 +240,17 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const STORAGE_KEY_USER = "user_info";
 const STORAGE_KEY_TOKEN = "auth_token";
 
+const persistUserInfo = (user: AuthUser | null) => {
+  if (typeof window === "undefined") return;
+
+  if (!user) {
+    localStorage.removeItem(STORAGE_KEY_USER);
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+};
+
 const mergeStoredBinding = (user: AuthUser): AuthUser => {
   const preferredOrgName = getPreferredOrganizationName();
   const preferredParticipantId = getPreferredParticipantId();
@@ -333,8 +346,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // tokenVersion di-include supaya re-sync setiap token refresh
   }, [keycloakAuthenticated, tokenVersion]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+    if (!token) return;
+
+    const syncPermissions = async () => {
+      try {
+        const permissions = await iamApi.getMyEffectivePermissions();
+        if (cancelled || samePermissions(user.permissions, permissions)) {
+          return;
+        }
+
+        const nextUser: AuthUser = {
+          ...user,
+          permissions,
+        };
+        setUser(nextUser);
+        persistUserInfo(nextUser);
+      } catch {
+        // Permission hydration tidak boleh memblok auth bootstrap.
+      }
+    };
+
+    void syncPermissions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, tokenVersion]);
+
   const setAuthUser = useCallback((userInfo: AuthUser) => {
     setUser(userInfo);
+    persistUserInfo(userInfo);
   }, []);
 
   const clearAuth = useCallback(() => {

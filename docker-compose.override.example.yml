@@ -1,0 +1,6 @@
+services:
+  rapidsk-fe:
+    env_file:
+      - .env.docker
+    ports:
+      - "${RAPIDSK_PORT}:${RAPIDSK_PORT}"

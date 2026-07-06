@@ -48,6 +48,7 @@ import {
   ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
+import { canManageConnectionPools } from "@/lib/feature-access";
 
 type PoolForm = {
   participant_id: string;
@@ -92,8 +93,8 @@ const isValidHttpUrl = (value: string) => {
 };
 
 const ConnectionPools = () => {
-  const { hasRole } = useAuth();
-  const canManage = hasRole(["SUPER_ADMIN", "ADMIN"]);
+  const { role, roles, hasPermission } = useAuth();
+  const canManage = canManageConnectionPools({ role, roles, hasPermission });
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -311,8 +312,8 @@ const ConnectionPools = () => {
     return (
       <div className="min-h-screen">
         <Header
-          title="Connection Pools"
-          subtitle="Akses dibatasi untuk admin control plane"
+          title="Registry Koneksi"
+          subtitle="Hanya dipakai admin control plane"
         />
         <div className="p-6">
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
@@ -327,8 +328,8 @@ const ConnectionPools = () => {
     return (
       <div className="min-h-screen">
         <Header
-          title="Connection Pools"
-          subtitle="Registry metadata connector participant"
+          title="Registry Koneksi"
+          subtitle="Metadata koneksi connector per participant"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
@@ -348,8 +349,8 @@ const ConnectionPools = () => {
   return (
     <div className="min-h-screen">
       <Header
-        title="Connection Pools"
-        subtitle="Registry control plane untuk endpoint connector dan JWKS participant"
+        title="Registry Koneksi"
+        subtitle="Simpan alamat connector dan JWKS participant agar alur transfer bisa mengenali jalurnya."
       />
       <div className="p-6 space-y-6">
         <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
@@ -371,13 +372,13 @@ const ConnectionPools = () => {
             <p className="text-3xl font-bold mt-1">{isLoading ? "…" : pools.length}</p>
           </div>
           <div className="stat-card">
-            <p className="text-sm text-muted-foreground">Participant Terpasang</p>
+            <p className="text-sm text-muted-foreground">Participant Terhubung</p>
             <p className="text-3xl font-bold mt-1">
               {isLoading ? "…" : new Set(pools.map((pool) => pool.participant_id)).size}
             </p>
           </div>
           <div className="stat-card">
-            <p className="text-sm text-muted-foreground">Hasil Filter</p>
+            <p className="text-sm text-muted-foreground">Hasil Pencarian</p>
             <p className="text-3xl font-bold mt-1">{isLoading ? "…" : filteredPools.length}</p>
           </div>
         </div>
@@ -386,7 +387,7 @@ const ConnectionPools = () => {
           <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Cari pool, participant, endpoint..."
+              placeholder="Cari registry, participant, atau endpoint..."
               className="pl-10"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -395,11 +396,11 @@ const ConnectionPools = () => {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
+              Muat ulang
             </Button>
             <Button size="sm" onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" />
-              Tambah Pool
+              Tambah Registry
             </Button>
           </div>
         </div>
@@ -411,8 +412,8 @@ const ConnectionPools = () => {
                 <TableHead>Registry</TableHead>
                 <TableHead>Participant</TableHead>
                 <TableHead>Tipe</TableHead>
-                <TableHead>Connector Endpoint</TableHead>
-                <TableHead>Well-known JWT</TableHead>
+                <TableHead>Alamat Connector</TableHead>
+                <TableHead>Alamat JWKS</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
@@ -426,7 +427,7 @@ const ConnectionPools = () => {
               ) : filteredPools.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                    Belum ada connection pool yang cocok.
+                    Belum ada registry koneksi yang cocok.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -488,11 +489,11 @@ const ConnectionPools = () => {
       </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="sm:max-w-[680px]">
+        <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingPool ? "Edit Connection Pool" : "Tambah Connection Pool"}</DialogTitle>
+            <DialogTitle>{editingPool ? "Edit Registry Koneksi" : "Tambah Registry Koneksi"}</DialogTitle>
             <DialogDescription>
-              Registry ini dipakai control plane untuk menemukan connector endpoint dan JWKS participant.
+              Registry ini dipakai control plane untuk menemukan alamat connector dan JWKS milik participant.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -546,7 +547,7 @@ const ConnectionPools = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label>Connector Endpoint</Label>
+                <Label>Alamat Connector</Label>
               <Input
                 value={form.endpoint}
                 onChange={(e) => {
@@ -557,7 +558,7 @@ const ConnectionPools = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label>Well-known JWT URL</Label>
+                <Label>Alamat JWKS</Label>
               <Input
                 value={form.well_known_jwt_url}
                 onChange={(e) => {
@@ -569,7 +570,7 @@ const ConnectionPools = () => {
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Legacy URL Consumer</Label>
+                <Label>Alamat Lama Consumer</Label>
                 <Input
                   value={form.url_consumer}
                   onChange={(e) => setForm((current) => ({ ...current, url_consumer: e.target.value }))}
@@ -577,7 +578,7 @@ const ConnectionPools = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Legacy URL Provider</Label>
+                <Label>Alamat Lama Provider</Label>
                 <Input
                   value={form.url_provider}
                   onChange={(e) => setForm((current) => ({ ...current, url_provider: e.target.value }))}
@@ -589,8 +590,8 @@ const ConnectionPools = () => {
               <div className="flex items-start gap-2">
                 <Link2 className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>
-                  `endpoint` dan `well_known_jwt_url` adalah pasangan minimal yang sekarang dibaca flow transfer B1.
-                  Field legacy tetap boleh disimpan kalau masih ada participant lama.
+                  `endpoint` dan `well_known_jwt_url` adalah pasangan minimal yang sekarang dibaca oleh alur transfer.
+                  Field lama tetap boleh disimpan bila masih ada participant yang belum migrasi penuh.
                 </span>
               </div>
             </div>
@@ -598,11 +599,11 @@ const ConnectionPools = () => {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-slate-900">Pemeriksaan koneksi</p>
-                  <p className="text-xs text-slate-500">Wrapper akan mencoba menjangkau connector endpoint dan membaca JWKS dari sisi server.</p>
+                  <p className="text-xs text-slate-500">Server akan mencoba menjangkau connector dan membaca JWKS sebelum data disimpan.</p>
                 </div>
                 <Button type="button" variant="outline" onClick={() => void inspectTargets()} disabled={isInspecting}>
                   {isInspecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                  Cek Endpoint
+                  Cek Koneksi
                 </Button>
               </div>
               {inspection && (
@@ -611,7 +612,7 @@ const ConnectionPools = () => {
                     <div key={check.key} className="flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs text-slate-600">
                       <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${check.status === "pass" ? "text-emerald-600" : "text-rose-600"}`} />
                       <div>
-                        <p className="font-medium text-slate-900">{check.key === "endpoint" ? "Connector endpoint" : "JWKS"}</p>
+                        <p className="font-medium text-slate-900">{check.key === "endpoint" ? "Alamat connector" : "JWKS"}</p>
                         <p>{check.message}</p>
                       </div>
                     </div>
@@ -643,11 +644,11 @@ const ConnectionPools = () => {
       </Dialog>
 
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Hapus Connection Pool</DialogTitle>
+            <DialogTitle>Hapus Registry Koneksi</DialogTitle>
             <DialogDescription>
-              Registry yang dihapus tidak akan lagi terbaca oleh transfer center.
+              Registry yang dihapus tidak akan lagi dibaca oleh modul transfer.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">

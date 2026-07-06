@@ -430,7 +430,7 @@ const ProviderInbox = () => {
 
       {/* Konfirmasi tindakan */}
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
-        <DialogContent className="sm:max-w-[460px]">
+        <DialogContent className="sm:max-w-[460px] max-h-[90vh] overflow-y-auto">
           {pending && (
             <>
               <DialogHeader>

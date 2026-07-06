@@ -21,6 +21,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { authService } from "@/api/services/identity-provider";
+import { iamApi } from "@/api/services/iam";
 import { organizationsApi } from "@/api/services/governance";
 import { registrationsApi } from "@/api/services/onboarding";
 import { providersApi } from "@/api/services/providers";
@@ -40,6 +41,7 @@ import { BackgroundScene } from "@/components/login/BackgroundScene";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
+import type { Organization } from "@/api/types/governance";
 
 const API_BASE = getFrontendApiBasePath();
 const publicClient = axios.create({ baseURL: API_BASE, timeout: 10000 });
@@ -117,10 +119,10 @@ const fetchGovernanceOrganizationsPublic = async (): Promise<OrgOption[]> => {
     });
     const data = res.data;
     const list = Array.isArray(data) ? data : (data?.data ?? data?.results ?? []);
-    list.forEach((o: any) => {
+    list.forEach((o: PublicOrganizationPayload) => {
       rows.push({
-        id: o.id ?? o.organization_id,
-        name: o.name ?? o.organization_name,
+        id: o.id ?? o.organization_id ?? null,
+        name: o.name ?? o.organization_name ?? "",
         participantId: null,
         hasGovernanceOrg: true,
         hasParticipant: false,
@@ -155,6 +157,17 @@ interface OrgOption {
   participantId: string | null;
   hasGovernanceOrg: boolean;
   hasParticipant: boolean;
+}
+
+interface PublicOrganizationPayload {
+  id?: string | null;
+  organization_id?: string | null;
+  name?: string | null;
+  organization_name?: string | null;
+}
+
+interface ParticipantDomainRef {
+  domain_id?: string | null;
 }
 
 /**
@@ -315,12 +328,13 @@ export const LoginPage = () => {
         );
         const selectedOrgKey = normalizeOrgKey(effectiveOrg) || fallbackOrgKey;
 
+        const governanceOrganizations = organizations as Organization[];
         const matchedOrg =
-          organizations.find((item) => item.organization_id === selectedOrgOption?.id) ??
-          organizations.find((item) => normalizeOrgKey(item.organization_name) === selectedOrgKey) ??
-          organizations.find((item) => normalizeOrgKey(item.organization_name) === normalizeOrgKey(resolvedOrgName)) ??
+          governanceOrganizations.find((item) => item.organization_id === selectedOrgOption?.id) ??
+          governanceOrganizations.find((item) => normalizeOrgKey(item.organization_name) === selectedOrgKey) ??
+          governanceOrganizations.find((item) => normalizeOrgKey(item.organization_name) === normalizeOrgKey(resolvedOrgName)) ??
           (matchedRegistration
-            ? organizations.find(
+            ? governanceOrganizations.find(
                 (item) =>
                   normalizeOrgKey(item.organization_name) === normalizeOrgKey(matchedRegistration.organization_name),
               ) ?? null
@@ -348,16 +362,16 @@ export const LoginPage = () => {
           ? await providersApi.listDomains(resolvedParticipantId).catch(() => [])
           : [];
         const participantDomainIds = participantDomains
-          .map((item: any) => String(item?.domain_id ?? "").trim())
+          .map((item) => String((item as ParticipantDomainRef)?.domain_id ?? "").trim())
           .filter(Boolean);
         const organizationDomainsById =
           participantDomainIds.length > 0
             ? await organizationsApi.listDomainsMap(
-                organizations.map((organization) => organization.organization_id),
+                governanceOrganizations.map((organization) => organization.organization_id),
               )
             : {};
         const backendBinding = resolveGovernanceOrganizationBinding({
-          organizations,
+          organizations: governanceOrganizations,
           domainsByOrganizationId: organizationDomainsById,
           participantDomainIds,
           participantName: matchedParticipant?.provider_name ?? resolvedOrgName ?? tokenOrgName,
@@ -438,6 +452,8 @@ export const LoginPage = () => {
         resolvedParticipantId = null;
       }
 
+      const effectivePermissions = await iamApi.getMyEffectivePermissions().catch(() => []);
+
       setPreferredOrganization(resolvedOrgId, resolvedOrgName || null);
       setPreferredParticipantId(role === "SUPER_ADMIN" ? null : resolvedParticipantId);
 
@@ -447,7 +463,7 @@ export const LoginPage = () => {
         full_name: (c?.username as string) ?? username,
         role,
         roles: [role],
-        permissions: [] as string[],
+        permissions: effectivePermissions,
         category: {
           name: resolvedOrgName,
           code: catCode || resolvedOrgName,

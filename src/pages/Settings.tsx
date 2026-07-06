@@ -67,6 +67,7 @@ import {
 import { ROLE_LABELS } from "@/config/rbac";
 import { usersService } from "@/api/services/identity-provider";
 import { useDatasets } from "@/api/hooks/useDatasets";
+import { canManageAdapters } from "@/lib/feature-access";
 import {
   adapterRuntimeApi,
   type AdapterClassification,
@@ -96,18 +97,26 @@ interface NotificationSetting {
 }
 
 const ADMIN_LIKE_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
+const showLegacyDataFlow = false;
 const normalizeBindingKey = (value: string | null | undefined) =>
   String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const Settings = () => {
   const navigate = useNavigate();
-  const { participantId, role, user, setAuthUser } = useAuth();
-  const { domainId, availableDomains } = useDomain();
+  const { participantId, role, roles, user, setAuthUser, hasPermission } = useAuth();
+  const {
+    domainId,
+    availableDomains,
+    domainSource,
+    activeOrganizationName,
+    participantDomainCount,
+  } = useDomain();
   const { runtimeConfig } = useRuntime();
   const { data: connectionPoolsData, isLoading: isLoadingConnectionPools } = useConnectionPools();
   const { data: providersData } = useProviders();
   const { data: organizationsData } = useOrganizations();
   const { data: datasetsData } = useDatasets();
+  const canManageAdapterActions = canManageAdapters({ role, roles, hasPermission });
 
   // Adapter — hanya PROVIDER
   const { data: adaptersData, isLoading: loadingAdapters, refetch: refetchAdapters } =
@@ -179,6 +188,10 @@ const Settings = () => {
   });
 
   const testAdapterConn = async (id: string, url: string) => {
+    if (!canManageAdapterActions) {
+      toast.error("Akun ini belum punya izin untuk mengelola jalur adapter.");
+      return;
+    }
     setConnTestStatus((p) => ({ ...p, [id]: "checking" }));
     try {
       await fetch(url, { method: "HEAD", mode: "no-cors" });
@@ -189,6 +202,7 @@ const Settings = () => {
   };
 
   const openAddAdapter = () => {
+    if (!canManageAdapterActions) return;
     setEditingAdapter(null);
     const fallbackDomain =
       resolveDomainKey(
@@ -201,11 +215,16 @@ const Settings = () => {
     setAdapterDialog(true);
   };
   const openEditAdapter = (a: any) => {
+    if (!canManageAdapterActions) return;
     setEditingAdapter(a);
     setAdapterForm({ domain_id: a.domain_id ?? "", type: a.type ?? "GIS_STUDIO", url: a.endpoint?.url ?? "" });
     setAdapterDialog(true);
   };
   const saveAdapter = async () => {
+    if (!canManageAdapterActions) {
+      toast.error("Akun ini belum punya izin untuk menyimpan jalur adapter.");
+      return;
+    }
     if (!participantId) return toast.error("Akun tidak terhubung ke participant.");
     if (!adapterForm.domain_id) return toast.error("Pilih domain terlebih dahulu.");
     if (!adapterForm.url) return toast.error("URL endpoint wajib diisi.");
@@ -229,6 +248,10 @@ const Settings = () => {
     }
   };
   const removeAdapter = async (id: string) => {
+    if (!canManageAdapterActions) {
+      toast.error("Akun ini belum punya izin untuk menghapus jalur adapter.");
+      return;
+    }
     if (!participantId) return;
     try {
       await deleteAdapterMutation.mutateAsync({ participantId, id });
@@ -294,11 +317,11 @@ const Settings = () => {
 
   // Notification settings state
   const [notifications, setNotifications] = useState<NotificationSetting[]>([
-    { id: "dataset", title: "New Dataset Registered", desc: "When a new dataset is added to the catalog", enabled: true },
-    { id: "contract", title: "Contract Requests", desc: "When a consumer requests data access", enabled: true },
-    { id: "transfer", title: "Transfer Failures", desc: "When a data transfer fails", enabled: true },
-    { id: "compliance", title: "Compliance Alerts", desc: "When compliance issues are detected", enabled: false },
-    { id: "audit", title: "Audit Notifications", desc: "When audit events occur", enabled: false },
+    { id: "dataset", title: "Dataset Baru", desc: "Saat ada dataset baru masuk ke katalog", enabled: true },
+    { id: "contract", title: "Permintaan Kontrak", desc: "Saat consumer mengajukan akses data", enabled: true },
+    { id: "transfer", title: "Transfer Gagal", desc: "Saat proses transfer data tidak selesai", enabled: true },
+    { id: "compliance", title: "Peringatan Kepatuhan", desc: "Saat ada isu kepatuhan yang perlu dicek", enabled: false },
+    { id: "audit", title: "Aktivitas Audit", desc: "Saat ada kejadian penting yang tercatat di audit trail", enabled: false },
   ]);
 
   // GeoServer endpoints state
@@ -360,9 +383,12 @@ const Settings = () => {
   );
 
   const governanceDomainFallbackActive =
-    !isLoadingParticipantDomains &&
-    ((participantDomainsData ?? []) as Array<any>).length === 0 &&
-    ((governanceDomainsData ?? []) as Array<any>).length > 0;
+    domainSource === "governance_fallback" ||
+    (
+      !isLoadingParticipantDomains &&
+      ((participantDomainsData ?? []) as Array<any>).length === 0 &&
+      ((governanceDomainsData ?? []) as Array<any>).length > 0
+    );
 
   const effectiveParticipantDomainsData = governanceDomainFallbackActive
     ? ((governanceDomainsData ?? []) as Array<any>)
@@ -590,6 +616,7 @@ const Settings = () => {
   };
 
   const handleAdapterHealthCheck = async () => {
+    if (!canManageAdapterActions) return;
     await runAdapterAction(
       "health",
       (adapterBaseUrl) => adapterRuntimeApi.health(adapterBaseUrl),
@@ -598,6 +625,7 @@ const Settings = () => {
   };
 
   const handleAdapterMetadataFetch = async () => {
+    if (!canManageAdapterActions) return;
     await runAdapterAction(
       "metadata",
       async (adapterBaseUrl) => {
@@ -611,6 +639,7 @@ const Settings = () => {
   };
 
   const handleGeojsonIngest = async () => {
+    if (!canManageAdapterActions) return;
     await runAdapterAction(
       "geojson",
       async (adapterBaseUrl) => {
@@ -635,6 +664,7 @@ const Settings = () => {
   };
 
   const handleShapefileIngest = async () => {
+    if (!canManageAdapterActions) return;
     await runAdapterAction(
       "shapefile",
       async (adapterBaseUrl) => {
@@ -657,6 +687,7 @@ const Settings = () => {
   };
 
   const handleAdapterPublish = async () => {
+    if (!canManageAdapterActions) return;
     await runAdapterAction(
       "publish",
       async (adapterBaseUrl) => {
@@ -717,9 +748,9 @@ const Settings = () => {
 
       setAuthUser(nextUser);
       localStorage.setItem("user_info", JSON.stringify(nextUser));
-      toast.success("Profile berhasil diperbarui.");
+      toast.success("Profil berhasil diperbarui.");
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, "Gagal memperbarui profile"));
+      toast.error(getApiErrorMessage(err, "Gagal memperbarui profil"));
     } finally {
       setIsSaving(false);
     }
@@ -730,21 +761,21 @@ const Settings = () => {
     setIsSaving(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     setIsSaving(false);
-    toast.success("Localization settings saved successfully");
+    toast.success("Preferensi tampilan berhasil disimpan.");
   };
 
   // Handle change password
   const handleChangePassword = async () => {
     if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      toast.error("Please fill in all password fields");
+      toast.error("Lengkapi semua kolom kata sandi.");
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error("New passwords do not match");
+      toast.error("Konfirmasi kata sandi baru belum cocok.");
       return;
     }
     if (passwordForm.newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
+      toast.error("Kata sandi minimal 8 karakter.");
       return;
     }
 
@@ -753,7 +784,7 @@ const Settings = () => {
     setIsSaving(false);
     setIsPasswordDialogOpen(false);
     setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-    toast.success("Password changed successfully");
+    toast.success("Kata sandi berhasil diperbarui.");
   };
 
   // Handle toggle notification
@@ -763,7 +794,7 @@ const Settings = () => {
         n.id === id ? { ...n, enabled: !n.enabled } : n
       )
     );
-    toast.success("Notification preference updated");
+    toast.success("Preferensi notifikasi diperbarui.");
   };
 
   // Handle toggle security setting
@@ -774,15 +805,15 @@ const Settings = () => {
     }));
     toast.success(
       setting === "twoFactorEnabled"
-        ? `Two-Factor Authentication ${!securitySettings.twoFactorEnabled ? "enabled" : "disabled"}`
-        : `Session Timeout ${!securitySettings.sessionTimeout ? "enabled" : "disabled"}`
+        ? `Autentikasi dua langkah ${!securitySettings.twoFactorEnabled ? "diaktifkan" : "dimatikan"}`
+        : `Batas waktu sesi ${!securitySettings.sessionTimeout ? "diaktifkan" : "dimatikan"}`
     );
   };
 
   // Handle add GeoServer endpoint
   const handleAddEndpoint = () => {
     if (!newEndpointForm.name || !newEndpointForm.url) {
-      toast.error("Please fill in all endpoint fields");
+      toast.error("Lengkapi nama dan URL endpoint dulu.");
       return;
     }
 
@@ -797,13 +828,13 @@ const Settings = () => {
     setGeoServerEndpoints([...geoServerEndpoints, newEndpoint]);
     setNewEndpointForm({ name: "", url: "", type: "WMS" });
     setIsAddEndpointDialogOpen(false);
-    toast.success("Endpoint added successfully");
+    toast.success("Endpoint berhasil ditambahkan.");
   };
 
   // Handle remove endpoint
   const handleRemoveEndpoint = (id: number) => {
     setGeoServerEndpoints(geoServerEndpoints.filter((e) => e.id !== id));
-    toast.success("Endpoint removed successfully");
+    toast.success("Endpoint berhasil dihapus.");
   };
 
   // Handle save IDP settings
@@ -812,13 +843,13 @@ const Settings = () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     setIsSaving(false);
     setIsIdpDialogOpen(false);
-    toast.success("Identity Provider settings saved successfully");
+    toast.success("Pengaturan identity provider berhasil disimpan.");
   };
 
   return (
     <div className="min-h-screen">
       <Header
-        title="Settings"
+        title="Pengaturan"
         subtitle="Pengaturan akun, koneksi, dan proses kerja"
       />
       <div className="p-6">
@@ -847,7 +878,7 @@ const Settings = () => {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
+                    <Label htmlFor="name">Nama Lengkap</Label>
                     <Input
                       id="name"
                       value={profileForm.name}
@@ -864,11 +895,11 @@ const Settings = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="org">Organization</Label>
+                    <Label htmlFor="org">Organisasi</Label>
                     <Input id="org" value={profileForm.organization} disabled />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
+                    <Label htmlFor="role">Peran</Label>
                     <Input id="role" value={profileForm.role} disabled />
                   </div>
                 </div>
@@ -882,7 +913,7 @@ const Settings = () => {
                   ) : (
                     <Save className="w-4 h-4 mr-2" />
                   )}
-                  Save Changes
+                  Simpan Perubahan
                 </Button>
               </CardContent>
             </Card>
@@ -901,7 +932,7 @@ const Settings = () => {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Timezone</Label>
+                    <Label>Zona Waktu</Label>
                     <Select
                       value={localization.timezone}
                       onValueChange={(v) => setLocalization({ ...localization, timezone: v })}
@@ -917,7 +948,7 @@ const Settings = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Language</Label>
+                    <Label>Bahasa</Label>
                     <Select
                       value={localization.language}
                       onValueChange={(v) => setLocalization({ ...localization, language: v })}
@@ -942,7 +973,7 @@ const Settings = () => {
                   ) : (
                     <Save className="w-4 h-4 mr-2" />
                   )}
-                  Save Localization
+                  Simpan Preferensi
                 </Button>
               </CardContent>
             </Card>
@@ -955,23 +986,23 @@ const Settings = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Key className="w-5 h-5" />
-                  Authentication
+                  Autentikasi
                 </CardTitle>
                 <CardDescription>
-                  Manage your security settings and authentication methods
+                  Kelola metode login dan pengamanan akses operator.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div>
-                    <p className="font-medium">Two-Factor Authentication</p>
+                    <p className="font-medium">Autentikasi Dua Langkah</p>
                     <p className="text-sm text-muted-foreground">
-                      Add an extra layer of security to your account
+                      Tambahkan lapisan verifikasi tambahan untuk akun ini.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {securitySettings.twoFactorEnabled && (
-                      <Badge className="badge-active">Enabled</Badge>
+                      <Badge className="badge-active">Aktif</Badge>
                     )}
                     <Switch
                       checked={securitySettings.twoFactorEnabled}
@@ -981,14 +1012,14 @@ const Settings = () => {
                 </div>
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div>
-                    <p className="font-medium">Session Timeout</p>
+                    <p className="font-medium">Batas Waktu Sesi</p>
                     <p className="text-sm text-muted-foreground">
-                      Auto logout after 30 minutes of inactivity
+                      Keluar otomatis setelah 30 menit tanpa aktivitas.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {securitySettings.sessionTimeout && (
-                      <Badge className="badge-active">Enabled</Badge>
+                      <Badge className="badge-active">Aktif</Badge>
                     )}
                     <Switch
                       checked={securitySettings.sessionTimeout}
@@ -999,7 +1030,7 @@ const Settings = () => {
                 <div className="pt-4 border-t border-border">
                   <Button variant="outline" onClick={() => setIsPasswordDialogOpen(true)}>
                     <Key className="w-4 h-4 mr-2" />
-                    Change Password
+                    Ubah Kata Sandi
                   </Button>
                 </div>
               </CardContent>
@@ -1009,7 +1040,7 @@ const Settings = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Shield className="w-5 h-5" />
-                  SSL/TLS Certificate
+                  Sertifikat SSL/TLS
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1017,9 +1048,9 @@ const Settings = () => {
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="w-6 h-6 text-success" />
                     <div>
-                      <p className="font-medium text-success">Certificate Active</p>
+                      <p className="font-medium text-success">Sertifikat Aktif</p>
                       <p className="text-sm text-muted-foreground">
-                        Valid until: December 31, 2026
+                        Berlaku sampai: 31 Desember 2026
                       </p>
                     </div>
                   </div>
@@ -1035,10 +1066,10 @@ const Settings = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Bell className="w-5 h-5" />
-                  Notification Preferences
+                  Preferensi Notifikasi
                 </CardTitle>
                 <CardDescription>
-                  Choose which notifications you want to receive
+                  Tentukan notifikasi apa saja yang ingin tetap tampil.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1050,7 +1081,7 @@ const Settings = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       {item.enabled && (
-                        <Badge variant="secondary" className="text-xs">On</Badge>
+                        <Badge variant="secondary" className="text-xs">Aktif</Badge>
                       )}
                       <Switch
                         checked={item.enabled}
@@ -1115,9 +1146,9 @@ const Settings = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge className="badge-active">Connected</Badge>
+                      <Badge className="badge-active">Terhubung</Badge>
                       <Button variant="outline" size="sm" onClick={() => setIsIdpDialogOpen(true)}>
-                        Configure
+                        Atur
                       </Button>
                     </div>
                   </div>
@@ -1136,9 +1167,9 @@ const Settings = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge className="badge-active">Configured</Badge>
+                      <Badge className="badge-active">Siap</Badge>
                       <Button variant="outline" size="sm" onClick={() => setIsGeoServerDialogOpen(true)}>
-                        Configure
+                        Atur
                       </Button>
                     </div>
                   </div>
@@ -1172,6 +1203,57 @@ const Settings = () => {
 
           {/* ── DS Adapter Tab ─────────────────────────────────────── */}
           <TabsContent value="adapter" className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Sumber Domain Aktif
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-slate-950">
+                      {domainSource === "participant_binding"
+                        ? "Binding participant"
+                        : domainSource === "governance_fallback"
+                          ? "Fallback organisasi governance"
+                          : "Belum terbaca"}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      domainSource === "participant_binding"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : domainSource === "governance_fallback"
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                    }
+                  >
+                    {domainSource === "participant_binding"
+                      ? "Bound"
+                      : domainSource === "governance_fallback"
+                        ? "Fallback"
+                        : "Empty"}
+                  </Badge>
+                </div>
+                <div className="mt-3 space-y-1 text-sm text-slate-600">
+                  <p>Organisasi aktif: {activeOrganizationName || "belum terbaca"}</p>
+                  <p>Domain terpasang ke participant: {participantDomainCount}</p>
+                  <p>Domain yang tampil di wizard: {participantDomainOptions.length}</p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-slate-50">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">
+                  Tindak Lanjut
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-100">
+                  {domainSource === "participant_binding"
+                    ? "Wizard sudah membaca domain yang benar dari participant aktif. Provider bisa lanjut set adapter, validasi, dan publish tanpa lewat tebakan nama organisasi."
+                    : domainSource === "governance_fallback"
+                      ? "Wizard masih menampilkan domain dari organisasi governance yang sedang dipilih. Ini belum berarti binding participant sudah tersimpan, jadi admin tetap perlu sinkronkan domain ke data participant."
+                      : "Belum ada domain yang bisa dipakai. Cek pilihan organisasi saat login, lalu pastikan participant sudah dihubungkan ke organisasi governance dan punya domain aktif."}
+                </p>
+              </div>
+            </div>
             {!runtimeConfig?.adapterEndpoint && (
               <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 Service adapter belum diisi di deployment config. Bagian ini memang dipegang admin, jadi provider baru bisa jalan penuh setelah endpoint service dilengkapi.
@@ -1179,7 +1261,7 @@ const Settings = () => {
             )}
             {governanceDomainFallbackActive && (
               <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                Domain kerja dibaca dari organisasi governance yang aktif karena endpoint domain participant belum mengembalikan data. Jadi provider tetap bisa lanjut, sambil sinkronisasi participant-domain dirapikan dari sisi backend atau admin.
+                Domain kerja yang tampil di halaman ini masih berasal dari organisasi governance aktif, belum dari binding participant yang tersimpan. Provider tetap bisa melihat konteks kerjanya, tetapi sinkronisasi domain participant masih perlu dibereskan dari sisi admin.
               </div>
             )}
             {!governanceDomainFallbackActive && !isLoadingParticipantDomains && !isLoadingGovernanceDomains && participantDomainOptions.length === 0 && !activeGovernanceOrganization && (
@@ -1192,7 +1274,7 @@ const Settings = () => {
               adapterEndpoint={runtimeConfig?.adapterEndpoint ?? ""}
               domainOptions={participantDomainOptions}
             />
-            {false && (
+          {showLegacyDataFlow && (
             <Card className="shadow-soft border-0">
               <CardHeader>
                 <CardTitle className="text-lg">Proses Data</CardTitle>
@@ -1278,11 +1360,11 @@ const Settings = () => {
                         <p className="font-semibold text-slate-900">{selectedAdapter.domain_id} · {selectedAdapter.type}</p>
                         <p className="mt-1 break-all">{selectedAdapterUrl}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Button type="button" variant="outline" onClick={handleAdapterHealthCheck} disabled={adapterBusyAction !== ""}>
+                          <Button type="button" variant="outline" onClick={handleAdapterHealthCheck} disabled={!canManageAdapterActions || adapterBusyAction !== ""}>
                             {adapterBusyAction === "health" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                             Cek Koneksi
                           </Button>
-                          <Button type="button" variant="outline" onClick={handleAdapterMetadataFetch} disabled={adapterBusyAction !== ""}>
+                          <Button type="button" variant="outline" onClick={handleAdapterMetadataFetch} disabled={!canManageAdapterActions || adapterBusyAction !== ""}>
                             {adapterBusyAction === "metadata" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Files className="mr-2 h-4 w-4" />}
                             Lihat Info
                           </Button>
@@ -1357,7 +1439,7 @@ const Settings = () => {
                             placeholder='{"type":"FeatureCollection","features":[]}'
                           />
                         </div>
-                        <Button type="button" onClick={handleGeojsonIngest} disabled={!selectedAdapter || adapterBusyAction !== ""}>
+                        <Button type="button" onClick={handleGeojsonIngest} disabled={!canManageAdapterActions || !selectedAdapter || adapterBusyAction !== ""}>
                           {adapterBusyAction === "geojson" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileJson2 className="mr-2 h-4 w-4" />}
                           Kirim GeoJSON
                         </Button>
@@ -1433,7 +1515,7 @@ const Settings = () => {
                             placeholder='{"source":"provider-upload"}'
                           />
                         </div>
-                        <Button type="button" onClick={handleShapefileIngest} disabled={!selectedAdapter || adapterBusyAction !== ""}>
+                        <Button type="button" onClick={handleShapefileIngest} disabled={!canManageAdapterActions || !selectedAdapter || adapterBusyAction !== ""}>
                           {adapterBusyAction === "shapefile" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
                           Upload Shapefile
                         </Button>
@@ -1510,7 +1592,7 @@ const Settings = () => {
                           />
                         </div>
                       </div>
-                      <Button type="button" onClick={handleAdapterPublish} disabled={!selectedAdapter || adapterBusyAction !== ""}>
+                      <Button type="button" onClick={handleAdapterPublish} disabled={!canManageAdapterActions || !selectedAdapter || adapterBusyAction !== ""}>
                         {adapterBusyAction === "publish" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
                         Publish Dataset
                       </Button>
@@ -1559,7 +1641,7 @@ const Settings = () => {
                     Daftarkan dan kelola jalur data per domain di bagian ini.
                   </CardDescription>
                 </div>
-                <Button onClick={openAddAdapter} disabled={!participantId || participantDomainOptions.length === 0}>
+                <Button onClick={openAddAdapter} disabled={!canManageAdapterActions || !participantId || participantDomainOptions.length === 0}>
                   <Plus className="w-4 h-4 mr-2" /> Tambah Jalur
                 </Button>
               </CardHeader>
@@ -1637,18 +1719,18 @@ const Settings = () => {
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Button size="sm" variant="outline" className="h-7 text-xs"
                             onClick={() => testAdapterConn(a.id, a.endpoint?.url ?? "")}
-                            disabled={connSt === "checking"}
+                            disabled={!canManageAdapterActions || connSt === "checking"}
                           >
                             {connSt === "checking"
                               ? <Loader2 className="w-3 h-3 animate-spin" />
                               : <Globe className="w-3 h-3" />}
                             <span className="ml-1">Test</span>
                           </Button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEditAdapter(a)}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEditAdapter(a)} disabled={!canManageAdapterActions}>
                             Edit
                           </Button>
                           <Button size="sm" variant="outline" className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
-                            onClick={() => removeAdapter(a.id)}>
+                            onClick={() => removeAdapter(a.id)} disabled={!canManageAdapterActions}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
@@ -1741,8 +1823,8 @@ const Settings = () => {
         </Tabs>
 
         {/* Adapter Dialog */}
-        <Dialog open={adapterDialog} onOpenChange={setAdapterDialog}>
-          <DialogContent className="sm:max-w-[460px]">
+        <Dialog open={adapterDialog && canManageAdapterActions} onOpenChange={setAdapterDialog}>
+          <DialogContent className="sm:max-w-[460px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingAdapter ? "Ubah Jalur Data" : "Tambah Jalur Data"}</DialogTitle>
               <DialogDescription>
@@ -1783,6 +1865,7 @@ const Settings = () => {
               <Button variant="outline" onClick={() => setAdapterDialog(false)}>Batal</Button>
               <Button onClick={saveAdapter}
                 disabled={
+                  !canManageAdapterActions ||
                   addAdapterMutation.isPending ||
                   updateAdapterMutation.isPending ||
                   !adapterForm.url ||
@@ -1797,26 +1880,26 @@ const Settings = () => {
 
         {/* Change Password Dialog */}
         <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-          <DialogContent className="sm:max-w-[450px]">
+          <DialogContent className="sm:max-w-[450px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Key className="w-5 h-5" />
-                Change Password
+                Ubah Kata Sandi
               </DialogTitle>
               <DialogDescription>
-                Enter your current password and choose a new one
+                Masukkan kata sandi saat ini lalu tentukan yang baru.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="currentPwd">Current Password</Label>
+                <Label htmlFor="currentPwd">Kata Sandi Saat Ini</Label>
                 <div className="relative">
                   <Input
                     id="currentPwd"
                     type={showPasswords.current ? "text" : "password"}
                     value={passwordForm.currentPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                    placeholder="Enter current password"
+                    placeholder="Masukkan kata sandi saat ini"
                   />
                   <Button
                     type="button"
@@ -1830,14 +1913,14 @@ const Settings = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="newPwd">New Password</Label>
+                <Label htmlFor="newPwd">Kata Sandi Baru</Label>
                 <div className="relative">
                   <Input
                     id="newPwd"
                     type={showPasswords.new ? "text" : "password"}
                     value={passwordForm.newPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                    placeholder="Enter new password"
+                    placeholder="Masukkan kata sandi baru"
                   />
                   <Button
                     type="button"
@@ -1851,14 +1934,14 @@ const Settings = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirmPwd">Confirm New Password</Label>
+                <Label htmlFor="confirmPwd">Konfirmasi Kata Sandi Baru</Label>
                 <div className="relative">
                   <Input
                     id="confirmPwd"
                     type={showPasswords.confirm ? "text" : "password"}
                     value={passwordForm.confirmPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                    placeholder="Confirm new password"
+                    placeholder="Ulangi kata sandi baru"
                   />
                   <Button
                     type="button"
@@ -1872,16 +1955,16 @@ const Settings = () => {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Password must be at least 8 characters long
+                Kata sandi minimal 8 karakter.
               </p>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>
-                Cancel
+                Batal
               </Button>
               <Button onClick={handleChangePassword} disabled={isSaving} className="bg-accent hover:bg-accent/90">
                 {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Change Password
+                Simpan Kata Sandi
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1889,24 +1972,24 @@ const Settings = () => {
 
         {/* GeoServer Configuration Dialog */}
         <Dialog open={isGeoServerDialogOpen} onOpenChange={setIsGeoServerDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Database className="w-5 h-5" />
-                GeoServer Configuration
+                Konfigurasi GeoServer
               </DialogTitle>
               <DialogDescription>
-                Manage your GeoServer endpoint connections
+                Kelola daftar endpoint GeoServer yang dipakai di lingkungan ini.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                  {geoServerEndpoints.length} endpoints configured
+                  {geoServerEndpoints.length} endpoint tersimpan
                 </p>
                 <Button size="sm" variant="outline" onClick={() => setIsAddEndpointDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Endpoint
+                  Tambah Endpoint
                 </Button>
               </div>
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
@@ -1927,7 +2010,7 @@ const Settings = () => {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{endpoint.type}</Badge>
                       <Badge className={endpoint.status === "connected" ? "badge-active" : "badge-inactive"}>
-                        {endpoint.status}
+                        {endpoint.status === "connected" ? "Terhubung" : "Terputus"}
                       </Badge>
                       <Button
                         variant="ghost"
@@ -1944,7 +2027,7 @@ const Settings = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsGeoServerDialogOpen(false)}>
-                Close
+                Tutup
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1952,25 +2035,25 @@ const Settings = () => {
 
         {/* Add Endpoint Dialog */}
         <Dialog open={isAddEndpointDialogOpen} onOpenChange={setIsAddEndpointDialogOpen}>
-          <DialogContent className="sm:max-w-[450px]">
+          <DialogContent className="sm:max-w-[450px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add GeoServer Endpoint</DialogTitle>
+              <DialogTitle>Tambah Endpoint GeoServer</DialogTitle>
               <DialogDescription>
-                Configure a new GeoServer endpoint connection
+                Tambahkan satu jalur endpoint baru untuk kebutuhan integrasi.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="endpointName">Endpoint Name</Label>
+                <Label htmlFor="endpointName">Nama Endpoint</Label>
                 <Input
                   id="endpointName"
-                  placeholder="e.g., PHE ONWJ GeoServer"
+                  placeholder="Contoh: PHE ONWJ GeoServer"
                   value={newEndpointForm.name}
                   onChange={(e) => setNewEndpointForm({ ...newEndpointForm, name: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="endpointUrl">Endpoint URL</Label>
+                <Label htmlFor="endpointUrl">URL Endpoint</Label>
                 <Input
                   id="endpointUrl"
                   placeholder="https://geoserver.example.com"
@@ -1979,7 +2062,7 @@ const Settings = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Service Type</Label>
+                <Label>Tipe Layanan</Label>
                 <Select
                   value={newEndpointForm.type}
                   onValueChange={(v) => setNewEndpointForm({ ...newEndpointForm, type: v })}
@@ -1997,10 +2080,10 @@ const Settings = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddEndpointDialogOpen(false)}>
-                Cancel
+                Batal
               </Button>
               <Button onClick={handleAddEndpoint} className="bg-accent hover:bg-accent/90">
-                Add Endpoint
+                Tambah Endpoint
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2008,19 +2091,19 @@ const Settings = () => {
 
         {/* Identity Provider Configuration Dialog */}
         <Dialog open={isIdpDialogOpen} onOpenChange={setIsIdpDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Key className="w-5 h-5" />
-                Identity Provider Configuration
+                Konfigurasi Identity Provider
               </DialogTitle>
               <DialogDescription>
-                Configure your authentication provider settings
+                Atur sumber autentikasi yang dipakai aplikasi ini.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Provider Type</Label>
+                <Label>Jenis Provider</Label>
                 <Select
                   value={idpSettings.provider}
                   onValueChange={(v) => setIdpSettings({ ...idpSettings, provider: v })}
@@ -2036,7 +2119,7 @@ const Settings = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="realmUrl">Realm URL / Tenant URL</Label>
+                <Label htmlFor="realmUrl">URL Realm / Tenant</Label>
                 <Input
                   id="realmUrl"
                   placeholder="https://auth.example.com/realms/your-realm"
@@ -2048,7 +2131,7 @@ const Settings = () => {
                 <Label htmlFor="clientId">Client ID</Label>
                 <Input
                   id="clientId"
-                  placeholder="your-client-id"
+                  placeholder="client-id-aplikasi"
                   value={idpSettings.clientId}
                   onChange={(e) => setIdpSettings({ ...idpSettings, clientId: e.target.value })}
                 />
@@ -2058,7 +2141,7 @@ const Settings = () => {
                 <Input
                   id="clientSecret"
                   type="password"
-                  placeholder="your-client-secret"
+                  placeholder="client-secret-aplikasi"
                   value={idpSettings.clientSecret}
                   onChange={(e) => setIdpSettings({ ...idpSettings, clientSecret: e.target.value })}
                 />
@@ -2066,11 +2149,11 @@ const Settings = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsIdpDialogOpen(false)}>
-                Cancel
+                Batal
               </Button>
               <Button onClick={handleSaveIdpSettings} disabled={isSaving} className="bg-accent hover:bg-accent/90">
                 {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Save Configuration
+                Simpan Konfigurasi
               </Button>
             </DialogFooter>
           </DialogContent>

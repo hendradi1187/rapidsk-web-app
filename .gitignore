@@ -14,13 +14,18 @@ dist-ssr
 
 # Environment variables (contain local URLs / secrets)
 .env
+.env.docker
+.env.pm2
 .env.*.local
 !.env.example
+!.env.docker.example
+!.env.pm2.example
 
 # Runtime wrapper state (generated after setup / admin changes)
 config/runtime.json
 config/license-state.json
 config/public-organizations.json
+config/*.local.json
 !config/runtime.example.json
 !config/license-state.example.json
 !config/public-organizations.example.json
@@ -29,6 +34,10 @@ config/public-organizations.json
 tmp-openapi*.json
 tmp_openapi*.json
 tmp_paths.txt
+
+# Local deployment overrides
+docker-compose.override.yml
+ecosystem.local.cjs
 
 # Claude Code local state
 .claude/

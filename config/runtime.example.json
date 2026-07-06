@@ -1,7 +1,8 @@
 {
   "initialized": false,
   "publicAppUrl": "https://rapidsk.company.local",
-  "apiBaseUrl": "http://45.158.126.171:8185/api/v1",
+  "apiBaseUrl": "http://100.66.10.14:8181/api/v1",
+  "adapterEndpoint": "http://100.66.10.14:8182",
   "sso": {
     "enabled": false,
     "keycloakUrl": "",

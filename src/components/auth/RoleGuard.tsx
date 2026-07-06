@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth, type AppRole } from "@/context/AuthContext";
-import { canAccess } from "@/config/rbac";
+import { canAccessAny } from "@/config/rbac";
 
 interface RoleGuardProps {
   children: React.ReactNode;
@@ -15,12 +15,12 @@ interface RoleGuardProps {
  * Place inside ProtectedRoute so that isAuthenticated is already guaranteed.
  */
 export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
-  const { role } = useAuth();
+  const { role, roles, hasPermission } = useAuth();
   const location = useLocation();
 
   const allowed = allowedRoles
-    ? allowedRoles.includes(role)
-    : canAccess(role, location.pathname);
+    ? roles.some((item) => allowedRoles.includes(item))
+    : canAccessAny(roles.length > 0 ? roles : [role], location.pathname, hasPermission);
 
   if (!allowed) {
     return <Navigate to="/" replace />;

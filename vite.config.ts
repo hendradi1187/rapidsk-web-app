@@ -6,7 +6,8 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const proxyTarget = env.VITE_PROXY_TARGET || "http://localhost:8185";
+  const proxyTarget = env.VITE_PROXY_TARGET || "http://100.66.10.14:8181";
+  const adapterTarget = env.VITE_ADAPTER_TARGET || "http://100.66.10.14:8182";
   const devPort = parseInt(env.VITE_DEV_PORT || "8282", 10);
 
   return {
@@ -21,11 +22,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
-        // Adapter service (8186) — strip /adapter-service prefix before forwarding.
+        // Adapter service (8182) — strip /adapter-service prefix before forwarding.
         // OGC adapter only supports GET on /ogc/collections/*/items; connector BE calls
         // documentation_url with POST, so we convert POST→GET here transparently.
         "/adapter-service": {
-          target: (env.VITE_ADAPTER_TARGET || proxyTarget.replace(":8185", ":8186")),
+          target: adapterTarget,
           changeOrigin: true,
           secure: false,
           rewrite: (path: string) => path.replace(/^\/adapter-service/, ""),
@@ -54,6 +55,20 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            framework: ["react", "react-dom", "react-router-dom", "@tanstack/react-query", "axios"],
+            maps: ["maplibre-gl"],
+            charts: ["recharts"],
+            motion: ["framer-motion"],
+            keycloak: ["keycloak-js"],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1200,
     },
   };
 });

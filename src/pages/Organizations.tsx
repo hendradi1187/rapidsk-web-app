@@ -56,6 +56,8 @@ import {
   useUpdateOrganizationDomain,
 } from "@/api/hooks/useOrganizations";
 import type { Organization, OrganizationDomain } from "@/api/types/governance";
+import { useAuth } from "@/context/AuthContext";
+import { canManageOrganizations } from "@/lib/feature-access";
 
 const ROLE_BY_CODE: Record<string, string> = {
   REGULATOR: "SKK Migas (Regulator)",
@@ -321,7 +323,7 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
       </div>
 
       <Dialog open={isDomainDialogOpen} onOpenChange={setIsDomainDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingDomain ? "Edit Governance Domain" : "Tambah Governance Domain"}</DialogTitle>
             <DialogDescription>
@@ -379,7 +381,7 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
       </Dialog>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Hapus Governance Domain</DialogTitle>
             <DialogDescription>
@@ -409,6 +411,8 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
 };
 
 const Organizations = () => {
+  const { role, roles, hasPermission } = useAuth();
+  const canManage = canManageOrganizations({ role, roles, hasPermission });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -644,6 +648,9 @@ const Organizations = () => {
               <strong> Participants</strong>, lalu dihubungkan ke governance domain yang berasal dari organisasi ini.
             </span>
           </div>
+          {!canManage && (
+            <p className="mt-2">Akun ini sedang berada di mode read-only untuk master governance.</p>
+          )}
         </div>
 
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -661,7 +668,7 @@ const Organizations = () => {
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
-            <Button onClick={openCreateDialog}>
+            <Button onClick={openCreateDialog} disabled={!canManage}>
               <Plus className="mr-2 h-4 w-4" />
               Tambah Organisasi
             </Button>
@@ -731,13 +738,14 @@ const Organizations = () => {
                               <Eye className="mr-2 h-4 w-4" />
                               Detail
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEditDialog(organization)}>
+                            <DropdownMenuItem onClick={() => openEditDialog(organization)} disabled={!canManage}>
                               <Pencil className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={() => openDeleteDialog(organization)}
+                              disabled={!canManage}
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Hapus
@@ -761,8 +769,8 @@ const Organizations = () => {
         </div>
       </div>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
+      <Dialog open={isCreateDialogOpen && canManage} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Tambah Organisasi</DialogTitle>
             <DialogDescription>
@@ -829,8 +837,8 @@ const Organizations = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+      <Dialog open={isEditDialogOpen && canManage} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Organisasi</DialogTitle>
             <DialogDescription>
@@ -874,7 +882,7 @@ const Organizations = () => {
       </Dialog>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Hapus Organisasi</DialogTitle>
             <DialogDescription>

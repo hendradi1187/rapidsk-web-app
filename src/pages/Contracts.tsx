@@ -189,7 +189,7 @@ const Contracts = () => {
 
       {/* Detail dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Detail Contract</DialogTitle></DialogHeader>
           {loadingDetail ? (
             <div className="py-10 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Memuat...</div>

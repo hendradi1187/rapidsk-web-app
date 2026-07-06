@@ -31,6 +31,7 @@ import ApiDocs from "./pages/ApiDocs";
 import Settings from "./pages/Settings";
 import DeploymentConfig from "./pages/DeploymentConfig";
 import ConnectionPools from "./pages/ConnectionPools";
+import AccessControl from "./pages/AccessControl";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -79,6 +80,7 @@ const App = () => (
                               <Route path="/audit" element={<Audit />} />
                               <Route path="/api-docs" element={<ApiDocs />} />
                               <Route path="/connection-pools" element={<ConnectionPools />} />
+                              <Route path="/access-control" element={<AccessControl />} />
                               <Route path="/settings" element={<Settings />} />
                               <Route path="/deployment-config" element={<DeploymentConfig />} />
                               <Route path="*" element={<NotFound />} />

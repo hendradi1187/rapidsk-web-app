@@ -280,6 +280,32 @@ const ParticipantDetail = () => {
     const assigned = new Set(((participantDomains ?? []) as Array<any>).map((item) => item.domain_id));
     return ((orgDomains ?? []) as Array<any>).filter((item) => !assigned.has(item.domain_id));
   }, [orgDomains, participantDomains]);
+  const participantDomainCount = participantDomains?.length ?? 0;
+  const organizationDomainCount = orgDomains?.length ?? 0;
+  const domainBindingState: BindingState =
+    participantDomainCount > 0
+      ? missingOrganizationDomains.length === 0
+        ? "VERIFIED"
+        : "INFERRED"
+      : organizationDomainCount > 0
+        ? "INFERRED"
+        : "MISSING";
+  const organizationBindingNote =
+    organizationBindingState === "VERIFIED"
+      ? "Organisasi governance untuk participant ini sudah dipilih manual dan bisa dipakai sebagai sumber domain resmi."
+      : organizationBindingState === "INFERRED"
+        ? "Organisasi governance masih dibaca dari inferensi nama. Simpan pilihan organisasi bila ini memang relasi yang benar."
+        : "Participant ini belum punya organisasi governance yang bisa dipastikan, jadi sinkronisasi domain dan kontrak otomatis rawan meleset.";
+  const domainBindingNote =
+    domainBindingState === "VERIFIED"
+      ? "Semua domain dari organisasi sumber sudah tertempel ke participant ini."
+      : domainBindingState === "INFERRED"
+        ? "Sebagian konteks domain sudah ada, tetapi belum seluruh domain organisasi disinkronkan ke participant."
+        : "Participant ini belum punya domain operasional yang tertempel walaupun organisasi sumber bisa saja sudah punya domain.";
+  const connectionPoolIssues = [
+    !poolMeta?.endpoint ? "endpoint connector belum ada" : null,
+    !poolMeta?.wellKnownJwtUrl ? "well-known JWT URL belum ada" : null,
+  ].filter(Boolean) as string[];
 
   if (isLoading) {
     return (
@@ -622,6 +648,9 @@ const ParticipantDetail = () => {
                         Relasi ini masih dibaca dari kecocokan nama organisasi, belum dari foreign key eksplisit.
                       </p>
                     )}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {organizationBindingNote}
+                    </p>
                     <div className="mt-4 rounded-lg border border-border bg-background p-3">
                       <div className="flex flex-col gap-3">
                         <div>
@@ -709,6 +738,15 @@ const ParticipantDetail = () => {
                       <p>Well-known JWT URL: {poolMeta?.wellKnownJwtUrl || "belum ada"}</p>
                       <p>Total registry participant: {participantPools.length}</p>
                     </div>
+                    {connectionPoolIssues.length ? (
+                      <p className="mt-3 text-xs text-amber-700">
+                        Transfer belum aman dijalankan karena {connectionPoolIssues.join(" dan ")}.
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs text-emerald-700">
+                        Endpoint connector dan identitas JWT sudah terbaca untuk participant ini.
+                      </p>
+                    )}
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button
                         type="button"
@@ -756,7 +794,7 @@ const ParticipantDetail = () => {
                     <Link2 className="w-4 h-4 text-muted-foreground" />
                     <h3 className="font-semibold text-sm">Binding Status</h3>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                     <div className="rounded-lg border border-border bg-muted/40 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -800,6 +838,38 @@ const ParticipantDetail = () => {
                     <div className="rounded-lg border border-border bg-muted/40 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
+                          <p className="text-xs text-muted-foreground">Domain Binding</p>
+                          <p className="text-sm font-medium mt-1">
+                            {participantDomainCount} participant • {organizationDomainCount} governance
+                          </p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            domainBindingState === "VERIFIED"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : domainBindingState === "INFERRED"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-rose-50 text-rose-700 border-rose-200"
+                          }
+                        >
+                          {domainBindingState === "VERIFIED"
+                            ? "Synced"
+                            : domainBindingState === "INFERRED"
+                              ? "Partial"
+                              : "Empty"}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {domainBindingNote}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Domain yang belum tertempel: {missingOrganizationDomains.length}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/40 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
                           <p className="text-xs text-muted-foreground">Operator User</p>
                           <p className="text-sm font-medium mt-1 truncate">
                             {operatorUser?.full_name || provider.contact_person?.name || relatedRegistration?.data.operator_name || "Belum ada user"}
@@ -823,7 +893,7 @@ const ParticipantDetail = () => {
                         {operatorEmail || "Email operator belum ada"}
                       </p>
                     </div>
-                    <div className="rounded-lg border border-border bg-muted/40 p-4">
+                    <div className="rounded-lg border border-border bg-muted/40 p-4 md:col-span-2 xl:col-span-2">
                       <p className="text-xs text-muted-foreground">Aksi Rekomendasi</p>
                       <div className="mt-2 flex items-start gap-2 text-sm">
                         {organizationBindingState === "VERIFIED" && registrationBindingState === "VERIFIED" && operatorStatus === "AKTIF" ? (
@@ -920,13 +990,16 @@ const ParticipantDetail = () => {
                 <div className="rounded-lg border border-border bg-background p-3 text-sm">
                   <p className="font-medium">Ringkasan</p>
                   <p className="mt-2 text-muted-foreground">
-                    Domain organisasi: {loadingOrgDomains ? "memuat..." : (orgDomains?.length ?? 0)}
+                    Domain organisasi: {loadingOrgDomains ? "memuat..." : organizationDomainCount}
                   </p>
                   <p className="text-muted-foreground">
-                    Sudah terpasang ke participant: {participantDomains?.length ?? 0}
+                    Sudah terpasang ke participant: {participantDomainCount}
                   </p>
                   <p className="text-muted-foreground">
                     Siap dipasang: {missingOrganizationDomains.length}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {domainBindingNote}
                   </p>
                 </div>
               </div>
@@ -1145,7 +1218,7 @@ const ParticipantDetail = () => {
 
         {/* INFO EDIT DIALOG */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Participant</DialogTitle>
               <DialogDescription>Perbarui informasi participant.</DialogDescription>
@@ -1180,7 +1253,7 @@ const ParticipantDetail = () => {
 
         {/* INFO DELETE DIALOG */}
         <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Hapus Participant</DialogTitle>
               <DialogDescription>
@@ -1201,7 +1274,7 @@ const ParticipantDetail = () => {
 
         {/* ADD DOMAIN DIALOG */}
         <Dialog open={isAddDomainOpen} onOpenChange={setIsAddDomainOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Tambah Domain Partisipan</DialogTitle>
               <DialogDescription>
@@ -1256,7 +1329,7 @@ const ParticipantDetail = () => {
 
         {/* ADD/EDIT/REGISTRATION ADAPTER DIALOG */}
         <Dialog open={isAdapterDialogOpen} onOpenChange={setIsAdapterDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingAdapter ? "Edit Adapter" : "Registrasi Adapter Baru"}

@@ -1,0 +1,12 @@
+node_modules
+dist
+logs
+.git
+.gitignore
+.env
+.env.*
+config/runtime.json
+config/license-state.json
+config/public-organizations.json
+coverage
+*.log

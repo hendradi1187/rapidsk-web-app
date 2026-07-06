@@ -8,10 +8,14 @@ import { MENU_ITEMS, SECTION_LABELS, SECTION_ORDER } from "@/config/rbac";
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const { role } = useAuth();
+  const { role, roles, hasPermission } = useAuth();
+  const effectiveRoles = roles.length > 0 ? roles : [role];
 
-  // Only show menu items allowed for the current role
-  const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(role));
+  // Menu mengikuti role atau permission granular dari IAM.
+  const visibleItems = MENU_ITEMS.filter((item) =>
+    effectiveRoles.some((candidate) => item.roles.includes(candidate)) ||
+    (item.permissions?.some((permission) => hasPermission(permission)) ?? false),
+  );
 
   // Kelompokkan per grup (urut sesuai alur kerja); grup kosong otomatis tersembunyi.
   const groups = SECTION_ORDER.map((section) => ({
@@ -74,7 +78,7 @@ export const Sidebar = () => {
       <div className="p-4 border-t border-sidebar-border space-y-1">
         <Link to="/settings" className="nav-item">
           <Settings className="w-5 h-5 flex-shrink-0" />
-          {!collapsed && <span className="font-medium">Settings</span>}
+          {!collapsed && <span className="font-medium">Pengaturan</span>}
         </Link>
         <button
           onClick={() => setCollapsed(!collapsed)}

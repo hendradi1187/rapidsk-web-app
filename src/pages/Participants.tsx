@@ -5,8 +5,14 @@ import { Users, UserPlus, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import RegistrationsTab from "./participants/RegistrationsTab";
 import ActiveParticipantsTab from "./participants/ActiveParticipantsTab";
+import { useAuth } from "@/context/AuthContext";
+import { canApproveParticipants, canManageParticipants } from "@/lib/feature-access";
 
 const Participants = () => {
+  const { role, roles, hasPermission } = useAuth();
+  const canManage = canManageParticipants({ role, roles, hasPermission });
+  const canApprove = canApproveParticipants({ role, roles, hasPermission });
+
   return (
     <div className="min-h-screen">
       <Header
@@ -20,6 +26,11 @@ const Participants = () => {
             <p className="text-xs text-muted-foreground">
               Gunakan form publik `/register-kkks` untuk self-registration operator/provider baru.
             </p>
+            {!canManage && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Akses Anda saat ini hanya read-only untuk modul participant.
+              </p>
+            )}
           </div>
           <Link to="/register-kkks">
             <Button variant="outline">
@@ -34,7 +45,7 @@ const Participants = () => {
               <Users className="w-4 h-4" />
               Active Participants
             </TabsTrigger>
-            <TabsTrigger value="registrations" className="flex items-center gap-2">
+            <TabsTrigger value="registrations" className="flex items-center gap-2" disabled={!canApprove}>
               <UserPlus className="w-4 h-4" />
               Registrations Queue
             </TabsTrigger>

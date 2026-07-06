@@ -60,6 +60,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAuditLogs } from "@/api/hooks/useAuditLogs";
 import type { AuditLog } from "@/api/types/audit";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -187,13 +188,13 @@ const Audit = () => {
 
   const handleCopyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    toast.success(`${label} copied to clipboard`);
+    toast.success(`${label} berhasil disalin.`);
   };
 
   // Export filtered logs as CSV / JSON
   const handleExport = (format: "csv" | "json") => {
     if (filteredLogs.length === 0) {
-      toast.error("No logs to export");
+      toast.error("Belum ada log yang bisa diekspor.");
       return;
     }
 
@@ -235,7 +236,7 @@ const Audit = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast.success(`Exported ${filteredLogs.length} logs as ${format.toUpperCase()}`);
+    toast.success(`${filteredLogs.length} log berhasil diekspor sebagai ${format.toUpperCase()}.`);
   };
 
   // Loading state
@@ -244,12 +245,12 @@ const Audit = () => {
       <div className="min-h-screen">
         <Header
           title="Audit Trail"
-          subtitle="Complete audit log for compliance and monitoring"
+          subtitle="Catatan aktivitas untuk pemantauan dan kebutuhan audit"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
-            <p className="mt-2 text-muted-foreground">Loading audit logs...</p>
+            <p className="mt-2 text-muted-foreground">Memuat catatan audit...</p>
           </div>
         </div>
       </div>
@@ -262,18 +263,18 @@ const Audit = () => {
       <div className="min-h-screen">
         <Header
           title="Audit Trail"
-          subtitle="Complete audit log for compliance and monitoring"
+          subtitle="Catatan aktivitas untuk pemantauan dan kebutuhan audit"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
-            <p className="mt-2 text-lg font-medium">Failed to load audit logs</p>
+            <p className="mt-2 text-lg font-medium">Gagal memuat catatan audit</p>
             <p className="text-sm text-muted-foreground mb-4">
-              {(error as any)?.message || "An error occurred"}
+              {getApiErrorMessage(error, "Terjadi kesalahan saat memuat catatan audit.")}
             </p>
             <Button onClick={() => refetch()} variant="outline">
               <RefreshCw className="w-4 h-4 mr-2" />
-              Try Again
+              Coba lagi
             </Button>
           </div>
         </div>
@@ -285,7 +286,7 @@ const Audit = () => {
     <div className="min-h-screen">
       <Header
         title="Audit Trail"
-        subtitle="Complete audit log for compliance and monitoring"
+        subtitle="Catatan aktivitas untuk pemantauan dan kebutuhan audit"
       />
       <div className="p-6 space-y-6">
         {/* Stats */}
@@ -298,7 +299,7 @@ const Audit = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.totalEvents}</p>
-                  <p className="text-sm text-muted-foreground">Total Events</p>
+                  <p className="text-sm text-muted-foreground">Total Aktivitas</p>
                 </div>
               </div>
             </CardContent>
@@ -312,7 +313,7 @@ const Audit = () => {
                 <div>
                   <p className="text-2xl font-bold">{stats.todayEvents}</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedDate ? "Selected Date" : "Today's Events"}
+                    {selectedDate ? "Tanggal Dipilih" : "Aktivitas Hari Ini"}
                   </p>
                 </div>
               </div>
@@ -326,7 +327,7 @@ const Audit = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.actionTypes}</p>
-                  <p className="text-sm text-muted-foreground">Action Types</p>
+                  <p className="text-sm text-muted-foreground">Jenis Aksi</p>
                 </div>
               </div>
             </CardContent>
@@ -339,7 +340,7 @@ const Audit = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.performers}</p>
-                  <p className="text-sm text-muted-foreground">Distinct Performers</p>
+                  <p className="text-sm text-muted-foreground">Pelaku Unik</p>
                 </div>
               </div>
             </CardContent>
@@ -352,7 +353,7 @@ const Audit = () => {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search logs..."
+                placeholder="Cari aksi, pengguna, atau audit ID..."
                 className="pl-10 w-64"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -376,13 +377,13 @@ const Audit = () => {
               disabled={isLoading}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
+              Muat ulang
             </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className={hasActiveFilters ? "border-accent" : ""}>
                   <Filter className="w-4 h-4 mr-2" />
-                  Filter
+                  Saring
                   {hasActiveFilters && (
                     <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                       {[filterAction !== "all", !!selectedDate].filter(Boolean).length}
@@ -393,22 +394,22 @@ const Audit = () => {
               <PopoverContent className="w-80" align="end">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Filters</h4>
+                    <h4 className="font-medium">Filter</h4>
                     {hasActiveFilters && (
                       <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 px-2">
                         <X className="w-3 h-3 mr-1" />
-                        Clear
+                        Reset
                       </Button>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label>Action Type</Label>
+                    <Label>Jenis Aksi</Label>
                     <Select value={filterAction} onValueChange={setFilterAction}>
                       <SelectTrigger>
-                        <SelectValue placeholder="All actions" />
+                        <SelectValue placeholder="Semua aksi" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All actions</SelectItem>
+                        <SelectItem value="all">Semua aksi</SelectItem>
                         {distinctActions.map((action) => (
                           <SelectItem key={action} value={action}>
                             {action.replace(/_/g, " ")}
@@ -424,17 +425,17 @@ const Audit = () => {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Download className="w-4 h-4 mr-2" />
-                  Export
+                  Ekspor
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => handleExport("csv")}>
                   <FileText className="w-4 h-4 mr-2" />
-                  Export as CSV
+                  Ekspor CSV
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExport("json")}>
                   <FileText className="w-4 h-4 mr-2" />
-                  Export as JSON
+                  Ekspor JSON
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -448,7 +449,7 @@ const Audit = () => {
               <TableRow className="table-header">
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Action</TableHead>
-                <TableHead>Performed By</TableHead>
+                <TableHead>Dijalankan Oleh</TableHead>
                 <TableHead>Audit ID</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
@@ -458,8 +459,8 @@ const Audit = () => {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No audit logs found</p>
-                    <p className="text-sm">Try adjusting your search or filter criteria</p>
+                    <p className="text-lg font-medium">Belum ada catatan audit</p>
+                    <p className="text-sm">Coba ubah kata kunci atau filter yang dipakai</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -513,7 +514,7 @@ const Audit = () => {
         {/* Results count */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm text-muted-foreground">
-            Showing {filteredLogs.length} of {logs.length} logs
+            Menampilkan {filteredLogs.length} dari {logs.length} log
           </div>
           <Pager
             page={page}
@@ -526,11 +527,11 @@ const Audit = () => {
 
         {/* View Log Dialog */}
         <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FileText className="w-5 h-5" />
-                Audit Log Details
+                Detail Audit Log
               </DialogTitle>
             </DialogHeader>
             {selectedLog && (
@@ -556,7 +557,7 @@ const Audit = () => {
                 {/* Core details */}
                 <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase">Performed By</p>
+                    <p className="text-xs text-muted-foreground uppercase">Dijalankan Oleh</p>
                     <p className="font-medium">{selectedLog.performed_by}</p>
                   </div>
                   <div className="flex items-center justify-between p-2 rounded bg-muted/50">
@@ -586,7 +587,7 @@ const Audit = () => {
                   selectedLog.session_id ||
                   selectedLog.details) && (
                   <div className="pt-4 border-t space-y-3">
-                    <p className="text-xs text-muted-foreground uppercase">Additional Context</p>
+                    <p className="text-xs text-muted-foreground uppercase">Konteks Tambahan</p>
                     {selectedLog.target && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Target</p>
@@ -595,7 +596,7 @@ const Audit = () => {
                     )}
                     {selectedLog.purpose && (
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Purpose</p>
+                        <p className="text-xs text-muted-foreground">Tujuan</p>
                         <p className="text-sm">{selectedLog.purpose}</p>
                       </div>
                     )}
@@ -607,19 +608,19 @@ const Audit = () => {
                     )}
                     {selectedLog.ip_address && (
                       <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                        <span className="text-sm">IP Address</span>
+                        <span className="text-sm">Alamat IP</span>
                         <code className="text-sm font-mono">{selectedLog.ip_address}</code>
                       </div>
                     )}
                     {selectedLog.session_id && (
                       <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                        <span className="text-sm">Session ID</span>
+                        <span className="text-sm">ID Sesi</span>
                         <code className="text-sm font-mono">{selectedLog.session_id}</code>
                       </div>
                     )}
                     {selectedLog.details && (
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Details</p>
+                        <p className="text-xs text-muted-foreground">Detail</p>
                         <p className="text-sm bg-muted/50 p-3 rounded">{selectedLog.details}</p>
                       </div>
                     )}
@@ -629,7 +630,7 @@ const Audit = () => {
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-                Close
+                Tutup
               </Button>
             </DialogFooter>
           </DialogContent>

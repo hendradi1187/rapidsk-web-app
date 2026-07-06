@@ -28,10 +28,11 @@ import { transfersApi, type TransferMode } from "@/api/services/connector";
 import { policiesApi } from "@/api/services/governance";
 import { DOMAINS, datasetDomain, contractDomain, type DomainKey } from "@/lib/fulfillment";
 import type { Dataset } from "@/api/types/data-catalog";
-import type { ConnectionPoolItem } from "@/api/types/governance";
+import type { ConnectionPoolItem, Policy } from "@/api/types/governance";
 import type { Provider } from "@/api/types/providers";
 import { findParticipantPool, isPoolReady, resolvePoolMeta } from "@/lib/connection-pool";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { resolveDatasetPolicyForDataset } from "@/lib/policy-mapping";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const TRANSFER_MODE_STORAGE_KEY = "transfer_mode_map";
@@ -74,6 +75,13 @@ const readTransferModeMap = (): Record<string, TransferMode> => {
 const writeTransferModeMap = (value: Record<string, TransferMode>) => {
   localStorage.setItem(TRANSFER_MODE_STORAGE_KEY, JSON.stringify(value));
 };
+
+interface TransferPreviewState {
+  id: string;
+  datasetName: string;
+  endpointUrl?: string;
+  adapterInfo?: { url: string; type: string } | null;
+}
 
 const TransferCenter = () => {
   const { domainId } = useDomain();
@@ -151,7 +159,10 @@ const TransferCenter = () => {
     [adminContextReady, trData, effectiveParticipantId, datasets],
   );
   const pools = (poolsData ?? []) as ConnectionPoolItem[];
-  const dpId = (polQ.data ?? [])[0]?.policy_id as string | undefined;
+  const datasetPolicies = useMemo(
+    () => ((polQ.data ?? []) as Policy[]),
+    [polQ.data],
+  );
   const dsName = (id: string) => datasets.find((d) => d.dataset_id === id)?.dataset_name ?? `${id.slice(0, 8)}…`;
 
   // Pool untuk participant aktif — satu pool berlaku untuk semua domain transfer
@@ -225,6 +236,7 @@ const TransferCenter = () => {
           null;
         const selectedDataset =
           availableDatasets.find((dataset) => dataset.dataset_id === selectedDatasetId) ?? null;
+        const policyResolution = resolveDatasetPolicyForDataset(datasetPolicies, selectedDataset);
         const datasetStatuses = availableDatasets.map((dataset) => {
           const history = transfers
             .filter((transfer) => transfer.dataset_id === dataset.dataset_id)
@@ -252,12 +264,17 @@ const TransferCenter = () => {
           pendingDatasets,
           completedDatasetIds,
           datasetStatuses,
+          policyResolution,
           selectedDataset,
           allSent: availableDatasets.length > 0 && pendingDatasets.length === 0,
-          ready: !!contract && !!selectedDataset && poolReady,
+          ready:
+            !!contract &&
+            !!selectedDataset &&
+            poolReady &&
+            policyResolution.status === "matched",
         };
       }),
-    [contractDetailsById, contracts, datasets, poolReady, selectedDatasetByDomain, transfers],
+    [contractDetailsById, contracts, datasetPolicies, datasets, poolReady, selectedDatasetByDomain, transfers],
   );
 
   const readyCount = rows.filter((row) => row.ready && !row.allSent).length;
@@ -272,9 +289,7 @@ const TransferCenter = () => {
     readTransferBodyMap(),
   );
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [previewTransfer, setPreviewTransfer] = useState<{
-    id: string; datasetName: string; endpointUrl?: string; adapterInfo?: any;
-  } | null>(null);
+  const [previewTransfer, setPreviewTransfer] = useState<TransferPreviewState | null>(null);
 
   // Adapter lookup: dataset endpoint → match ke adapter url participant
   const adapterForDataset = (ds?: typeof datasets[number]) => {
@@ -393,7 +408,9 @@ const TransferCenter = () => {
 
   const send = async (row: (typeof rows)[number]) => {
     if (!domainId || !row.selectedDataset || !row.contract) return;
-    if (!dpId) return toast.error("Tidak ada dataset-policy (jalankan Setup Juknis dulu).");
+    if (row.policyResolution.status !== "matched" || !row.policyResolution.policy?.policy_id) {
+      return toast.error(row.policyResolution.reason, { duration: 8000 });
+    }
     if (!poolReady) {
       const missing = !myPool
         ? "Connection pool belum dikonfigurasi untuk participant ini."
@@ -420,14 +437,19 @@ const TransferCenter = () => {
     const mode = transferModes[key] ?? "direct";
     const step = (s: string) => setBusy((b) => ({ ...b, [key]: s }));
     try {
-      console.debug("[Transfer] start", { domainId, contractId: row.contract.id, datasetId: row.selectedDataset.dataset_id, dpId });
+      console.debug("[Transfer] start", {
+        domainId,
+        contractId: row.contract.id,
+        datasetId: row.selectedDataset.dataset_id,
+        policyId: row.policyResolution.policy.policy_id,
+      });
 
       step("menautkan dataset");
       try {
         await contractsApi.linkDataset(domainId, {
           id: row.contract.id, consumer_id: row.contract.consumer_id, provider_id: row.contract.provider_id,
           name: row.contract.name, status: row.contract.status,
-        }, row.selectedDataset.dataset_id, dpId);
+        }, row.selectedDataset.dataset_id, row.policyResolution.policy.policy_id);
         console.debug("[Transfer] linkDataset OK");
       } catch (e: unknown) {
         console.warn("[Transfer] linkDataset FAILED (non-blocking):", e);
@@ -702,6 +724,31 @@ const TransferCenter = () => {
                               ))}
                             </div>
                           </div>
+                          {r.selectedDataset && (
+                            <div
+                              className={`rounded-xl border px-3 py-2 text-xs ${
+                                r.policyResolution.status === "matched"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                  : "border-rose-200 bg-rose-50 text-rose-700"
+                              }`}
+                            >
+                              {r.policyResolution.status === "matched" ? (
+                                <div className="space-y-1">
+                                  <p className="font-medium">
+                                    Policy aktif: {r.policyResolution.policy?.policy_name ?? "Policy cocok"}
+                                  </p>
+                                  <p className="text-[11px] opacity-80">
+                                    Dataset ini akan ditautkan ke policy yang cocok sebelum transfer dimulai.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <p className="font-medium">Policy dataset belum siap</p>
+                                  <p className="text-[11px]">{r.policyResolution.reason}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </TableCell>
@@ -723,6 +770,10 @@ const TransferCenter = () => {
                         <span className="text-xs text-amber-700">Publish atau tautkan dataset dulu</span>
                       ) : !r.contract ? (
                         <span className="text-xs text-amber-700">Kontrak belum aktif</span>
+                      ) : r.policyResolution.status === "missing" ? (
+                        <span className="text-xs text-rose-700">Policy dataset belum cocok</span>
+                      ) : r.policyResolution.status === "ambiguous" ? (
+                        <span className="text-xs text-rose-700">Policy dataset masih ganda</span>
                       ) : !poolReady ? (
                         <span className="inline-flex items-center gap-1 text-xs text-rose-700">
                           <ShieldAlert className="w-3.5 h-3.5" />

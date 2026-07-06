@@ -317,7 +317,7 @@ const Setup = () => {
                   id="apiBaseUrl"
                   value={apiBaseUrl}
                   onChange={(e) => setApiBaseUrl(e.target.value)}
-                  placeholder="http://45.158.126.171:8185/api/v1"
+                  placeholder="http://100.66.10.14:8181/api/v1"
                   className={setupInputClassName}
                 />
               </div>
@@ -327,7 +327,7 @@ const Setup = () => {
                   id="adapterEndpoint"
                   value={adapterEndpoint}
                   onChange={(e) => setAdapterEndpoint(e.target.value)}
-                  placeholder="http://45.158.126.171:8186"
+                  placeholder="http://100.66.10.14:8182"
                   className={setupInputClassName}
                 />
               </div>

@@ -6,6 +6,7 @@ import {
 } from "@/auth/keycloak";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getFrontendApiBasePath } from "@/lib/runtime-config";
+import { decodeJwt } from "@/lib/jwt";
 
 // API Base URL - can be configured via environment variable
 // Dev: pakai path relatif → lewat Vite proxy (bypass CORS)
@@ -20,6 +21,40 @@ export const apiClient: AxiosInstance = axios.create({
   },
   timeout: 30000, // 30 seconds
 });
+
+const AUTH_LOGOUT_ENDPOINTS = [
+  "/identity-provider/auth/validate",
+  "/identity-provider/auth/refresh-token",
+  "/identity-provider/auth/revoke-token",
+  "/identity-provider/auth/revoke-user-token",
+];
+
+const readLegacyToken = () => {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("auth_token");
+};
+
+const isTokenExpired = (token: string | null) => {
+  if (!token) return true;
+  const payload = decodeJwt(token);
+  const exp = Number(payload?.exp ?? 0);
+  if (!exp) return false;
+  return Date.now() >= exp * 1000;
+};
+
+const shouldForceLogoutOnUnauthorized = (error: AxiosError) => {
+  const requestUrl = String(error.config?.url ?? "");
+  if (AUTH_LOGOUT_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint))) {
+    return true;
+  }
+
+  const token = readLegacyToken();
+  if (!token) {
+    return true;
+  }
+
+  return isTokenExpired(token);
+};
 
 // Request interceptor for adding auth token, logging, etc.
 apiClient.interceptors.request.use(
@@ -69,11 +104,13 @@ apiClient.interceptors.response.use(
     if (error.response) {
       switch (error.response.status) {
         case 401:
-          // Handle unauthorized - clear token and redirect to login
-          localStorage.removeItem("auth_token");
-          // Only redirect if not already on login page
-          if (window.location.pathname !== "/login") {
-            window.location.href = "/login";
+          if (shouldForceLogoutOnUnauthorized(error)) {
+            localStorage.removeItem("auth_token");
+            if (window.location.pathname !== "/login") {
+              window.location.href = "/login";
+            }
+          } else {
+            console.warn("[401] Request ditolak tanpa mematikan sesi utama:", requestUrlFromError(error));
           }
           break;
         case 403:
@@ -126,6 +163,10 @@ export interface PaginationParams {
 export async function apiRequest<T>(config: AxiosRequestConfig): Promise<T> {
   const response = await apiClient.request<T>(config);
   return response.data;
+}
+
+function requestUrlFromError(error: AxiosError) {
+  return String(error.config?.url ?? "unknown");
 }
 
 export default apiClient;

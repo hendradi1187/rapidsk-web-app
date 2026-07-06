@@ -422,13 +422,13 @@ const Datasets = () => {
     return (
       <div className="min-h-screen">
         <Header
-          title="Dataset Catalog"
-          subtitle="Browse and manage registered datasets"
+          title="Katalog Dataset"
+          subtitle="Lihat, rapikan, dan kelola dataset yang sudah terdaftar"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
-            <p className="mt-2 text-muted-foreground">Loading datasets...</p>
+            <p className="mt-2 text-muted-foreground">Memuat dataset...</p>
           </div>
         </div>
       </div>
@@ -440,19 +440,19 @@ const Datasets = () => {
     return (
       <div className="min-h-screen">
         <Header
-          title="Dataset Catalog"
-          subtitle="Browse and manage registered datasets"
+          title="Katalog Dataset"
+          subtitle="Lihat, rapikan, dan kelola dataset yang sudah terdaftar"
         />
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
-            <p className="mt-2 text-lg font-medium">Failed to load datasets</p>
+            <p className="mt-2 text-lg font-medium">Gagal memuat dataset</p>
             <p className="text-sm text-muted-foreground mb-4">
-              {getApiErrorMessage(error, "An error occurred")}
+              {getApiErrorMessage(error, "Terjadi kesalahan saat memuat dataset.")}
             </p>
             <Button onClick={() => refetch()} variant="outline">
               <RefreshCw className="w-4 h-4 mr-2" />
-              Try Again
+              Coba lagi
             </Button>
           </div>
         </div>
@@ -465,8 +465,8 @@ const Datasets = () => {
   return (
     <div className="min-h-screen">
       <Header
-        title="Dataset Catalog"
-        subtitle="Browse and manage registered datasets"
+        title="Katalog Dataset"
+        subtitle="Lihat, rapikan, dan kelola dataset yang sudah terdaftar"
       />
       <div className="p-6 space-y-6">
         {/* Stats */}
@@ -478,7 +478,7 @@ const Datasets = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold">{totalCount}</p>
-                <p className="text-sm text-muted-foreground">Total Datasets</p>
+                <p className="text-sm text-muted-foreground">Total Dataset</p>
               </div>
             </div>
           </div>
@@ -489,7 +489,7 @@ const Datasets = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold">{filteredDatasets.length}</p>
-                <p className="text-sm text-muted-foreground">Showing Results</p>
+                <p className="text-sm text-muted-foreground">Hasil Tampil</p>
               </div>
             </div>
           </div>
@@ -517,7 +517,7 @@ const Datasets = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search datasets, schemas, providers..."
+                placeholder="Cari dataset, schema, atau provider..."
                 className="pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -529,7 +529,7 @@ const Datasets = () => {
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="relative">
                   <Filter className="w-4 h-4 mr-2" />
-                  Filter
+                  Saring
                   {hasActiveFilters && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-accent" />
                   )}
@@ -538,7 +538,7 @@ const Datasets = () => {
               <PopoverContent className="w-72" align="end">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold">Filters</h4>
+                    <h4 className="text-sm font-semibold">Filter</h4>
                     {hasActiveFilters && (
                       <button
                         type="button"
@@ -546,7 +546,7 @@ const Datasets = () => {
                         className="text-xs text-accent hover:underline flex items-center gap-1"
                       >
                         <X className="w-3 h-3" />
-                        Clear
+                        Reset
                       </button>
                     )}
                   </div>
@@ -621,7 +621,7 @@ const Datasets = () => {
               disabled={isLoading}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
+              Muat ulang
             </Button>
             {canPublish && (
               <Button
@@ -643,11 +643,11 @@ const Datasets = () => {
         {filteredDatasets.length === 0 ? (
           <div className="bg-card rounded-xl border border-border p-12 text-center">
             <Database className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
-            <p className="text-lg font-medium">No datasets found</p>
+            <p className="text-lg font-medium">Belum ada dataset</p>
             <p className="text-sm text-muted-foreground">
               {searchQuery || hasActiveFilters
-                ? "Try adjusting your search or filters"
-                : "Register your first dataset to get started"}
+                ? "Coba ubah kata kunci atau filter yang dipakai"
+                : "Tambahkan dataset pertama untuk mulai mengisi katalog ini"}
             </p>
           </div>
         ) : viewMode === "grid" ? (
@@ -678,7 +678,7 @@ const Datasets = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openViewDialog(dataset)}>
                           <Eye className="w-4 h-4 mr-2" />
-                          View Details
+                          Lihat Detail
                         </DropdownMenuItem>
                         {canManage && (
                           <DropdownMenuItem onClick={() => openEditDialog(dataset)}>
@@ -781,7 +781,7 @@ const Datasets = () => {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openViewDialog(dataset)}>
                             <Eye className="w-4 h-4 mr-2" />
-                            View Details
+                          Lihat Detail
                           </DropdownMenuItem>
                           {canManage && (
                             <DropdownMenuItem onClick={() => openEditDialog(dataset)}>
@@ -824,7 +824,7 @@ const Datasets = () => {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Dataset Details</DialogTitle>
+            <DialogTitle>Detail Dataset</DialogTitle>
           </DialogHeader>
           {selectedDataset && (
             <div className="space-y-4 py-4">
@@ -945,7 +945,7 @@ const Datasets = () => {
               </>
             )}
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-              Close
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>

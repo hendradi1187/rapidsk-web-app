@@ -163,7 +163,7 @@ const sanitizePublicOrganizations = (payload) => {
     .filter((item) => item.id && item.name);
 };
 
-const fetchPublicOrganizationsFromBackend = async () => {
+const fetchPublicOrganizationsFromBackend = async (bearerToken = "") => {
   const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
   const apiBaseUrl = normalizeBaseUrl(runtimeConfig?.apiBaseUrl);
   if (!isValidHttpUrl(apiBaseUrl)) {
@@ -171,16 +171,42 @@ const fetchPublicOrganizationsFromBackend = async () => {
   }
 
   const apiRoot = apiBaseUrl.replace(/\/api\/v\d+\/?$/, "");
-  const targetUrl = `${apiRoot}/api/v1/governance/organizations/?limit=100&offset=0`;
+  const limit = 100;
+  let offset = 0;
+  let total = null;
+  const merged = new Map();
 
   try {
-    const response = await fetchWithTimeout(targetUrl, { method: "GET" }, 5000);
-    if (!response.ok) {
-      return [];
-    }
+    do {
+      const targetUrl = `${apiRoot}/api/v1/governance/organizations/?limit=${limit}&offset=${offset}`;
+      const headers = {};
+      if (bearerToken) {
+        headers.Authorization = `Bearer ${bearerToken}`;
+      }
 
-    const payload = await response.json();
-    const organizations = sanitizePublicOrganizations(payload?.data ?? payload);
+      const response = await fetchWithTimeout(
+        targetUrl,
+        {
+          method: "GET",
+          headers,
+        },
+        5000,
+      );
+      if (!response.ok) {
+        return [];
+      }
+
+      const payload = await response.json();
+      const organizations = sanitizePublicOrganizations(payload?.data ?? payload);
+      organizations.forEach((organization) => {
+        merged.set(organization.id, organization);
+      });
+      total = typeof payload?.total === "number" ? payload.total : null;
+      if (organizations.length < limit) break;
+      offset += limit;
+    } while (total === null || offset < total);
+
+    const organizations = Array.from(merged.values());
     if (organizations.length > 0) {
       await writeJsonFile(PUBLIC_ORGANIZATIONS_CACHE_PATH, {
         updatedAt: new Date().toISOString(),
@@ -916,6 +942,23 @@ const server = http.createServer(async (req, res) => {
       });
       return sendJson(res, 200, {
         cached: organizations.length,
+      });
+    }
+
+    if (pathname === "/admin/public-organizations/refresh") {
+      if (!requireAdmin(req, res)) return;
+      if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" });
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      const organizations = await fetchPublicOrganizationsFromBackend(token);
+      if (organizations.length === 0) {
+        return sendJson(res, 422, {
+          error: "Daftar organisasi publik belum bisa diambil dari backend CTS.",
+        });
+      }
+      return sendJson(res, 200, {
+        refreshed: organizations.length,
+        data: organizations,
       });
     }
 

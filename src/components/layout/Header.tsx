@@ -71,7 +71,7 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
           <div className="relative hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search..."
+              placeholder="Cari menu atau data..."
               className="pl-10 w-64 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-accent"
             />
           </div>
@@ -155,16 +155,16 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <User className="w-4 h-4 mr-2" />
-                Profile
+                Profil
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleSettings}>
                 <SettingsIcon className="w-4 h-4 mr-2" />
-                Settings
+                Pengaturan
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                 <LogOut className="w-4 h-4 mr-2" />
-                Log out
+                Keluar
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

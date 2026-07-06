@@ -1,0 +1,18 @@
+services:
+  rapidsk-fe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rapidsk-fe:latest
+    container_name: ${PM2_APP_NAME:-rapidsk-fe}
+    restart: unless-stopped
+    ports:
+      - "${RAPIDSK_PORT:-8282}:${RAPIDSK_PORT:-8282}"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      RAPIDSK_HOST: ${RAPIDSK_HOST:-0.0.0.0}
+      RAPIDSK_PORT: ${RAPIDSK_PORT:-8282}
+      PORT: ${RAPIDSK_PORT:-8282}
+      RAPIDSK_LICENSE_SERVER_URL: ${RAPIDSK_LICENSE_SERVER_URL:-}
+    volumes:
+      - ./config:/app/config

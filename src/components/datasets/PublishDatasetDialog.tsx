@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, UploadCloud, AlertCircle, BookOpen, ShieldAlert, CheckCircle2, Layers3, RefreshCw } from "lucide-react";
+import { Loader2, UploadCloud, AlertCircle, BookOpen, ShieldAlert, CheckCircle2, Layers3 } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useSchemas } from "@/api/hooks/useSchemas";
@@ -33,6 +33,19 @@ const DEFAULT_CLASS: Record<string, string> = {
 };
 const LEVELS = ["L0", "L1", "L2", "L3", "L4"];
 const PROTOCOLS = ["OGC_API_FEATURES", "REST_API"];
+
+interface VocabularyOption {
+  vocabulary_id: string;
+  name: string;
+}
+
+interface SchemaOption {
+  schema_id: string;
+  vocabulary_id?: string;
+  vocabulary_name?: string | null;
+  version: string;
+  status?: string;
+}
 
 export function PublishDatasetDialog({
   open,
@@ -94,19 +107,25 @@ export function PublishDatasetDialog({
   // vocab lookup: vocabulary_id → name
   const vocabMap = useMemo(() => {
     const m: Record<string, string> = {};
-    (vocabularies ?? []).forEach((v: any) => { m[v.vocabulary_id] = v.name; });
+    (vocabularies ?? []).forEach((vocabulary) => {
+      const v = vocabulary as VocabularyOption;
+      m[v.vocabulary_id] = v.name;
+    });
     return m;
   }, [vocabularies]);
 
   // enrich schema list — pakai vocab name dari join, fallback ke field vocabulary_name BE
   const schemaList = useMemo(() =>
-    (schemas ?? []).map((s: any) => ({
-      schema_id: s.schema_id,
-      vocabulary_id: s.vocabulary_id ?? "",
-      vocabulary_name: vocabMap[s.vocabulary_id ?? ""] || s.vocabulary_name || null,
-      version: s.version,
-      status: s.status,
-    })),
+    (schemas ?? []).map((schema) => {
+      const s = schema as SchemaOption;
+      return {
+        schema_id: s.schema_id,
+        vocabulary_id: s.vocabulary_id ?? "",
+        vocabulary_name: vocabMap[s.vocabulary_id ?? ""] || s.vocabulary_name || null,
+        version: s.version,
+        status: s.status,
+      };
+    }),
   [schemas, vocabMap]);
 
   const domainLabel = DOMAINS.find((d) => d.key === domainKey)?.label ?? "";
@@ -115,6 +134,24 @@ export function PublishDatasetDialog({
   const selectedSchema = useMemo(
     () => schemaList.find((s) => s.schema_id === schemaId) ?? null,
     [schemaId, schemaList],
+  );
+
+  const { domainSchemas, otherSchemas } = useMemo(() => {
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const dl = normalize(domainLabel);
+    const primary: typeof schemaList = [];
+    const secondary: typeof schemaList = [];
+    schemaList.forEach((s) => {
+      const vn = normalize(s.vocabulary_name ?? "");
+      if (vn.includes(dl) || dl.includes(vn)) primary.push(s);
+      else secondary.push(s);
+    });
+    return { domainSchemas: primary, otherSchemas: secondary };
+  }, [schemaList, domainLabel]);
+
+  const selectedSchemaMatchesDomain = useMemo(
+    () => !selectedSchema || domainSchemas.some((schema) => schema.schema_id === selectedSchema.schema_id),
+    [domainSchemas, selectedSchema],
   );
 
   const duplicateDataset = useMemo(() => {
@@ -141,7 +178,7 @@ export function PublishDatasetDialog({
     setClassification(DEFAULT_CLASS[domainKey] ?? "L2");
     if (!touchedName) setName(`${domainLabel} — Data`);
     const match = schemaList.find((s) => (s.vocabulary_name ?? "").toLowerCase().includes(domainLabel.toLowerCase()));
-    setSchemaId((match ?? schemaList[0])?.schema_id ?? "");
+    setSchemaId(match?.schema_id ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, domainKey, schemas]);
 
@@ -165,13 +202,16 @@ export function PublishDatasetDialog({
   };
 
   const blockedByDuplicate = !!duplicateDataset && !confirmedDuplicate;
-  const valid = !!participantId && !!schemaId && name.trim().length >= 3
+  const valid = !!participantId && !!schemaId && selectedSchemaMatchesDomain && name.trim().length >= 3
     && /^https?:\/\//.test(url) && /^\d+\.\d+\.\d+$/.test(version)
     && !blockedByDuplicate && !duplicateName;
 
   const submit = async () => {
     if (!participantId) return toast.error("Akun ini tak tertaut ke participant KKKS.");
     if (!schemaId) return toast.error("Pilih schema (jalankan Setup Juknis bila kosong).");
+    if (!selectedSchemaMatchesDomain) {
+      return toast.error("Schema yang dipilih bukan milik domain aktif. Pilih schema yang sesuai dulu.");
+    }
     if (!valid) return toast.error("Lengkapi nama (≥3), URL (http/https), versi X.Y.Z.");
     try {
       await mutation.mutateAsync({
@@ -190,20 +230,6 @@ export function PublishDatasetDialog({
       toast.error(getApiErrorMessage(e, "Gagal publish dataset"));
     }
   };
-
-  // Schema dikategorikan: cocok domain aktif (primary) vs domain lain (secondary)
-  const { domainSchemas, otherSchemas } = useMemo(() => {
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const dl = normalize(domainLabel);
-    const primary: typeof schemaList = [];
-    const secondary: typeof schemaList = [];
-    schemaList.forEach((s) => {
-      const vn = normalize(s.vocabulary_name ?? "");
-      if (vn.includes(dl) || dl.includes(vn)) primary.push(s);
-      else secondary.push(s);
-    });
-    return { domainSchemas: primary, otherSchemas: secondary };
-  }, [schemaList, domainLabel]);
 
   const schemaOptions = useMemo(() => [
     ...domainSchemas.map((s) => ({
@@ -292,7 +318,7 @@ export function PublishDatasetDialog({
                       Domain lain
                     </div>
                     {otherSchemas.map((s) => (
-                      <SelectItem key={s.schema_id} value={s.schema_id} className="text-muted-foreground">
+                      <SelectItem key={s.schema_id} value={s.schema_id} disabled className="text-muted-foreground">
                         <span className="flex items-center gap-2">
                           {s.vocabulary_name ?? "Schema"} · v{s.version}
                           <span className="text-[10px] text-rose-400">[bukan {domainLabel}]</span>
@@ -341,6 +367,20 @@ export function PublishDatasetDialog({
                     <AlertCircle className="w-3 h-3" /> Schema DEPRECATED — gunakan versi terbaru.
                   </p>
                 )}
+              </div>
+            )}
+
+            {domainSchemas.length === 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Belum ada schema yang terhubung ke domain <strong>{domainLabel}</strong>. Jalankan apply Juknis
+                atau cek sinkronisasi schema domain ini dulu, lalu kembali publish dataset dari sini.
+              </div>
+            )}
+
+            {selectedSchema && !selectedSchemaMatchesDomain && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                Schema yang sedang terpilih berasal dari domain lain. Publish ditahan sampai operator memilih
+                schema yang memang terdaftar untuk domain <strong>{domainLabel}</strong>.
               </div>
             )}
 

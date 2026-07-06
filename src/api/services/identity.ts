@@ -8,12 +8,45 @@ export interface CodeRef {
 }
 
 const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
+const normalizeIamCode = (value: string | null | undefined) =>
+  String(value ?? "").trim().toUpperCase();
+
+const isProviderAlias = (value: string | null | undefined) => {
+  const code = normalizeIamCode(value);
+  return [
+    "PROVIDER",
+    "KKKS",
+    "ENTERPRISE",
+    "DATA_PROVIDER",
+    "ADMIN_PROVIDER",
+  ].some((alias) => code.includes(alias));
+};
+
+const isConsumerAlias = (value: string | null | undefined) => {
+  const code = normalizeIamCode(value);
+  return [
+    "CONSUMER",
+    "SKK",
+    "GOV",
+    "REGULATOR",
+  ].some((alias) => code.includes(alias));
+};
+
+const canonicalizeIamCode = (code: string | null | undefined, name?: string | null) => {
+  if (isProviderAlias(code) || isProviderAlias(name)) return "PROVIDER";
+  if (isConsumerAlias(code) || isConsumerAlias(name)) return "CONSUMER";
+  return String(code ?? "").trim();
+};
 
 // Kategori & grup user (untuk resolve PROVIDER category_id/group_id).
 export const userCategoriesApi = {
   list: async (): Promise<CodeRef[]> => {
     const res = await apiClient.get("/identity-provider/user/categories/");
-    return unwrap(res).map((c: any) => ({ id: c.id, code: c.code, name: c.name }));
+    return unwrap(res).map((c: any) => ({
+      id: c.id,
+      code: canonicalizeIamCode(c.code, c.name),
+      name: c.name,
+    }));
   },
 };
 
@@ -22,9 +55,14 @@ export const userGroupsApi = {
     const res = await apiClient.get("/identity-provider/user/groups/");
     return unwrap(res).map((g: any) => ({
       id: g.id,
-      code: g.code,
+      code: canonicalizeIamCode(g.code, g.name),
       name: g.name,
-      category: g.category,
+      category: g.category
+        ? {
+            ...g.category,
+            code: canonicalizeIamCode(g.category?.code, g.category?.name),
+          }
+        : g.category,
     }));
   },
 };
@@ -47,7 +85,7 @@ export const usersApi = {
     const res = await apiClient.get("/identity-provider/users/");
     return unwrap(res);
   },
-  // PUBLIK — operator set password via tautan email.
+  // PUBLIK - operator set password via tautan email.
   confirmEmail: async (token: string, password: string): Promise<any> => {
     const res = await apiClient.post("/identity-provider/users/confirm-email", {
       token,

@@ -9,9 +9,15 @@ import { usersApi } from "@/api/services/identity";
 
 type Phase = "license" | "installing" | "password" | "done";
 
+type ActivationResult = {
+  isActive: boolean;
+  isVerified: boolean;
+  raw: unknown;
+};
+
 const INSTALL_STEPS = [
-  { ms: 300,  text: "Initializing RapiDSK Connector Runtime v4.0..." },
-  { ms: 700,  text: "Verifying license key against SKK Migas Authority..." },
+  { ms: 300, text: "Initializing RapiDSK Connector Runtime v4.0..." },
+  { ms: 700, text: "Verifying license key against SKK Migas Authority..." },
   { ms: 1200, text: "✓ License valid — ENTERPRISE tier activated" },
   { ms: 1700, text: "Loading control plane modules..." },
   { ms: 2100, text: "  → vocabulary engine         [OK]" },
@@ -43,6 +49,7 @@ const ConfirmEmail = () => {
   const [pwd, setPwd] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [activationResult, setActivationResult] = useState<ActivationResult | null>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,7 +80,15 @@ const ConfirmEmail = () => {
     if (pwd !== confirm) return toast.error("Konfirmasi password tidak cocok.");
     setSubmitting(true);
     try {
-      await usersApi.confirmEmail(token, pwd);
+      const response = await usersApi.confirmEmail(token, pwd);
+      const payload = (response && typeof response === "object" ? response : null) as Record<string, unknown> | null;
+      const isActive = payload?.is_active === true || payload?.active === true;
+      const isVerified = payload?.is_verified === true || payload?.verified === true;
+      setActivationResult({
+        isActive,
+        isVerified,
+        raw: response,
+      });
       setPhase("done");
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Aktivasi gagal / token kedaluwarsa."));
@@ -96,8 +111,6 @@ const ConfirmEmail = () => {
   return (
     <div className="min-h-screen bg-[#070b16] flex items-center justify-center p-4 font-mono">
       <div className="w-full max-w-xl">
-
-        {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30">
             <span className="text-xl font-black text-[#0b1120]">R</span>
@@ -111,10 +124,7 @@ const ConfirmEmail = () => {
           </div>
         </div>
 
-        {/* Terminal window */}
         <div className="rounded-xl border border-white/10 overflow-hidden shadow-2xl shadow-black/50">
-
-          {/* Title bar */}
           <div className="bg-[#1a1f2e] border-b border-white/[0.06] px-4 py-2.5 flex items-center gap-2">
             <div className="flex gap-1.5">
               <span className="w-3 h-3 rounded-full bg-rose-500/70" />
@@ -125,8 +135,6 @@ const ConfirmEmail = () => {
           </div>
 
           <div className="bg-[#0d1117] p-5">
-
-            {/* PHASE: license */}
             {phase === "license" && (
               <div className="space-y-5">
                 <div>
@@ -171,7 +179,6 @@ const ConfirmEmail = () => {
               </div>
             )}
 
-            {/* PHASE: installing */}
             {phase === "installing" && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold">
@@ -179,7 +186,6 @@ const ConfirmEmail = () => {
                   INSTALLING CONNECTOR...
                 </div>
 
-                {/* Progress bar */}
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] text-slate-500">
                     <span>Installation Progress</span>
@@ -193,22 +199,26 @@ const ConfirmEmail = () => {
                   </div>
                 </div>
 
-                {/* Terminal output */}
                 <div
                   ref={terminalRef}
                   className="bg-[#070b16] rounded-lg p-3 h-52 overflow-y-auto space-y-0.5 border border-white/[0.06]"
                 >
                   {terminalLines.map((line, i) => (
-                    <div key={i} className={`text-[11px] leading-5 ${
-                      line.startsWith("✓") ? "text-emerald-400" :
-                      line.startsWith("▶") ? "text-amber-400 font-semibold" :
-                      line.startsWith("  →") ? "text-slate-400 pl-2" :
-                      "text-slate-500"
-                    }`}>
+                    <div
+                      key={i}
+                      className={`text-[11px] leading-5 ${
+                        line.startsWith("✓")
+                          ? "text-emerald-400"
+                          : line.startsWith("▶")
+                            ? "text-amber-400 font-semibold"
+                            : line.startsWith("  →")
+                              ? "text-slate-400 pl-2"
+                              : "text-slate-500"
+                      }`}
+                    >
                       {!line.startsWith("✓") && !line.startsWith("▶") && !line.startsWith("  →")
                         ? <><span className="text-slate-700 mr-1.5">$</span>{line}</>
-                        : line
-                      }
+                        : line}
                     </div>
                   ))}
                   <div className="inline-block w-2 h-3.5 bg-slate-400 animate-pulse ml-0.5" />
@@ -216,7 +226,6 @@ const ConfirmEmail = () => {
               </div>
             )}
 
-            {/* PHASE: password */}
             {phase === "password" && (
               <div className="space-y-5">
                 <div className="space-y-1">
@@ -264,40 +273,49 @@ const ConfirmEmail = () => {
                 >
                   {submitting
                     ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Finalizing...</>
-                    : <><CheckCircle2 className="w-4 h-4 mr-2" /> Complete Installation</>
-                  }
+                    : <><CheckCircle2 className="w-4 h-4 mr-2" /> Complete Installation</>}
                 </Button>
               </div>
             )}
 
-            {/* PHASE: done */}
             {phase === "done" && (
               <div className="space-y-5">
                 <div className="space-y-1">
                   {[
-                    "✓ License activated",
-                    "✓ Connector installed",
-                    "✓ Operator account secured",
-                    "✓ Ready to exchange data",
+                    "✓ Password operator tersimpan",
+                    activationResult?.isVerified ? "✓ Email sudah terverifikasi" : "• Verifikasi akhir belum terkonfirmasi dari server",
+                    activationResult?.isActive ? "✓ Akun operator sudah aktif" : "• Status aktif akun belum terkonfirmasi dari server",
                   ].map((line) => (
-                    <p key={line} className="text-emerald-400 text-xs">{line}</p>
+                    <p
+                      key={line}
+                      className={line.startsWith("✓") ? "text-emerald-400 text-xs" : "text-amber-300 text-xs"}
+                    >
+                      {line}
+                    </p>
                   ))}
                 </div>
 
                 <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-lg p-4 text-center space-y-2">
                   <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-400" />
-                  <p className="text-white font-semibold text-sm">Installation Complete</p>
-                  <p className="text-slate-400 text-[11px]">
-                    Your RapiDSK Connector is active and registered in the<br />
-                    SKK Migas National Dataspace Platform.
+                  <p className="text-white font-semibold text-sm">
+                    {activationResult?.isActive && activationResult?.isVerified ? "Aktivasi Selesai" : "Password Berhasil Disimpan"}
                   </p>
+                  <p className="text-slate-300 text-[11px]">
+                    {activationResult?.isActive && activationResult?.isVerified
+                      ? "Akun operator sudah aktif dan siap dipakai login."
+                      : "Password sudah tersimpan, tetapi server belum mengembalikan konfirmasi bahwa akun sudah aktif penuh."}
+                  </p>
+                  {!activationResult?.isActive || !activationResult?.isVerified ? (
+                    <p className="text-amber-300 text-[11px]">
+                      Jika login masih ditolak, cek proses aktivasi di backend atau minta admin kirim ulang undangan.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="bg-[#070b16] rounded-lg p-3 border border-white/[0.06] text-[10px] text-slate-600 space-y-0.5">
-                  <p><span className="text-slate-500">connector.status</span>  = <span className="text-emerald-400">ACTIVE</span></p>
-                  <p><span className="text-slate-500">control_plane</span>     = <span className="text-amber-400">READY</span></p>
-                  <p><span className="text-slate-500">data_plane</span>        = <span className="text-amber-400">READY</span></p>
-                  <p><span className="text-slate-500">operator.auth</span>     = <span className="text-emerald-400">SECURED</span></p>
+                  <p><span className="text-slate-500">operator.password</span> = <span className="text-emerald-400">SAVED</span></p>
+                  <p><span className="text-slate-500">email.verification</span> = <span className={activationResult?.isVerified ? "text-emerald-400" : "text-amber-300"}>{activationResult?.isVerified ? "CONFIRMED" : "UNCONFIRMED"}</span></p>
+                  <p><span className="text-slate-500">account.status</span>     = <span className={activationResult?.isActive ? "text-emerald-400" : "text-amber-300"}>{activationResult?.isActive ? "ACTIVE" : "PENDING"}</span></p>
                 </div>
 
                 <Link to="/login">
@@ -308,7 +326,6 @@ const ConfirmEmail = () => {
                 </Link>
               </div>
             )}
-
           </div>
         </div>
 

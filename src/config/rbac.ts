@@ -52,6 +52,11 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Setup Juknis",
     path: "/setup-juknis",
     roles: ["SUPER_ADMIN", "ADMIN"],
+    permissions: [
+      "setup-juknis.manage",
+      "onboarding.setup.manage",
+      "onboarding.registrations.approve",
+    ],
   },
   {
     section: "persiapan",
@@ -59,13 +64,36 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Organizations",
     path: "/organizations",
     roles: ["SUPER_ADMIN", "ADMIN"],
+    permissions: [
+      "organizations.manage",
+      "governance.organizations.manage",
+      "governance.domains.manage",
+    ],
   },
   {
     section: "persiapan",
     icon: Link2,
-    label: "Connection Pools",
+    label: "Registry Koneksi",
     path: "/connection-pools",
     roles: ["SUPER_ADMIN", "ADMIN"],
+    permissions: [
+      "connection-pools.manage",
+      "connector.connection-pool.manage",
+      "connector.registry.manage",
+    ],
+  },
+  {
+    section: "persiapan",
+    icon: Shield,
+    label: "Hak Akses",
+    path: "/access-control",
+    roles: ["SUPER_ADMIN", "ADMIN"],
+    permissions: [
+      "iam.policy.manage",
+      "iam.permissions.manage",
+      "identity-provider.iam.manage",
+      "rbac.manage",
+    ],
   },
   // ── Pemantauan & Operasional ──
   {
@@ -74,6 +102,7 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Dashboard",
     path: "/",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+    permissions: ["dashboard.view"],
   },
   {
     section: "pemantauan",
@@ -81,6 +110,12 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Katalog Dataset",
     path: "/datasets",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "GIS_ANALYST"],
+    permissions: [
+      "datasets.read",
+      "dataset.read",
+      "datasets.manage",
+      "dataset.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -88,6 +123,12 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Contracts",
     path: "/contracts",
     roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "PROVIDER", "AUDITOR"],
+    permissions: [
+      "contracts.read",
+      "contract.read",
+      "contracts.manage",
+      "contract.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -95,6 +136,11 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Permintaan Masuk",
     path: "/inbox",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER"],
+    permissions: [
+      "inbox.read",
+      "requests.incoming.read",
+      "requests.incoming.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -102,6 +148,12 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Transfer Data",
     path: "/transfers",
     roles: ["PROVIDER", "SUPER_ADMIN", "ADMIN"],
+    permissions: [
+      "transfers.read",
+      "transfer.read",
+      "transfers.manage",
+      "transfer.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -110,6 +162,13 @@ export const MENU_ITEMS: MenuItem[] = [
     path: "/participants",
     // Gabungan dari Pendaftaran KKKS & Providers
     roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "AUDITOR"],
+    permissions: [
+      "participants.read",
+      "participants.manage",
+      "participants.approve",
+      "onboarding.participants.manage",
+      "onboarding.registrations.approve",
+    ],
   },
   {
     section: "pemantauan",
@@ -117,6 +176,12 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Schemas",
     path: "/schemas",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+    permissions: [
+      "schemas.read",
+      "schema.read",
+      "schemas.manage",
+      "schema.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -124,6 +189,12 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Vocabularies",
     path: "/vocabularies",
     roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+    permissions: [
+      "vocabularies.read",
+      "vocabulary.read",
+      "vocabularies.manage",
+      "vocabulary.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -131,6 +202,12 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Policies",
     path: "/policies",
     roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "PROVIDER", "AUDITOR"],
+    permissions: [
+      "policies.read",
+      "policy.read",
+      "policies.manage",
+      "policy.manage",
+    ],
   },
   {
     section: "pemantauan",
@@ -138,21 +215,34 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Audit Trail",
     path: "/audit",
     roles: ["SUPER_ADMIN", "ADMIN", "AUDITOR"],
+    permissions: [
+      "audit.read",
+      "audit.manage",
+    ],
   },
   // ── Lainnya ──
   {
     section: "lain",
     icon: Code2,
-    label: "API Docs",
+    label: "Dokumentasi API",
     path: "/api-docs",
     roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "VIEWER", "AUDITOR", "GIS_ANALYST"],
+    permissions: [
+      "docs.read",
+      "api-docs.read",
+    ],
   },
   {
     section: "lain",
     icon: Shield,
-    label: "Deployment Config",
+    label: "Konfigurasi Sistem",
     path: "/deployment-config",
     roles: ["SUPER_ADMIN", "ADMIN"],
+    permissions: [
+      "deployment-config.manage",
+      "runtime-config.manage",
+      "system.runtime.manage",
+    ],
   },
 ];
 
@@ -181,19 +271,35 @@ const buildRoleRoutes = (): Record<AppRole, string[]> => {
 
 const ROLE_ROUTES = buildRoleRoutes();
 
+const findMenuItem = (path: string) =>
+  MENU_ITEMS.find((item) => item.path === path || (item.path !== "/" && path.startsWith(item.path + "/")));
+
 /**
  * SUPER_ADMIN selalu boleh akses semua route.
  * Role lain: cocokkan exact path atau prefix (untuk dynamic route seperti /participants/:id).
  * Contoh: jika "/participants" diizinkan → "/participants/abc-123" juga diizinkan.
  */
-export const canAccess = (role: AppRole, path: string): boolean => {
+export const canAccess = (
+  role: AppRole,
+  path: string,
+  hasPermission?: (permission: string) => boolean,
+): boolean => {
   if (role === "SUPER_ADMIN") return true;
+  const menuItem = findMenuItem(path);
+  if (menuItem?.permissions?.length && hasPermission) {
+    const permissionGranted = menuItem.permissions.some((permission) => hasPermission(permission));
+    if (permissionGranted) return true;
+  }
   const allowed = ROLE_ROUTES[role] ?? [];
   return allowed.some((r) => r === path || (r !== "/" && path.startsWith(r + "/")));
 };
 
-export const canAccessAny = (roles: AppRole[], path: string): boolean => {
-  return roles.some((r) => canAccess(r, path));
+export const canAccessAny = (
+  roles: AppRole[],
+  path: string,
+  hasPermission?: (permission: string) => boolean,
+): boolean => {
+  return roles.some((r) => canAccess(r, path, hasPermission));
 };
 
 export const ROLE_LABELS: Record<AppRole, string> = {

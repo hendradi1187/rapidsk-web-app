@@ -51,7 +51,7 @@ interface Props {
 interface LayerOption {
   value: string;
   label: string;
-  raw: any;
+  raw: unknown;
 }
 
 const CLASSIFICATION_OPTIONS: AdapterClassification[] = ["L0", "L1", "L2", "L3", "L4"];
@@ -89,32 +89,33 @@ const parseLayerOptions = (payload: unknown): LayerOption[] => {
           : [];
 
   return items
-    .map((item: any, index) => {
+    .map((item, index) => {
+      const layer = item as Record<string, unknown> | string;
       if (typeof item === "string") {
         return { value: item, label: item, raw: item };
       }
 
       const value = String(
-        item?.name ??
-        item?.layer_name ??
-        item?.id ??
-        item?.layer_id ??
-        item?.identifier ??
+        layer?.name ??
+        layer?.layer_name ??
+        layer?.id ??
+        layer?.layer_id ??
+        layer?.identifier ??
         index,
       ).trim();
 
       const label = String(
-        item?.title ??
-        item?.name ??
-        item?.layer_name ??
-        item?.label ??
-        item?.id ??
-        item?.layer_id ??
+        layer?.title ??
+        layer?.name ??
+        layer?.layer_name ??
+        layer?.label ??
+        layer?.id ??
+        layer?.layer_id ??
         value,
       ).trim();
 
       if (!value) return null;
-      return { value, label, raw: item };
+      return { value, label, raw: layer };
     })
     .filter(Boolean) as LayerOption[];
 };

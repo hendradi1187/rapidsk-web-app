@@ -50,7 +50,7 @@ const defaultRuntimeConfig: RuntimeConfig = {
   initialized: false,
   publicAppUrl: defaultPublicAppUrl,
   apiBaseUrl: defaultApiBaseUrl,
-  adapterEndpoint: import.meta.env.VITE_ADAPTER_ENDPOINT || "",
+  adapterEndpoint: import.meta.env.VITE_ADAPTER_ENDPOINT || "http://100.66.10.14:8182",
   sso: {
     enabled: Boolean(
       import.meta.env.VITE_KEYCLOAK_URL &&

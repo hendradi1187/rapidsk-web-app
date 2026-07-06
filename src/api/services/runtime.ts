@@ -148,4 +148,22 @@ export const runtimeApi = {
     if (!response.ok) throw new Error(payload?.error || "License revalidation failed");
     return payload;
   },
+
+  refreshPublicOrganizations: async (
+    token?: string | null,
+  ): Promise<{
+    refreshed: number;
+    data: Array<{ id: string; name: string }>;
+  }> => {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch("/admin/public-organizations/refresh", {
+      method: "POST",
+      headers,
+      credentials: "same-origin",
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload?.error || "Public organization refresh failed");
+    return payload;
+  },
 };
