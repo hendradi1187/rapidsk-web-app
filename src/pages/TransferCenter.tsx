@@ -38,7 +38,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const TRANSFER_MODE_STORAGE_KEY = "transfer_mode_map";
 const TRANSFER_BODY_STORAGE_KEY = "transfer_body_map";
 
-type TransferStartBody = { domain_id: string; agreement_id: string; dataset_id: string };
+type TransferStartBody = { domain_id: string; agreement_id: string; dataset_id: string; mode?: TransferMode; resume_from_byte?: number };
 
 const readTransferBodyMap = (): Record<string, TransferStartBody> => {
   try { return JSON.parse(localStorage.getItem(TRANSFER_BODY_STORAGE_KEY) ?? "{}"); } catch { return {}; }
@@ -288,6 +288,8 @@ const TransferCenter = () => {
   const [transferBodyMap, setTransferBodyMap] = useState<Record<string, TransferStartBody>>(() =>
     readTransferBodyMap(),
   );
+  const resolvePersistedTransferMode = (transferId: string): TransferMode | null =>
+    transferModeMap[transferId] ?? transferBodyMap[transferId]?.mode ?? null;
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [previewTransfer, setPreviewTransfer] = useState<TransferPreviewState | null>(null);
 
@@ -343,9 +345,13 @@ const TransferCenter = () => {
     });
   };
 
-  const downloadPersistentResult = async (transferId: string) => {
+  const downloadPersistentResult = async (transfer: { id: string; domain_id: string; agreement_id: string; dataset_id: string }) => {
     try {
-      const { blob, filename } = await transfersApi.downloadPersistent(transferId);
+      const { blob, filename } = await transfersApi.downloadPersistent(transfer.id, {
+        domain_id: transfer.domain_id,
+        agreement_id: transfer.agreement_id,
+        dataset_id: transfer.dataset_id,
+      });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -381,7 +387,7 @@ const TransferCenter = () => {
   };
 
   const resumeTransfer = async (transferId: string) => {
-    const mode = transferModeMap[transferId];
+    const mode = resolvePersistedTransferMode(transferId);
     const body = transferBodyMap[transferId];
     if (!mode || !body) {
       toast.warning("Data transfer lama tidak lengkap. Jalankan ulang dari tabel kewajiban.");
@@ -389,10 +395,18 @@ const TransferCenter = () => {
     }
 
     try {
+      const latestStatus = await transfersApi.status(transferId);
+      const resumeFromByte = Number(
+        latestStatus.bytes_transferred ?? latestStatus.transferred_size ?? 0,
+      );
+      const resumeBody = {
+        ...body,
+        resume_from_byte: resumeFromByte > 0 ? resumeFromByte : undefined,
+      };
       if (mode === "persistent") {
-        await transfersApi.startPersistent(transferId, body);
+        await transfersApi.startPersistent(transferId, resumeBody);
       } else {
-        await transfersApi.startDirect(transferId, body);
+        await transfersApi.startDirect(transferId, resumeBody);
       }
       await sleep(1000);
       await refreshOperationalState();
@@ -424,11 +438,11 @@ const TransferCenter = () => {
     const activeTransfer = (transfers as typeof transfers).find(
       (t) =>
         t.dataset_id === row.selectedDataset.dataset_id &&
-        !["COMPLETED", "FAILED"].includes(String(t.status).toUpperCase()),
+        !["COMPLETED", "FAILED", "PAUSED"].includes(String(t.status).toUpperCase()),
     );
     if (activeTransfer) {
       toast.warning(
-        `Transfer sedang berjalan untuk dataset ini (status: ${activeTransfer.status}). Tunggu sampai selesai atau gagal dulu.`,
+        `Transfer sedang berjalan untuk dataset ini (status: ${activeTransfer.status}). Lanjutkan lewat tombol resume atau tunggu sampai statusnya selesai/gagal dulu.`,
         { duration: 6000 },
       );
       return;
@@ -481,7 +495,7 @@ const TransferCenter = () => {
       });
       console.debug("[Transfer] initiated, process_id:", transfer_process_id);
       persistTransferMode(transfer_process_id, mode);
-      const startBody = { domain_id: domainId, agreement_id: ag.id, dataset_id: row.selectedDataset.dataset_id };
+      const startBody = { domain_id: domainId, agreement_id: ag.id, dataset_id: row.selectedDataset.dataset_id, mode };
       persistTransferBody(transfer_process_id, startBody);
       if (mode === "persistent") {
         await transfersApi.startPersistent(transfer_process_id, startBody);
@@ -503,8 +517,11 @@ const TransferCenter = () => {
             ? `Data ${row.selectedDataset.dataset_name} tersimpan via persistent transfer.`
             : `Data ${row.selectedDataset.dataset_name} terkirim via direct stream.`,
         );
+      } else if (final === "FAILED") {
+        toast.error(`Transfer ${row.selectedDataset.dataset_name}: ${final}`);
+      } else {
+        toast.warning(`Transfer ${row.selectedDataset.dataset_name} masih berjalan (${final}). Pantau dari riwayat transfer.`, { duration: 6000 });
       }
-      else toast.error(`Transfer ${row.selectedDataset.dataset_name}: ${final}`);
       await refreshOperationalState();
     } catch (e: unknown) {
       const msg = getApiErrorMessage(e, "error");
@@ -562,7 +579,7 @@ const TransferCenter = () => {
         {/* KPI */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div className="stat-card"><div className="flex items-center gap-4"><div className="p-3 rounded-xl bg-amber-100 text-amber-700"><UploadCloud className="w-6 h-6" /></div><div><p className="text-2xl font-bold">{readyCount}</p><p className="text-sm text-muted-foreground">Siap Dikirim</p></div></div></div>
-          <div className="stat-card"><div className="flex items-center gap-4"><div className="p-3 rounded-xl bg-emerald-100 text-emerald-700"><PackageCheck className="w-6 h-6" /></div><div><p className="text-2xl font-bold">{sentCount}/5</p><p className="text-sm text-muted-foreground">Terkirim</p></div></div></div>
+          <div className="stat-card"><div className="flex items-center gap-4"><div className="p-3 rounded-xl bg-emerald-100 text-emerald-700"><PackageCheck className="w-6 h-6" /></div><div><p className="text-2xl font-bold">{sentCount}/{DOMAINS.length}</p><p className="text-sm text-muted-foreground">Terkirim</p></div></div></div>
           <div className="stat-card"><div className="flex items-center gap-4"><div className="p-3 rounded-xl bg-info/10 text-info"><History className="w-6 h-6" /></div><div><p className="text-2xl font-bold">{transfers.length}</p><p className="text-sm text-muted-foreground">Total Transfer</p></div></div></div>
         </div>
 
@@ -613,7 +630,7 @@ const TransferCenter = () => {
 
         {/* Kewajiban siap kirim */}
         <div className="panel overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2"><Send className="w-4 h-4 text-accent" /><h3 className="font-semibold text-sm">Kewajiban Pengiriman Data — 5 Domain</h3></div>
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2"><Send className="w-4 h-4 text-accent" /><h3 className="font-semibold text-sm">{`Kewajiban Pengiriman Data — ${DOMAINS.length} Domain`}</h3></div>
           <Table>
             <TableHeader>
               <TableRow className="table-header">
@@ -827,9 +844,9 @@ const TransferCenter = () => {
                     <TableCell className="text-sm">{dsName(t.dataset_id)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {transferModeMap[t.id] === "persistent"
+                        {resolvePersistedTransferMode(t.id) === "persistent"
                           ? "Persistent Transfer"
-                          : transferModeMap[t.id] === "direct"
+                          : resolvePersistedTransferMode(t.id) === "direct"
                             ? "Direct Stream"
                             : "Unknown"}
                       </Badge>
@@ -886,9 +903,9 @@ const TransferCenter = () => {
                         )}
 
                         {/* Download untuk persistent COMPLETED */}
-                        {transferModeMap[t.id] === "persistent" && String(t.status).toUpperCase() === "COMPLETED" && (
+                        {resolvePersistedTransferMode(t.id) === "persistent" && String(t.status).toUpperCase() === "COMPLETED" && (
                           <Button size="sm" variant="outline" className="h-7 text-xs"
-                            onClick={() => downloadPersistentResult(t.id)}>
+                            onClick={() => downloadPersistentResult(t)}>
                             <Download className="w-3 h-3 mr-1" /> Download
                           </Button>
                         )}

@@ -173,3 +173,48 @@ export const agreementsApi = {
     return res.data as AgreementItem;
   },
 };
+
+// Contract-policy: kebijakan tingkat kontrak (klasifikasi data + masa berlaku),
+// terpisah dari dataset-policy. Domain-scoped, CRUD penuh.
+export interface ContractPolicyItem {
+  id: string;
+  domain_id: string;
+  name: string;
+  data_clasification: string;
+  description?: string | null;
+  effective_from: string;
+  effective_to: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ContractPolicyInput {
+  name: string;
+  data_clasification: string;
+  effective_from: string;
+  effective_to: string;
+  description?: string | null;
+}
+
+export const contractPoliciesApi = {
+  list: async (domainId: string): Promise<ContractPolicyItem[]> => {
+    if (!domainId) return [];
+    const rows = await fetchAllContracts(`/policy-contract/${domainId}/contract-policies`);
+    return rows as ContractPolicyItem[];
+  },
+  create: async (domainId: string, body: ContractPolicyInput): Promise<ContractPolicyItem> => {
+    const res = await apiClient.post(`/policy-contract/${domainId}/contract-policies`, body);
+    return res.data as ContractPolicyItem;
+  },
+  update: async (
+    domainId: string,
+    id: string,
+    body: Partial<ContractPolicyInput>,
+  ): Promise<ContractPolicyItem> => {
+    const res = await apiClient.patch(`/policy-contract/${domainId}/contract-policies/${id}`, body);
+    return res.data as ContractPolicyItem;
+  },
+  remove: async (domainId: string, id: string): Promise<void> => {
+    await apiClient.delete(`/policy-contract/${domainId}/contract-policies/${id}`);
+  },
+};

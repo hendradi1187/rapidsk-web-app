@@ -169,17 +169,17 @@ const Dashboard = () => {
           to: "/inbox",
           cta: "Buka Permintaan Masuk",
         }
-      : mySent < 5
+      : mySent < DOMAINS.length
         ? {
             step: "Langkah 2 — Kirim data",
-            title: `Kirim data Anda — ${mySent}/5 domain terkirim`,
+            title: `Kirim data Anda — ${mySent}/${DOMAINS.length} domain terkirim`,
             desc: "Tautkan dataset & kirim ke SKK Migas di Transfer Data agar kewajiban terpenuhi.",
             to: "/transfers",
             cta: "Buka Transfer Data",
           }
         : {
             done: true,
-            title: "Semua kewajiban data terpenuhi (5/5)",
+            title: `Semua kewajiban data terpenuhi (${DOMAINS.length}/${DOMAINS.length})`,
             desc: "Seluruh domain telah terkirim. Terima kasih atas kepatuhannya.",
           };
 
@@ -347,7 +347,7 @@ const Dashboard = () => {
         {/* KPI */}
         {isProvider ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard title="Domain Terpenuhi" value={`${myFulfilled}/5`} trend={{ label: `${Math.round((myFulfilled / 5) * 100)}%`, dir: myFulfilled === 5 ? "up" : "flat" }} change={`${mySent}/5 data terkirim`} icon={CheckCircle2} iconColor="bg-success/10 text-success" />
+            <StatCard title="Domain Terpenuhi" value={`${myFulfilled}/${DOMAINS.length}`} trend={{ label: `${Math.round((myFulfilled / DOMAINS.length) * 100)}%`, dir: myFulfilled === DOMAINS.length ? "up" : "flat" }} change={`${mySent}/${DOMAINS.length} data terkirim`} icon={CheckCircle2} iconColor="bg-success/10 text-success" />
             <StatCard title="Dataset Published" value={publishedCount} change={`${datasets.length} total dataset`} icon={Database} iconColor="bg-accent/10 text-accent" spark={sparkData} />
             <StatCard title="Kontrak Aktif" value={activeContracts} change="status ACTIVE" icon={FileSignature} iconColor="bg-info/10 text-info" />
             <StatCard title="Permintaan Menunggu" value={pendingRequests} change="perlu ditindak (Inbox)" icon={Inbox} iconColor="bg-amber-100 text-amber-600" />
@@ -356,7 +356,7 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard title="KKKS Terpantau" value={kkks.length} change="penyedia data (provider)" icon={Users} iconColor="bg-accent/10 text-accent" />
             <StatCard title="Cakupan Pemenuhan" value={`${coveragePct}%`} trend={{ label: `${coveragePct}%`, dir: coveragePct >= 80 ? "up" : coveragePct > 0 ? "flat" : "down" }} change={`${sentTotal} sel data terkirim`} icon={CheckCircle2} iconColor="bg-success/10 text-success" />
-            <StatCard title="KKKS Lengkap (5/5)" value={kkksFull} change={`dari ${kkks.length} KKKS`} icon={Layers} iconColor="bg-purple-100 text-purple-600" />
+            <StatCard title={`KKKS Lengkap (${DOMAINS.length}/${DOMAINS.length})`} value={kkksFull} change={`dari ${kkks.length} KKKS`} icon={Layers} iconColor="bg-purple-100 text-purple-600" />
             <StatCard title="Kontrak Aktif" value={activeContracts} change={`${contracts.length} total kontrak`} icon={FileSignature} iconColor="bg-info/10 text-info" />
           </div>
         )}

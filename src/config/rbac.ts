@@ -15,6 +15,10 @@ import {
   ClipboardCheck,
   Code2,
   Link2,
+  ShieldCheck,
+  Braces,
+  FileLock2,
+  Activity,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
@@ -198,6 +202,19 @@ export const MENU_ITEMS: MenuItem[] = [
   },
   {
     section: "pemantauan",
+    icon: Braces,
+    label: "Metadata Katalog",
+    path: "/catalog-metadata",
+    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "GIS_ANALYST"],
+    permissions: [
+      "data-catalog.manage",
+      "data-catalog.read",
+      "vocabulary.manage",
+      "datasets.manage",
+    ],
+  },
+  {
+    section: "pemantauan",
     icon: Shield,
     label: "Policies",
     path: "/policies",
@@ -211,6 +228,19 @@ export const MENU_ITEMS: MenuItem[] = [
   },
   {
     section: "pemantauan",
+    icon: FileLock2,
+    label: "Kebijakan Kontrak",
+    path: "/contract-policies",
+    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "CONSUMER", "AUDITOR"],
+    permissions: [
+      "policy-contract.manage",
+      "policies.manage",
+      "policy.manage",
+      "contracts.manage",
+    ],
+  },
+  {
+    section: "pemantauan",
     icon: ClipboardCheck,
     label: "Audit Trail",
     path: "/audit",
@@ -218,6 +248,31 @@ export const MENU_ITEMS: MenuItem[] = [
     permissions: [
       "audit.read",
       "audit.manage",
+    ],
+  },
+  {
+    section: "pemantauan",
+    icon: ShieldCheck,
+    label: "Kepatuhan",
+    path: "/compliance",
+    roles: ["SUPER_ADMIN", "ADMIN", "AUDITOR"],
+    permissions: [
+      "compliance.read",
+      "compliance.manage",
+      "audit.read",
+      "audit.manage",
+    ],
+  },
+  {
+    section: "pemantauan",
+    icon: Activity,
+    label: "Connector Monitor",
+    path: "/connector-monitoring",
+    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER", "AUDITOR"],
+    permissions: [
+      "connector.monitoring.read",
+      "connector.monitoring.manage",
+      "connector.runtime.manage",
     ],
   },
   // ── Lainnya ──

@@ -32,6 +32,10 @@ import Settings from "./pages/Settings";
 import DeploymentConfig from "./pages/DeploymentConfig";
 import ConnectionPools from "./pages/ConnectionPools";
 import AccessControl from "./pages/AccessControl";
+import ConnectorMonitoring from "./pages/ConnectorMonitoring";
+import Compliance from "./pages/Compliance";
+import CatalogMetadata from "./pages/CatalogMetadata";
+import ContractPolicies from "./pages/ContractPolicies";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -81,6 +85,10 @@ const App = () => (
                               <Route path="/api-docs" element={<ApiDocs />} />
                               <Route path="/connection-pools" element={<ConnectionPools />} />
                               <Route path="/access-control" element={<AccessControl />} />
+                              <Route path="/connector-monitoring" element={<ConnectorMonitoring />} />
+                              <Route path="/compliance" element={<Compliance />} />
+                              <Route path="/catalog-metadata" element={<CatalogMetadata />} />
+                              <Route path="/contract-policies" element={<ContractPolicies />} />
                               <Route path="/settings" element={<Settings />} />
                               <Route path="/deployment-config" element={<DeploymentConfig />} />
                               <Route path="*" element={<NotFound />} />

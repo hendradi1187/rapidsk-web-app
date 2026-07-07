@@ -1,0 +1,348 @@
+import { useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
+import {
+  getStoredParticipantOrganizationId,
+  setStoredParticipantOrganizationId,
+} from "@/lib/participant-org-binding";
+
+type ParticipantItem = {
+  provider_id: string;
+  provider_name: string;
+  contact_person?: { email?: string; name?: string };
+};
+
+type RegistrationItem = {
+  participant_id?: string | null;
+  organization_name: string;
+  operator_email: string;
+  status: string;
+};
+
+type UserItem = {
+  email?: string | null;
+  is_active?: boolean;
+  is_verified?: boolean;
+};
+
+type OrganizationItem = {
+  organization_id: string;
+  organization_name: string;
+};
+
+type DomainItem = {
+  domain_id: string;
+};
+
+const normalize = (value: string | null | undefined) =>
+  String(value ?? "").trim().toLowerCase();
+
+const toneByState = {
+  VERIFIED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  INFERRED: "bg-amber-50 text-amber-700 border-amber-200",
+  MISSING: "bg-rose-50 text-rose-700 border-rose-200",
+} as const;
+
+export interface BindingAuditPanelProps {
+  providers: ParticipantItem[];
+  registrations: RegistrationItem[];
+  users: UserItem[];
+  organizations: OrganizationItem[];
+  organizationDomainsById: Record<string, DomainItem[]>;
+  participantDomainsById: Record<string, DomainItem[]>;
+}
+
+export const BindingAuditPanel = ({
+  providers,
+  registrations,
+  users,
+  organizations,
+  organizationDomainsById,
+  participantDomainsById,
+}: BindingAuditPanelProps) => {
+  const [search, setSearch] = useState("");
+  const [bindingOverrides, setBindingOverrides] = useState<Record<string, string>>({});
+  const [savedMarker, setSavedMarker] = useState<Record<string, number>>({});
+
+  const rows = useMemo(
+    () =>
+      providers.map((provider) => {
+        const participantId = provider.provider_id;
+        const registration =
+          registrations.find((item) => item.participant_id === participantId) ??
+          registrations.find((item) => normalize(item.operator_email) === normalize(provider.contact_person?.email)) ??
+          registrations.find((item) => normalize(item.organization_name) === normalize(provider.provider_name)) ??
+          null;
+
+        const operatorEmail = registration?.operator_email ?? provider.contact_person?.email ?? "";
+        const user =
+          users.find((item) => normalize(item.email) === normalize(operatorEmail)) ??
+          null;
+        const operatorState =
+          !user
+            ? "MISSING"
+            : user.is_active && user.is_verified
+              ? "VERIFIED"
+              : "INFERRED";
+
+        const participantDomains = participantDomainsById[participantId] ?? [];
+        const storedOrganizationId =
+          bindingOverrides[participantId] ?? getStoredParticipantOrganizationId(participantId) ?? "";
+        const binding = resolveGovernanceOrganizationBinding({
+          organizations,
+          domainsByOrganizationId: organizationDomainsById,
+          participantDomainIds: participantDomains.map((item) => item.domain_id),
+          participantName: provider.provider_name,
+          preferredOrganizationId: storedOrganizationId,
+        });
+
+        const bindingState =
+          binding.organization && binding.overlapCount > 0
+            ? storedOrganizationId
+              ? "VERIFIED"
+              : "INFERRED"
+            : binding.organization
+              ? "INFERRED"
+              : "MISSING";
+
+        const organizationDomainCount = binding.organization
+          ? (organizationDomainsById[binding.organization.organization_id] ?? []).length
+          : 0;
+
+        return {
+          participantId,
+          participantName: provider.provider_name,
+          operatorEmail,
+          registrationStatus: registration?.status ?? "MISSING",
+          operatorState,
+          bindingState,
+          matchedBy: binding.matchedBy,
+          overlapCount: binding.overlapCount,
+          bindingOrganizationName: binding.organization?.organization_name ?? "-",
+          selectedOrganizationId: storedOrganizationId,
+          candidates: binding.candidates,
+          participantDomainCount: participantDomains.length,
+          organizationDomainCount,
+        };
+      }),
+    [
+      bindingOverrides,
+      organizationDomainsById,
+      organizations,
+      participantDomainsById,
+      providers,
+      registrations,
+      users,
+    ],
+  );
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = normalize(search);
+    if (!normalizedSearch) return rows;
+    return rows.filter((row) =>
+      [
+        row.participantName,
+        row.operatorEmail,
+        row.bindingOrganizationName,
+        row.registrationStatus,
+      ].some((value) => normalize(value).includes(normalizedSearch)),
+    );
+  }, [rows, search]);
+
+  const verifiedCount = rows.filter((row) => row.bindingState === "VERIFIED").length;
+  const inferredCount = rows.filter((row) => row.bindingState === "INFERRED").length;
+  const missingCount = rows.filter((row) => row.bindingState === "MISSING").length;
+
+  const assignBinding = (participantId: string, organizationId: string) => {
+    setBindingOverrides((prev) => ({
+      ...prev,
+      [participantId]: organizationId,
+    }));
+  };
+
+  const saveBinding = (participantId: string) => {
+    const nextOrganizationId = bindingOverrides[participantId] ?? "";
+    setStoredParticipantOrganizationId(participantId, nextOrganizationId || null);
+    setSavedMarker((prev) => ({
+      ...prev,
+      [participantId]: Date.now(),
+    }));
+  };
+
+  const clearBinding = (participantId: string) => {
+    setStoredParticipantOrganizationId(participantId, null);
+    setBindingOverrides((prev) => ({
+      ...prev,
+      [participantId]: "",
+    }));
+    setSavedMarker((prev) => ({
+      ...prev,
+      [participantId]: Date.now(),
+    }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="panel border-slate-200/80 bg-gradient-to-br from-white via-white to-emerald-50/40">
+        <CardHeader>
+          <CardTitle>Audit Binding Participant</CardTitle>
+          <CardDescription>
+            Panel ini menunjukkan relasi participant, operator, governance organization, dan domain yang benar-benar terbaca sekarang. Fokusnya bukan kosmetik, tapi apakah konteks role dan domain sudah cukup kuat atau masih jatuh ke inferensi.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border bg-white/80 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Participant</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{rows.length}</p>
+            <p className="mt-1 text-sm text-slate-600">Yang sedang diaudit pada layar ini.</p>
+          </div>
+          <div className="rounded-2xl border bg-white/80 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Binding verified</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{verifiedCount}</p>
+            <p className="mt-1 text-sm text-slate-600">Sudah punya ikatan yang paling kuat saat ini.</p>
+          </div>
+          <div className="rounded-2xl border bg-white/80 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Binding inferred</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{inferredCount}</p>
+            <p className="mt-1 text-sm text-slate-600">Masih terbaca, tapi belum boleh dianggap final.</p>
+          </div>
+          <div className="rounded-2xl border bg-white/80 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Binding missing</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{missingCount}</p>
+            <p className="mt-1 text-sm text-slate-600">Perlu intervensi admin sebelum flow provider stabil.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="panel">
+        <CardHeader>
+          <CardTitle>Relasi Aktual</CardTitle>
+          <CardDescription>
+            Gunakan daftar ini untuk cek participant mana yang sudah siap dipakai login provider dan mana yang masih rawan nyasar ke organization atau domain yang salah.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-900">Cari participant atau operator</p>
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cari participant, email operator, atau organization..."
+                className="bg-white"
+              />
+            </div>
+            <div className="rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Binding manual disimpan lokal di browser admin ini sebagai override sementara sampai relasi final dari backend sudah rapi.
+            </div>
+          </div>
+
+          {filteredRows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
+              Tidak ada participant yang cocok dengan filter ini.
+            </div>
+          ) : (
+            filteredRows.map((row) => (
+              <div key={row.participantId} className="rounded-2xl border p-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-900">{row.participantName}</p>
+                      <Badge variant="outline">{row.participantId.slice(0, 8)}...</Badge>
+                      <Badge className={toneByState[row.bindingState]}>{row.bindingState}</Badge>
+                    </div>
+                    <p className="text-sm text-slate-600">
+                      Operator: {row.operatorEmail || "Belum ada email operator yang terbaca"}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      Organization terpilih: {row.bindingOrganizationName}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Registration</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{row.registrationStatus}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Operator user</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{row.operatorState}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Domain participant</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{row.participantDomainCount}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Domain organization</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{row.organizationDomainCount}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-end">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-slate-900">Organization yang diikat ke participant ini</p>
+                    <Select
+                      value={row.selectedOrganizationId || "__none__"}
+                      onValueChange={(value) =>
+                        assignBinding(row.participantId, value === "__none__" ? "" : value)
+                      }
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Pilih organization" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Biarkan auto-resolve</SelectItem>
+                        {organizations.map((organization) => (
+                          <SelectItem key={organization.organization_id} value={organization.organization_id}>
+                            {organization.organization_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500">
+                      Kandidat domain overlap:{" "}
+                      {row.candidates.length > 0
+                        ? row.candidates.map((item) => item.organization_name).join(", ")
+                        : "belum ada kandidat yang meyakinkan"}
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => saveBinding(row.participantId)}>
+                    Simpan Binding
+                  </Button>
+                  <Button variant="ghost" onClick={() => clearBinding(row.participantId)}>
+                    Reset
+                  </Button>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-600">
+                  Sumber binding: <span className="font-medium text-slate-900">{row.matchedBy}</span>
+                  {" · "}
+                  domain overlap: <span className="font-medium text-slate-900">{row.overlapCount}</span>
+                  {" · "}
+                  status provider akan paling aman kalau binding sudah `VERIFIED`, operator user `VERIFIED`, dan domain participant tidak kosong.
+                  {savedMarker[row.participantId] ? (
+                    <>
+                      {" · "}
+                      override lokal tersimpan
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
