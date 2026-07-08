@@ -1,6 +1,7 @@
 // src/api/services/identity-provider.ts
 
 import { authClient as apiClient } from "../clients";
+import { AUTH } from "../endpoints";
 import type { PaginationParams } from "../client"; // type-only, OK
 import type {
   LoginRequest,
@@ -12,7 +13,8 @@ import type {
 } from "../types/identity-provider";
 
 // Relatif terhadap baseURL (.../api/v1). Jangan tambahkan /api/v1 lagi.
-const IDP_BASE_PATH = "/identity-provider";
+// Path di-import dari endpoints.ts — AUTH.BASE = "/identity-provider"
+const IDP_BASE_PATH = AUTH.BASE;
 
 /**
  * == Auth Service ==

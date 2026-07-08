@@ -9,6 +9,10 @@ import {
   getPreferredParticipantId,
   clearSessionBinding,
 } from "@/lib/session-binding";
+import {
+  startLegacyTokenRefresh,
+  stopLegacyTokenRefresh,
+} from "@/lib/token-refresh";
 
 // ─── Role Types (CANONICAL — IAM-3) ────────────────────────────────────
 //
@@ -368,6 +372,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         persistUserInfo(nextUser);
       } catch {
         // Permission hydration tidak boleh memblok auth bootstrap.
+        // 401 dari IAM (effective-perms) sudah di-guard di clients.ts
+        // sebagai AUTH_SILENT_401_PATHS — tidak akan trigger force logout.
       }
     };
 
@@ -376,14 +382,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, [user, tokenVersion]);
+  }, [user?.id, tokenVersion]);
+
 
   const setAuthUser = useCallback((userInfo: AuthUser) => {
     setUser(userInfo);
     persistUserInfo(userInfo);
+    // Start proactive token refresh untuk legacy (non-Keycloak) path.
+    // Kalau Keycloak aktif, startLegacyTokenRefresh() no-op karena
+    // Keycloak sudah punya onTokenExpired handler sendiri.
+    if (!isKeycloakConfigured()) {
+      startLegacyTokenRefresh();
+    }
   }, []);
 
   const clearAuth = useCallback(() => {
+    stopLegacyTokenRefresh();
     setUser(null);
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user_info");

@@ -1,18 +1,23 @@
 /**
- * clients.ts — Logical HTTP clients per service domain
+ * clients.ts — Logical HTTP clients per service domain.
  *
  * Setiap client punya baseURL sendiri yang diambil dari RuntimeServiceMap.
- * Interceptor auth + error handling identik dengan apiClient lama,
- * tapi sekarang tiap client bisa diarahkan ke service/port yang berbeda
- * tanpa FE perlu tahu detail infra BE.
+ * Interceptor auth + error handling identik, tapi tiap client bisa diarahkan
+ * ke service/port berbeda tanpa FE perlu tahu detail infra BE.
  *
  * Mapping default (single-monolith, backward compat):
  *   auth, cts, connector, monitoring → apiBaseUrl
  *   adapter → adapterEndpoint
  *
  * Saat BE split jadi microservice, cukup update runtime.json:
- *   { "services": { "cts": "http://cts:8280/api/v1", "connector": "http://connector:8281/api/v1", ... } }
+ *   { "services": { "cts": "http://cts:8280/api/v1", ... } }
  * — FE tidak perlu rebuild.
+ *
+ * LOGOUT POLICY (non-aggressive):
+ *   • 401 dari endpoint auth-infra (validate/refresh/revoke) → force logout
+ *   • 401 dari endpoint silent (IAM effective-perms, policy-bundle) → log only
+ *   • 401 dari endpoint lain + token sudah expired → force logout
+ *   • 401 dari endpoint lain + token masih valid → log only (mungkin izin kurang)
  */
 
 import axios, { type AxiosError, type AxiosInstance } from "axios";
@@ -31,15 +36,12 @@ import {
   getMonitoringServiceBaseUrl,
   registerLogicalClient,
 } from "@/lib/runtime-config";
+import {
+  AUTH_FORCE_LOGOUT_PATHS,
+  AUTH_SILENT_401_PATHS,
+} from "@/api/endpoints";
 
-// ─── Auth helpers (shared across all clients) ─────────────────────────────────
-
-const AUTH_LOGOUT_ENDPOINTS = [
-  "/identity-provider/auth/validate",
-  "/identity-provider/auth/refresh-token",
-  "/identity-provider/auth/revoke-token",
-  "/identity-provider/auth/revoke-user-token",
-];
+// ── Token helpers ─────────────────────────────────────────────────────────────
 
 const readLegacyToken = (): string | null => {
   if (typeof window === "undefined") return null;
@@ -50,31 +52,53 @@ const isTokenExpired = (token: string | null): boolean => {
   if (!token) return true;
   const payload = decodeJwt(token);
   const exp = Number(payload?.exp ?? 0);
-  if (!exp) return false;
+  if (!exp) return false; // tidak ada claim exp → anggap tidak expired
   return Date.now() >= exp * 1000;
 };
 
-const shouldForceLogoutOnUnauthorized = (error: AxiosError): boolean => {
-  const requestUrl = String(error.config?.url ?? "");
-  if (AUTH_LOGOUT_ENDPOINTS.some((ep) => requestUrl.includes(ep))) return true;
+// ── Logout policy ─────────────────────────────────────────────────────────────
+
+const isForceLogoutPath = (url: string): boolean =>
+  AUTH_FORCE_LOGOUT_PATHS.some((ep) => url.includes(ep));
+
+const isSilentPath = (url: string): boolean =>
+  AUTH_SILENT_401_PATHS.some((ep) => url.includes(ep));
+
+/**
+ * Tentukan apakah 401 harus memaksa logout user.
+ *
+ * Aturan (dari yang paling spesifik ke umum):
+ * 1. Path auth-infra (validate/refresh/revoke) → SELALU force logout
+ * 2. Path silent (IAM perms/policy-bundle) → TIDAK pernah force logout
+ * 3. Token tidak ada → force logout
+ * 4. Token sudah expired → force logout
+ * 5. Token masih valid → TIDAK force logout (kemungkinan izin kurang, bukan sesi invalid)
+ */
+const shouldForceLogout = (error: AxiosError): boolean => {
+  const url = String(error.config?.url ?? "");
+
+  if (isForceLogoutPath(url)) return true;
+  if (isSilentPath(url)) return false;
+
   const token = readLegacyToken();
   if (!token) return true;
   return isTokenExpired(token);
 };
 
-// ─── Factory ──────────────────────────────────────────────────────────────────
+const performLogout = (clientName: string, url: string): void => {
+  localStorage.removeItem("auth_token");
+  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    console.warn(`[${clientName}][401] Session expired, redirecting to login. url=${url}`);
+    window.location.href = "/login";
+  }
+};
 
-/**
- * createServiceClient — builds an axios instance wired to a specific service.
- * @param name       human label for logs ("cts", "connector", etc.)
- * @param getBaseUrl lazy getter so baseURL is resolved after bootstrap finishes
- */
+// ── Client factory ────────────────────────────────────────────────────────────
+
 function createServiceClient(
   name: string,
-  getBaseUrl: () => string
+  getBaseUrl: () => string,
 ): AxiosInstance {
-  // baseURL is set lazily in the request interceptor so it picks up the value
-  // loaded by initializeRuntime() rather than the default-fallback.
   const instance = axios.create({
     headers: { "Content-Type": "application/json" },
     timeout: 30000,
@@ -83,12 +107,8 @@ function createServiceClient(
   // ── Request interceptor ───────────────────────────────────────────────────
   instance.interceptors.request.use(
     async (config) => {
-      // Lazy baseURL injection — always reflects the latest runtime config.
-      if (!config.baseURL) {
-        config.baseURL = getBaseUrl();
-      }
+      if (!config.baseURL) config.baseURL = getBaseUrl();
 
-      // Token resolution: Keycloak first, legacy fallback.
       let token: string | null = null;
       if (isKeycloakConfigured()) {
         const refreshed = await ensureValidToken(30);
@@ -98,14 +118,12 @@ function createServiceClient(
       if (token) config.headers.Authorization = `Bearer ${token}`;
 
       if (import.meta.env.DEV) {
-        console.log(
-          `[${name}] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
-        );
+        console.log(`[${name}] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
       }
 
       return config;
     },
-    (error) => Promise.reject(error)
+    (error) => Promise.reject(error),
   );
 
   // ── Response interceptor ──────────────────────────────────────────────────
@@ -116,21 +134,14 @@ function createServiceClient(
       error.message = parsedMessage;
 
       if (error.response) {
+        const url = String(error.config?.url ?? "");
+
         switch (error.response.status) {
           case 401:
-            if (shouldForceLogoutOnUnauthorized(error)) {
-              localStorage.removeItem("auth_token");
-              if (
-                typeof window !== "undefined" &&
-                window.location.pathname !== "/login"
-              ) {
-                window.location.href = "/login";
-              }
+            if (shouldForceLogout(error)) {
+              performLogout(name, url);
             } else {
-              console.warn(
-                `[${name}][401] Request ditolak tanpa mematikan sesi:`,
-                error.config?.url
-              );
+              console.warn(`[${name}][401] Ditolak tanpa mematikan sesi:`, url);
             }
             break;
           case 403:
@@ -141,11 +152,7 @@ function createServiceClient(
             break;
           case 422:
             if (import.meta.env.DEV) {
-              console.error(
-                `[${name}][422]`,
-                error.config?.url,
-                JSON.stringify(error.response.data)
-              );
+              console.error(`[${name}][422]`, url, JSON.stringify(error.response.data));
             }
             break;
           case 500:
@@ -157,63 +164,30 @@ function createServiceClient(
       }
 
       return Promise.reject(error);
-    }
+    },
   );
 
   return instance;
 }
 
-// ─── The 5 logical clients ────────────────────────────────────────────────────
+// ── Logical clients ───────────────────────────────────────────────────────────
 
-/**
- * authClient — identity-provider, IAM, auth flows
- * Endpoints: /identity-provider/*, /iam/*, /iam-admin/*
- */
-export const authClient: AxiosInstance = createServiceClient(
-  "auth",
-  getAuthServiceBaseUrl
-);
+/** authClient — identity-provider, IAM, auth flows */
+export const authClient: AxiosInstance = createServiceClient("auth", getAuthServiceBaseUrl);
 
-/**
- * ctsClient — governance, organizations, domains, onboarding, policy-contract,
- *             catalog, compliance, schemas, vocabularies, juknis
- * Endpoints: /governance/*, /onboarding/*, /policy/*, /catalog/*, etc.
- */
-export const ctsClient: AxiosInstance = createServiceClient(
-  "cts",
-  getCtsServiceBaseUrl
-);
+/** ctsClient — governance, onboarding, policy-contract, catalog, compliance */
+export const ctsClient: AxiosInstance = createServiceClient("cts", getCtsServiceBaseUrl);
 
-/**
- * connectorClient — connector runtime, providers, connection pool
- * Endpoints: /connector/*, /providers/*
- */
-export const connectorClient: AxiosInstance = createServiceClient(
-  "connector",
-  getConnectorServiceBaseUrl
-);
+/** connectorClient — connector runtime, providers, connection pool */
+export const connectorClient: AxiosInstance = createServiceClient("connector", getConnectorServiceBaseUrl);
 
-/**
- * adapterClient — adapter workspace, OGC, geospatial runtime
- * Endpoints: /adapter/*, /ogc/*
- */
-export const adapterClient: AxiosInstance = createServiceClient(
-  "adapter",
-  getAdapterServiceBaseUrl
-);
+/** adapterClient — adapter workspace, OGC, geospatial runtime */
+export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl);
 
-/**
- * monitoringClient — audit logs, heartbeats, transfer projections
- * Endpoints: /cts/monitoring/*, /audit/*
- */
-export const monitoringClient: AxiosInstance = createServiceClient(
-  "monitoring",
-  getMonitoringServiceBaseUrl
-);
+/** monitoringClient — audit logs, heartbeats, transfer projections */
+export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl);
 
-// ─── Register ke runtime-config registry ─────────────────────────────────────
-// Allows getLogicalClient("cts") elsewhere if needed.
-
+// ── Register ke runtime-config registry ──────────────────────────────────────
 registerLogicalClient("auth", authClient);
 registerLogicalClient("cts", ctsClient);
 registerLogicalClient("connector", connectorClient);
