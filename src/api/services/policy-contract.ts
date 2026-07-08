@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "../client";
+import { ctsClient as apiClient } from "../clients";
 
 // Contract & agreement (domain-scoped) — read-only.
 const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];

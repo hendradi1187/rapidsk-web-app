@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "../client";
+import { connectorClient as apiClient } from "../clients";
 import type {
   ProviderCreateRequest,
   ProviderListResponse,

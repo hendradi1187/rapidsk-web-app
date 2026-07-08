@@ -1,4 +1,4 @@
-import { apiClient } from "../client";
+import { authClient as apiClient } from "../clients";
 import { normalizeEffectivePermissions } from "@/lib/effective-permissions";
 
 // Aplikasi platform yang terdaftar di IAM. Endpoint effective-permissions WAJIB

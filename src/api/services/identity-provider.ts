@@ -1,7 +1,7 @@
 // src/api/services/identity-provider.ts
 
-import { apiClient } from "../client";
-import type { PaginationParams } from "../client";
+import { authClient as apiClient } from "../clients";
+import type { PaginationParams } from "../client"; // type-only, OK
 import type {
   LoginRequest,
   LoginResponse,

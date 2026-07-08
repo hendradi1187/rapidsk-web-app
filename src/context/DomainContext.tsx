@@ -16,7 +16,10 @@ export interface AvailableDomain {
   code?: string;
 }
 
-export type DomainSource = "participant_binding" | "governance_fallback" | "none";
+export type DomainSource =
+  | "participant_binding"   // user punya participant, domain diambil dari participant
+  | "governance_fallback"   // SUPER_ADMIN / ADMIN tanpa participant — diizinkan fallback
+  | "none";                 // domain tidak bisa ditentukan
 
 interface DomainContextValue {
   domainId: string | null;
@@ -46,11 +49,17 @@ const normalize = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
- * Resolusi governance domain aktif: preferred organization yang dipilih user
- * saat login → domain pertama pada organization tersebut. Fallback ke org
- * pertama bila pilihan user belum cocok dengan data governance.
- * SUPER_ADMIN / ADMIN bisa switch domain lewat switchDomain().
+ * Aturan governance_fallback:
+ *   - HANYA diizinkan untuk SUPER_ADMIN dan ADMIN (role tanpa participant).
+ *   - Regular participant yang tidak punya domain binding aktif → source = "none",
+ *     domain tidak diset secara otomatis. UI harus tampil empty-state bukan
+ *     auto-assign domain acak dari governance list.
+ *
+ * Ini mencegah data cross-participant yang tidak sengaja ketika participant
+ * baru belum selesai onboarding domain-nya.
  */
+const GOVERNANCE_FALLBACK_ROLES = new Set(["SUPER_ADMIN", "ADMIN"]);
+
 export const DomainProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated, role, participantId } = useAuth();
   const [domainId, setDomainId] = useState<string | null>(getActiveDomainId());
@@ -68,6 +77,7 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
       setReady(false);
       return;
     }
+
     (async () => {
       try {
         const orgs = await organizationsApi.list();
@@ -75,6 +85,7 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           organization_id: string;
           organization_name: string;
         }>;
+
         if (items.length === 0) {
           if (!cancelled) {
             setAvailableDomains([]);
@@ -89,20 +100,56 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 
         const preferredOrgId = getPreferredOrganizationId();
         const preferredOrgName = getPreferredOrganizationName();
+
+        // ── Step 1: Resolve participant domains (binding resmi dari BE) ──────
         let participantDomainIds: string[] = [];
         if (participantId) {
           try {
             const pDomains = await providersApi.listDomains(participantId);
-            participantDomainIds = (pDomains as Array<{ domain_id: string; status?: string }>)
-              .filter((d) => !d.status || String(d.status).toUpperCase() === "ACTIVE")
+            participantDomainIds = (
+              pDomains as Array<{ domain_id: string; status?: string }>
+            )
+              .filter(
+                (d) =>
+                  !d.status || String(d.status).toUpperCase() === "ACTIVE"
+              )
               .map((d) => d.domain_id);
-          } catch { /* fallback ke domain org */ }
+          } catch {
+            /* biarkan kosong — ditangani di bawah */
+          }
         }
 
+        // ── Step 2: Guard — participant tanpa domain binding = none ──────────
+        // Regular participant (bukan admin) harus punya domain binding eksplisit.
+        // Jangan auto-fallback ke governance list — itu bisa expose data silang.
+        const roleAllowsFallback = GOVERNANCE_FALLBACK_ROLES.has(role ?? "");
+        const hasParticipantBinding = participantDomainIds.length > 0;
+
+        if (participantId && !hasParticipantBinding && !roleAllowsFallback) {
+          // Participant terdaftar tapi belum ada domain aktif → source = none.
+          // UI wajib tampilkan empty-state / pending-onboarding notice.
+          if (!cancelled) {
+            setAvailableDomains([]);
+            setDomainId(null);
+            setDomainName(null);
+            setDomainSource("none");
+            setActiveOrganizationId(null);
+            setActiveOrganizationName(null);
+            setParticipantDomainCount(0);
+            setActiveDomainId(null);
+            setReady(true);
+          }
+          return;
+        }
+
+        // ── Step 3: Resolve organization binding ─────────────────────────────
         const organizationDomainsById =
-          participantDomainIds.length > 0
-            ? await organizationsApi.listDomainsMap(items.map((org) => org.organization_id))
+          hasParticipantBinding
+            ? await organizationsApi.listDomainsMap(
+                items.map((org) => org.organization_id)
+              )
             : {};
+
         const binding = resolveGovernanceOrganizationBinding({
           organizations: items,
           domainsByOrganizationId: organizationDomainsById,
@@ -110,11 +157,15 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           preferredOrganizationId: preferredOrgId,
           preferredOrganizationName: preferredOrgName,
         });
+
         const chosenOrg =
           binding.organization ??
           items.find((org) => org.organization_id === preferredOrgId) ??
-          items.find((org) => normalize(org.organization_name) === normalize(preferredOrgName)) ??
-          (role === "SUPER_ADMIN" ? items[0] : null);
+          items.find(
+            (org) =>
+              normalize(org.organization_name) === normalize(preferredOrgName)
+          ) ??
+          (roleAllowsFallback ? items[0] : null);
 
         if (!chosenOrg) {
           if (!cancelled) {
@@ -131,25 +182,43 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
-        const domains =
-          participantDomainIds.length > 0
-            ? ((organizationDomainsById[chosenOrg.organization_id] ?? []) as AvailableDomain[])
-            : ((await organizationsApi.listDomains(chosenOrg.organization_id)) as AvailableDomain[]);
+        // ── Step 4: Load domains untuk org terpilih ──────────────────────────
+        const domains: AvailableDomain[] = hasParticipantBinding
+          ? ((organizationDomainsById[chosenOrg.organization_id] ??
+              []) as AvailableDomain[])
+          : ((await organizationsApi.listDomains(
+              chosenOrg.organization_id
+            )) as AvailableDomain[]);
+
+        // ── Step 5: Tentukan source label ─────────────────────────────────────
+        // governance_fallback HANYA untuk admin tanpa participant binding.
+        const resolvedSource: DomainSource = hasParticipantBinding
+          ? "participant_binding"
+          : roleAllowsFallback
+            ? "governance_fallback"
+            : "none";
 
         if (!cancelled) {
-          setPreferredOrganization(chosenOrg.organization_id, chosenOrg.organization_name);
+          setPreferredOrganization(
+            chosenOrg.organization_id,
+            chosenOrg.organization_name
+          );
           setAvailableDomains(domains);
-          setDomainSource(participantDomainIds.length > 0 ? "participant_binding" : "governance_fallback");
+          setDomainSource(resolvedSource);
           setActiveOrganizationId(chosenOrg.organization_id);
           setActiveOrganizationName(chosenOrg.organization_name);
           setParticipantDomainCount(participantDomainIds.length);
 
+          // Pilih domain aktif: participant binding > persisted > first
           const persistedId = getActiveDomainId();
-          const persisted = persistedId ? domains.find((d) => d.domain_id === persistedId) : null;
-          const participantDomain = participantDomainIds.length
+          const persisted = persistedId
+            ? domains.find((d) => d.domain_id === persistedId)
+            : null;
+          const participantDomain = hasParticipantBinding
             ? domains.find((d) => participantDomainIds.includes(d.domain_id))
             : null;
-          const target = participantDomain ?? persisted ?? domains[0] ?? null;
+          const target =
+            participantDomain ?? persisted ?? domains[0] ?? null;
 
           if (target) {
             setDomainId(target.domain_id);
@@ -172,6 +241,7 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     })();
+
     return () => {
       cancelled = true;
     };

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "../client";
+import { ctsClient as apiClient } from "../clients";
 
 // Sub-resource katalog data yang berbasis domain. Tiga entitas:
 //  - vocabulary-terms : istilah semantik (term + datatype) milik sebuah vocabulary.

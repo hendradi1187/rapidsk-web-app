@@ -1,4 +1,4 @@
-import { apiClient } from "../client";
+import { adapterClient as apiClient } from "../clients";
 
 export type AdapterClassification = "L0" | "L1" | "L2" | "L3" | "L4";
 
