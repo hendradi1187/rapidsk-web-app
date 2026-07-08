@@ -1,4 +1,4 @@
-import { apiClient } from "../client";
+import { authClient } from "../client";
 import { normalizeEffectivePermissions } from "@/lib/effective-permissions";
 
 // Aplikasi platform yang terdaftar di IAM. Endpoint effective-permissions WAJIB
@@ -13,7 +13,7 @@ export const iamApi = {
   getMyEffectivePermissions: async (): Promise<string[]> => {
     const results = await Promise.allSettled(
       PLATFORM_APPLICATIONS.map((application) =>
-        apiClient
+        authClient
           .get("/identity-provider/iam/me/effective-permissions", { params: { application } })
           .then((res) => normalizeEffectivePermissions(res.data)),
       ),
@@ -36,7 +36,7 @@ export const iamApi = {
     version: number;
     resources: unknown[];
   }> => {
-    const response = await apiClient.get("/identity-provider/iam/policy-bundle", {
+    const response = await authClient.get("/identity-provider/iam/policy-bundle", {
       params: { application },
     });
     return response.data;

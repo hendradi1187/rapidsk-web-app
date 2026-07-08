@@ -5,22 +5,12 @@ import {
   isKeycloakConfigured,
 } from "@/auth/keycloak";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { getFrontendApiBasePath } from "@/lib/runtime-config";
+import {
+  getFrontendAdapterRuntimeBasePath,
+  getFrontendApiBasePath,
+  type RuntimeServiceName,
+} from "@/lib/runtime-config";
 import { decodeJwt } from "@/lib/jwt";
-
-// API Base URL - can be configured via environment variable
-// Dev: pakai path relatif → lewat Vite proxy (bypass CORS)
-// Prod: set VITE_API_BASE_URL ke URL BE lengkap
-const API_BASE_URL = getFrontendApiBasePath();
-
-// Create axios instance with default configuration
-export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 30000, // 30 seconds
-});
 
 const AUTH_LOGOUT_ENDPOINTS = [
   "/identity-provider/auth/validate",
@@ -56,88 +46,134 @@ const shouldForceLogoutOnUnauthorized = (error: AxiosError) => {
   return isTokenExpired(token);
 };
 
-// Request interceptor for adding auth token, logging, etc.
-apiClient.interceptors.request.use(
-  async (config) => {
-    // ─── Token resolution ──────────────────────────────────────────────
-    // Priority 1: Keycloak (Phase 1B) — single JWT untuk dua backend.
-    // Priority 2: localStorage `auth_token` (legacy rapiDSK login fallback).
-    let token: string | null = null;
+const resolveAccessToken = async () => {
+  let token: string | null = null;
 
-    if (isKeycloakConfigured()) {
-      const refreshed = await ensureValidToken(30);
-      if (refreshed) {
-        token = getKeycloakToken();
-      }
+  if (isKeycloakConfigured()) {
+    const refreshed = await ensureValidToken(30);
+    if (refreshed) {
+      token = getKeycloakToken();
     }
-
-    if (!token) {
-      token = localStorage.getItem("auth_token");
-    }
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    // Log request in development
-    if (import.meta.env.DEV) {
-      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
-    }
-
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
   }
-);
 
-// Response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error: AxiosError) => {
-    const parsedMessage = getApiErrorMessage(error);
-    error.message = parsedMessage;
+  if (!token && typeof window !== "undefined") {
+    token = localStorage.getItem("auth_token");
+  }
 
-    // Handle common errors
-    if (error.response) {
-      switch (error.response.status) {
-        case 401:
-          if (shouldForceLogoutOnUnauthorized(error)) {
-            localStorage.removeItem("auth_token");
-            if (window.location.pathname !== "/login") {
-              window.location.href = "/login";
+  return token;
+};
+
+const requestUrlFromError = (error: AxiosError) =>
+  String(error.config?.url ?? "unknown");
+
+const attachCommonInterceptors = (
+  client: AxiosInstance,
+  scope: RuntimeServiceName | "adapter-runtime",
+) => {
+  client.interceptors.request.use(
+    async (config) => {
+      const token = await resolveAccessToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+
+      if (import.meta.env.DEV) {
+        console.log(
+          `[API:${scope}] ${config.method?.toUpperCase()} ${config.baseURL ?? ""}${config.url ?? ""}`,
+        );
+      }
+
+      return config;
+    },
+    (error) => Promise.reject(error),
+  );
+
+  client.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError) => {
+      const parsedMessage = getApiErrorMessage(error);
+      error.message = parsedMessage;
+
+      if (error.response) {
+        switch (error.response.status) {
+          case 401:
+            if (shouldForceLogoutOnUnauthorized(error)) {
+              localStorage.removeItem("auth_token");
+              if (window.location.pathname !== "/login") {
+                window.location.href = "/login";
+              }
+            } else {
+              console.warn(
+                "[401] Request ditolak tanpa mematikan sesi utama:",
+                requestUrlFromError(error),
+              );
             }
-          } else {
-            console.warn("[401] Request ditolak tanpa mematikan sesi utama:", requestUrlFromError(error));
-          }
-          break;
-        case 403:
-          console.error(parsedMessage);
-          break;
-        case 404:
-          console.error(parsedMessage);
-          break;
-        case 422:
-          // Validation error - handled by caller; detail in error.response.data
-          if (import.meta.env.DEV) {
-            console.error("[422]", error.config?.url, JSON.stringify(error.response.data));
-          }
-          break;
-        case 500:
-          console.error(parsedMessage);
-          break;
+            break;
+          case 403:
+          case 404:
+          case 500:
+            console.error(parsedMessage);
+            break;
+          case 422:
+            if (import.meta.env.DEV) {
+              console.error(
+                "[422]",
+                error.config?.url,
+                JSON.stringify(error.response.data),
+              );
+            }
+            break;
+        }
+      } else if (error.request) {
+        console.error(parsedMessage);
       }
-    } else if (error.request) {
-      console.error(parsedMessage);
-    }
 
-    return Promise.reject(error);
-  }
+      return Promise.reject(error);
+    },
+  );
+};
+
+const createServiceClient = (
+  scope: RuntimeServiceName | "adapter-runtime",
+  baseURL: string,
+  timeout = 30000,
+): AxiosInstance => {
+  const client = axios.create({
+    baseURL,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    timeout,
+  });
+  attachCommonInterceptors(client, scope);
+  return client;
+};
+
+export const authClient = createServiceClient("auth", getFrontendApiBasePath("auth"));
+export const ctsClient = createServiceClient("cts", getFrontendApiBasePath("cts"));
+export const connectorClient = createServiceClient(
+  "connector",
+  getFrontendApiBasePath("connector"),
+  45000,
+);
+export const adapterClient = createServiceClient(
+  "adapter",
+  getFrontendApiBasePath("adapter"),
+  60000,
+);
+export const monitoringClient = createServiceClient(
+  "monitoring",
+  getFrontendApiBasePath("monitoring"),
+  45000,
+);
+export const adapterRuntimeClient = createServiceClient(
+  "adapter-runtime",
+  getFrontendAdapterRuntimeBasePath(),
+  60000,
 );
 
-// Generic API response types
+export const apiClient: AxiosInstance = ctsClient;
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -153,20 +189,14 @@ export interface ValidationError {
   errors: Record<string, string[]>;
 }
 
-// Pagination params
 export interface PaginationParams {
   limit?: number;
   offset?: number;
 }
 
-// Generic request helper with error typing
 export async function apiRequest<T>(config: AxiosRequestConfig): Promise<T> {
   const response = await apiClient.request<T>(config);
   return response.data;
-}
-
-function requestUrlFromError(error: AxiosError) {
-  return String(error.config?.url ?? "unknown");
 }
 
 export default apiClient;

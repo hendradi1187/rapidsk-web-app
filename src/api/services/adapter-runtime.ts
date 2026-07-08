@@ -1,4 +1,4 @@
-import { apiClient } from "../client";
+import { adapterRuntimeClient } from "../client";
 
 export type AdapterClassification = "L0" | "L1" | "L2" | "L3" | "L4";
 
@@ -18,28 +18,28 @@ const withAdapterHeaders = (adapterBaseUrl: string) => ({
 
 export const adapterRuntimeApi = {
   health: async (adapterBaseUrl: string): Promise<any> => {
-    const res = await apiClient.get("/adapter-runtime/health", withAdapterHeaders(adapterBaseUrl));
+    const res = await adapterRuntimeClient.get("/health", withAdapterHeaders(adapterBaseUrl));
     return res.data;
   },
 
   collections: async (adapterBaseUrl: string): Promise<any> => {
-    const res = await apiClient.get("/adapter-runtime/v1/ogc/collections", withAdapterHeaders(adapterBaseUrl));
+    const res = await adapterRuntimeClient.get("/v1/ogc/collections", withAdapterHeaders(adapterBaseUrl));
     return res.data;
   },
 
   providers: async (adapterBaseUrl: string): Promise<any> => {
-    const res = await apiClient.get("/adapter-runtime/v1/ogc/providers", withAdapterHeaders(adapterBaseUrl));
+    const res = await adapterRuntimeClient.get("/v1/ogc/providers", withAdapterHeaders(adapterBaseUrl));
     return res.data;
   },
 
   metadataAll: async (adapterBaseUrl: string): Promise<any> => {
-    const res = await apiClient.get("/adapter-runtime/v1/metadata", withAdapterHeaders(adapterBaseUrl));
+    const res = await adapterRuntimeClient.get("/v1/metadata", withAdapterHeaders(adapterBaseUrl));
     return res.data;
   },
 
   metadataByDomain: async (adapterBaseUrl: string, domain: string): Promise<any> => {
-    const res = await apiClient.get(
-      `/adapter-runtime/v1/metadata/${encodeURIComponent(domain)}`,
+    const res = await adapterRuntimeClient.get(
+      `/v1/metadata/${encodeURIComponent(domain)}`,
       withAdapterHeaders(adapterBaseUrl),
     );
     return res.data;
@@ -51,8 +51,8 @@ export const adapterRuntimeApi = {
     payload: Record<string, unknown>,
     classification?: AdapterClassification | "",
   ): Promise<any> => {
-    const res = await apiClient.post(
-      `/adapter-runtime/v1/ingest/${encodeURIComponent(domain)}`,
+    const res = await adapterRuntimeClient.post(
+      `/v1/ingest/${encodeURIComponent(domain)}`,
       payload,
       {
         ...withAdapterHeaders(adapterBaseUrl),
@@ -78,8 +78,8 @@ export const adapterRuntimeApi = {
     if (body.constants?.trim()) formData.append("constants", body.constants.trim());
     if (body.classification) formData.append("classification", body.classification);
 
-    const res = await apiClient.post(
-      `/adapter-runtime/v1/ingest/${encodeURIComponent(domain)}/shapefile`,
+    const res = await adapterRuntimeClient.post(
+      `/v1/ingest/${encodeURIComponent(domain)}/shapefile`,
       formData,
       {
         headers: {
@@ -96,8 +96,8 @@ export const adapterRuntimeApi = {
     domain: string,
     payload: AdapterPublishRequest,
   ): Promise<any> => {
-    const res = await apiClient.post(
-      `/adapter-runtime/v1/publish/${encodeURIComponent(domain)}`,
+    const res = await adapterRuntimeClient.post(
+      `/v1/publish/${encodeURIComponent(domain)}`,
       payload,
       withAdapterHeaders(adapterBaseUrl),
     );

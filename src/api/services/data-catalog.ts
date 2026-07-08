@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "../client";
+import { ctsClient } from "../client";
 import type {
   Dataset,
   DatasetCreateRequest,
@@ -52,7 +52,7 @@ const fetchAll = async (url: string): Promise<any[]> => {
   let offset = 0;
   const limit = 100;
   for (let i = 0; i < 100; i++) {
-    const res = await apiClient.get(url, { params: { limit, offset } });
+    const res = await ctsClient.get(url, { params: { limit, offset } });
     const body = res?.data;
     // Response: {data: [...], total, has_next, has_prev} per DatasetListResponse spec
     const rows = Array.isArray(body) ? body
@@ -75,17 +75,17 @@ export const datasetsApi = {
   },
 
   getById: async (domainId: string, id: string): Promise<Dataset> => {
-    const res = await apiClient.get(`/data-catalog/${domainId}/datasets/${id}`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/datasets/${id}`);
     return toDataset(res.data);
   },
 
   update: async (domainId: string, id: string, body: DatasetUpdateRequest): Promise<Dataset> => {
-    const res = await apiClient.patch(`/data-catalog/${domainId}/datasets/${id}`, body);
+    const res = await ctsClient.patch(`/data-catalog/${domainId}/datasets/${id}`, body);
     return toDataset(res.data);
   },
 
   remove: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/data-catalog/${domainId}/datasets/${id}`);
+    await ctsClient.delete(`/data-catalog/${domainId}/datasets/${id}`);
   },
 
   // create lama (rapiDSK shape) tidak dipakai.
@@ -129,7 +129,7 @@ export const datasetsApi = {
       },
       metadata: [],
     };
-    const res = await apiClient.post(`/data-catalog/${domainId}/datasets`, payload);
+    const res = await ctsClient.post(`/data-catalog/${domainId}/datasets`, payload);
     return toDataset(res.data);
   },
 };

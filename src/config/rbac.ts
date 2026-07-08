@@ -55,7 +55,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Sparkles,
     label: "Setup Juknis",
     path: "/setup-juknis",
-    roles: ["SUPER_ADMIN", "ADMIN"],
+    roles: ["SUPER_ADMIN"],
     permissions: [
       "setup-juknis.manage",
       "onboarding.setup.manage",
@@ -67,7 +67,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Building2,
     label: "Organizations",
     path: "/organizations",
-    roles: ["SUPER_ADMIN", "ADMIN"],
+    roles: ["SUPER_ADMIN"],
     permissions: [
       "organizations.manage",
       "governance.organizations.manage",
@@ -79,7 +79,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Link2,
     label: "Registry Koneksi",
     path: "/connection-pools",
-    roles: ["SUPER_ADMIN", "ADMIN"],
+    roles: ["SUPER_ADMIN"],
     permissions: [
       "connection-pools.manage",
       "connector.connection-pool.manage",
@@ -91,7 +91,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Shield,
     label: "Hak Akses",
     path: "/access-control",
-    roles: ["SUPER_ADMIN", "ADMIN"],
+    roles: ["SUPER_ADMIN"],
     permissions: [
       "iam.policy.manage",
       "iam.permissions.manage",
@@ -165,7 +165,7 @@ export const MENU_ITEMS: MenuItem[] = [
     label: "Participants",
     path: "/participants",
     // Gabungan dari Pendaftaran KKKS & Providers
-    roles: ["SUPER_ADMIN", "ADMIN", "CONSUMER", "AUDITOR"],
+    roles: ["SUPER_ADMIN"],
     permissions: [
       "participants.read",
       "participants.manage",
@@ -292,7 +292,7 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Shield,
     label: "Konfigurasi Sistem",
     path: "/deployment-config",
-    roles: ["SUPER_ADMIN", "ADMIN"],
+    roles: ["SUPER_ADMIN"],
     permissions: [
       "deployment-config.manage",
       "runtime-config.manage",

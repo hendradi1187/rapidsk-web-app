@@ -729,7 +729,15 @@ const AccessControl = () => {
       }
       await loadGroupPermissions(selectedGroupId);
     } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, "Gagal mengubah akses group."));
+      // 409 = sudah ter-assign / sudah lepas (state di server beda dari layar).
+      // Cukup sinkronkan ulang tanpa error menakutkan.
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 409 || status === 404) {
+        await loadGroupPermissions(selectedGroupId);
+        toast.info("Status akses disinkronkan ulang dari server.");
+      } else {
+        toast.error(getApiErrorMessage(error, "Gagal mengubah akses group."));
+      }
     } finally {
       setBusyAction("");
     }

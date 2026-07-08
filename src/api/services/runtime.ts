@@ -2,6 +2,7 @@ import type {
   LicenseState,
   RuntimeBootstrapState,
   RuntimeConfig,
+  RuntimeServiceName,
   SetupStatus,
 } from "@/lib/runtime-config";
 import { loadRuntimeBootstrapState } from "@/lib/runtime-config";
@@ -11,10 +12,14 @@ export interface SetupLicenseValidateRequest {
   publicAppUrl: string;
 }
 
+export interface RuntimeServicesInput
+  extends Partial<Record<RuntimeServiceName, string>> {}
+
 export interface SetupValidationRequest {
   apiBaseUrl: string;
   publicAppUrl: string;
   adapterEndpoint?: string;
+  services?: RuntimeServicesInput;
   sso: {
     enabled: boolean;
     keycloakUrl: string;
@@ -51,7 +56,8 @@ export interface SetupInitRequest extends SetupValidationRequest {
 export interface RuntimeAdminUpdateRequest extends SetupValidationRequest {}
 
 export const runtimeApi = {
-  getBootstrapState: async (): Promise<RuntimeBootstrapState> => loadRuntimeBootstrapState(),
+  getBootstrapState: async (): Promise<RuntimeBootstrapState> =>
+    loadRuntimeBootstrapState(),
 
   validateLicense: async (
     body: SetupLicenseValidateRequest,

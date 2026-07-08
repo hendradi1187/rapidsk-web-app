@@ -8,6 +8,7 @@ import {
   getPreferredOrganizationName,
   setPreferredOrganization,
 } from "@/lib/session-binding";
+import { getStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
 
 export interface AvailableDomain {
@@ -41,9 +42,6 @@ const DomainContext = createContext<DomainContextValue>({
   participantDomainCount: 0,
   switchDomain: () => {},
 });
-
-const normalize = (value: string | null | undefined) =>
-  (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
  * Resolusi governance domain aktif: preferred organization yang dipilih user
@@ -89,7 +87,13 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 
         const preferredOrgId = getPreferredOrganizationId();
         const preferredOrgName = getPreferredOrganizationName();
+        const storedParticipantOrganizationId = participantId
+          ? getStoredParticipantOrganizationId(participantId)
+          : null;
         let participantDomainIds: string[] = [];
+        const participantDetail = participantId
+          ? await providersApi.getById(participantId).catch(() => null)
+          : null;
         if (participantId) {
           try {
             const pDomains = await providersApi.listDomains(participantId);
@@ -107,14 +111,19 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           organizations: items,
           domainsByOrganizationId: organizationDomainsById,
           participantDomainIds,
-          preferredOrganizationId: preferredOrgId,
+          participantName: String(
+            participantDetail?.organization_name ??
+              participantDetail?.provider_name ??
+              "",
+          ).trim(),
+          preferredOrganizationId: storedParticipantOrganizationId ?? preferredOrgId,
           preferredOrganizationName: preferredOrgName,
         });
         const chosenOrg =
           binding.organization ??
-          items.find((org) => org.organization_id === preferredOrgId) ??
-          items.find((org) => normalize(org.organization_name) === normalize(preferredOrgName)) ??
-          (role === "SUPER_ADMIN" ? items[0] : null);
+          (role === "SUPER_ADMIN"
+            ? items.find((org) => org.organization_id === preferredOrgId) ?? items[0] ?? null
+            : null);
 
         if (!chosenOrg) {
           if (!cancelled) {

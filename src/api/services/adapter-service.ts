@@ -1,4 +1,6 @@
-const ADAPTER_PROXY_BASE = "/adapter-service/api/v1";
+import { getFrontendApiBasePath } from "@/lib/runtime-config";
+
+const ADAPTER_PROXY_BASE = getFrontendApiBasePath("adapter");
 
 export type AdapterProvider = "geoserver" | "arcgis";
 export type AdapterAuthType =

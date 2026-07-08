@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "../client";
+import { authClient } from "../client";
 
 export interface CodeRef {
   id: string;
@@ -52,7 +52,7 @@ export const userCategoriesApi = {
     const rows: CodeRef[] = [];
 
     do {
-      const res = await apiClient.get("/identity-provider/user/categories/", {
+      const res = await authClient.get("/identity-provider/user/categories/", {
         params: { limit, offset },
       });
       const batch = unwrap(res).map((c: any) => ({
@@ -78,7 +78,7 @@ export const userGroupsApi = {
     const rows: Array<CodeRef & { category?: { code?: string; name?: string } }> = [];
 
     do {
-      const res = await apiClient.get("/identity-provider/user/groups/", {
+      const res = await authClient.get("/identity-provider/user/groups/", {
         params: { limit, offset },
       });
       const batch = unwrap(res).map((g: any) => ({
@@ -114,7 +114,7 @@ export const usersApi = {
     group_id: string;
     participant_id?: string;
   }): Promise<{ id: string }> => {
-    const res = await apiClient.post("/identity-provider/users/", body);
+    const res = await authClient.post("/identity-provider/users/", body);
     return res.data as { id: string };
   },
   // Edit mapping/profil user existing. Kontrak live: UserUpdateRequest — semua
@@ -131,13 +131,13 @@ export const usersApi = {
       group_id: string;
     }>,
   ): Promise<any> => {
-    const res = await apiClient.patch(`/identity-provider/users/${id}`, body);
+    const res = await authClient.patch(`/identity-provider/users/${id}`, body);
     return res.data;
   },
   // Hapus user existing. Kontrak live: DELETE /identity-provider/users/{id}
   // (route terverifikasi hidup di runtime → 401 tanpa auth, bukan 404).
   remove: async (id: string): Promise<void> => {
-    await apiClient.delete(`/identity-provider/users/${id}`);
+    await authClient.delete(`/identity-provider/users/${id}`);
   },
   list: async (): Promise<any[]> => {
     const limit = 100;
@@ -146,7 +146,7 @@ export const usersApi = {
     const rows: any[] = [];
 
     do {
-      const res = await apiClient.get("/identity-provider/users/", {
+      const res = await authClient.get("/identity-provider/users/", {
         params: { limit, offset },
       });
       const batch = unwrap(res);
@@ -160,7 +160,7 @@ export const usersApi = {
   },
   // PUBLIK - operator set password via tautan email.
   confirmEmail: async (token: string, password: string): Promise<any> => {
-    const res = await apiClient.post("/identity-provider/users/confirm-email", {
+    const res = await authClient.post("/identity-provider/users/confirm-email", {
       token,
       password,
     });
@@ -168,7 +168,7 @@ export const usersApi = {
   },
   // Kirim ulang email undangan/aktivasi (token baru 24 jam). PUBLIK.
   resendConfirmation: async (email: string): Promise<any> => {
-    const res = await apiClient.post(
+    const res = await authClient.post(
       "/identity-provider/users/resend-email-confirmation",
       { email },
     );

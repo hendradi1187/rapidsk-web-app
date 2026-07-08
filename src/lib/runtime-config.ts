@@ -5,11 +5,27 @@ export interface RuntimeSsoConfig {
   clientId: string;
 }
 
+export type RuntimeServiceName =
+  | "auth"
+  | "cts"
+  | "connector"
+  | "adapter"
+  | "monitoring";
+
+export interface RuntimeServicesConfig {
+  auth: string;
+  cts: string;
+  connector: string;
+  adapter: string;
+  monitoring: string;
+}
+
 export interface RuntimeConfig {
   initialized: boolean;
   publicAppUrl: string;
   apiBaseUrl: string;
   adapterEndpoint: string;
+  services: RuntimeServicesConfig;
   sso: RuntimeSsoConfig;
 }
 
@@ -40,17 +56,47 @@ export interface RuntimeBootstrapState {
   licenseState: LicenseState | null;
 }
 
-const defaultApiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || "/api/v1";
-
+const defaultPrimaryApiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+const defaultAdapterEndpoint =
+  import.meta.env.VITE_ADAPTER_ENDPOINT || "http://100.66.10.14:8182";
 const defaultPublicAppUrl =
   typeof window !== "undefined" ? window.location.origin : "";
+
+const normalizeBaseUrl = (value: string | undefined | null) =>
+  String(value || "").trim().replace(/\/+$/, "");
+
+const buildRuntimeServices = (
+  services?: Partial<RuntimeServicesConfig> | null,
+  apiBaseUrl?: string | null,
+  adapterEndpoint?: string | null,
+): RuntimeServicesConfig => {
+  const normalizedPrimary = normalizeBaseUrl(
+    services?.cts ||
+      services?.auth ||
+      services?.connector ||
+      services?.monitoring ||
+      apiBaseUrl ||
+      defaultPrimaryApiBaseUrl,
+  );
+  const normalizedAdapter = normalizeBaseUrl(
+    services?.adapter || adapterEndpoint || defaultAdapterEndpoint,
+  );
+
+  return {
+    auth: normalizeBaseUrl(services?.auth || normalizedPrimary),
+    cts: normalizeBaseUrl(services?.cts || normalizedPrimary),
+    connector: normalizeBaseUrl(services?.connector || normalizedPrimary),
+    adapter: normalizedAdapter,
+    monitoring: normalizeBaseUrl(services?.monitoring || normalizedPrimary),
+  };
+};
 
 const defaultRuntimeConfig: RuntimeConfig = {
   initialized: false,
   publicAppUrl: defaultPublicAppUrl,
-  apiBaseUrl: defaultApiBaseUrl,
-  adapterEndpoint: import.meta.env.VITE_ADAPTER_ENDPOINT || "http://100.66.10.14:8182",
+  apiBaseUrl: normalizeBaseUrl(defaultPrimaryApiBaseUrl),
+  adapterEndpoint: normalizeBaseUrl(defaultAdapterEndpoint),
+  services: buildRuntimeServices(undefined, defaultPrimaryApiBaseUrl, defaultAdapterEndpoint),
   sso: {
     enabled: Boolean(
       import.meta.env.VITE_KEYCLOAK_URL &&
@@ -87,6 +133,35 @@ const parseJson = async <T>(response: Response): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+export function normalizeRuntimeConfig(
+  runtimeConfig?: Partial<RuntimeConfig> | null,
+): RuntimeConfig {
+  const normalizedApiBaseUrl = normalizeBaseUrl(
+    runtimeConfig?.apiBaseUrl || runtimeConfig?.services?.cts || defaultPrimaryApiBaseUrl,
+  );
+  const normalizedAdapterEndpoint = normalizeBaseUrl(
+    runtimeConfig?.adapterEndpoint || runtimeConfig?.services?.adapter || defaultAdapterEndpoint,
+  );
+
+  return {
+    initialized: Boolean(runtimeConfig?.initialized),
+    publicAppUrl: String(runtimeConfig?.publicAppUrl || defaultPublicAppUrl || ""),
+    apiBaseUrl: normalizedApiBaseUrl,
+    adapterEndpoint: normalizedAdapterEndpoint,
+    services: buildRuntimeServices(
+      runtimeConfig?.services,
+      normalizedApiBaseUrl,
+      normalizedAdapterEndpoint,
+    ),
+    sso: {
+      enabled: Boolean(runtimeConfig?.sso?.enabled),
+      keycloakUrl: String(runtimeConfig?.sso?.keycloakUrl || ""),
+      realm: String(runtimeConfig?.sso?.realm || ""),
+      clientId: String(runtimeConfig?.sso?.clientId || ""),
+    },
+  };
+}
+
 export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState> {
   try {
     const statusResponse = await fetch("/setup/status", {
@@ -106,13 +181,14 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
       warnings?: string[];
       blockingErrors?: string[];
       licenseState?: LicenseState | null;
+      serverPermissionValid?: boolean;
     }>(statusResponse);
 
     const setupStatus: SetupStatus = {
       initialized: statusPayload.initialized,
       configValid: statusPayload.configValid,
       licenseValid: statusPayload.licenseValid,
-      serverPermissionValid: (statusPayload as { serverPermissionValid?: boolean }).serverPermissionValid ?? true,
+      serverPermissionValid: statusPayload.serverPermissionValid ?? true,
       needsSetup: statusPayload.needsSetup,
       warnings: statusPayload.warnings ?? [],
       blockingErrors: statusPayload.blockingErrors ?? [],
@@ -125,7 +201,7 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
         credentials: "same-origin",
       });
       if (configResponse.ok) {
-        runtimeConfig = await parseJson<RuntimeConfig>(configResponse);
+        runtimeConfig = normalizeRuntimeConfig(await parseJson<RuntimeConfig>(configResponse));
       } else {
         setupStatus.configValid = false;
         setupStatus.needsSetup = true;
@@ -191,23 +267,44 @@ export function setRuntimeBootstrapState(state: RuntimeBootstrapState): void {
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
-  return getRuntimeBootstrapState().runtimeConfig ?? defaultRuntimeConfig;
+  return normalizeRuntimeConfig(getRuntimeBootstrapState().runtimeConfig ?? defaultRuntimeConfig);
 }
 
 export function getRuntimePublicAppUrl(): string {
   return getRuntimeConfig().publicAppUrl || defaultPublicAppUrl;
 }
 
+export function getRuntimeServices(): RuntimeServicesConfig {
+  return getRuntimeConfig().services;
+}
+
+export function getRuntimeServiceUrl(serviceName: RuntimeServiceName): string {
+  return getRuntimeServices()[serviceName] || "";
+}
+
 export function getRuntimeBackendApiBaseUrl(): string {
-  return getRuntimeConfig().apiBaseUrl || defaultApiBaseUrl;
+  return (
+    getRuntimeServiceUrl("cts") ||
+    getRuntimeConfig().apiBaseUrl ||
+    normalizeBaseUrl(defaultPrimaryApiBaseUrl)
+  );
 }
 
 export function getRuntimeAdapterEndpoint(): string {
-  return getRuntimeConfig().adapterEndpoint || "";
+  return getRuntimeServiceUrl("adapter") || getRuntimeConfig().adapterEndpoint || "";
 }
 
-export function getFrontendApiBasePath(): string {
+export function getFrontendApiBasePath(
+  serviceName: RuntimeServiceName = "cts",
+): string {
+  if (serviceName === "adapter") {
+    return "/adapter-service/api/v1";
+  }
   return "/api/v1";
+}
+
+export function getFrontendAdapterRuntimeBasePath(): string {
+  return "/adapter-runtime";
 }
 
 export function getRuntimeSsoConfig(): RuntimeSsoConfig {

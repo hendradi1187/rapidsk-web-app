@@ -40,7 +40,7 @@ import { DataFlowAnimation } from "@/components/login/DataFlowAnimation";
 import { BackgroundScene } from "@/components/login/BackgroundScene";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
-import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
+import { resolveLoginSessionBinding } from "@/lib/session-resolver";
 import type { Organization } from "@/api/types/governance";
 
 const API_BASE = getFrontendApiBasePath();
@@ -282,15 +282,11 @@ export const LoginPage = () => {
       const catCode = c?.category?.code ?? "";
       const grpCode = c?.group?.code ?? "";
       const role: AppRole = c?.is_superadmin ? "SUPER_ADMIN" : deriveRole(catCode, grpCode);
-      const effectiveOrg = selectedOrgOption?.name ?? "";
       const decodedEmail = String(c?.email ?? "").trim().toLowerCase();
       const tokenParticipantId = (c?.participant_id as string | null | undefined) ?? null;
       const tokenOrgName = String((c as { category?: { name?: string; code?: string } })?.category?.name ?? c?.category?.code ?? "").trim();
       const isStrictOrganizationRole = role === "PROVIDER" || role === "ADMIN";
-      let resolvedOrgName =
-        effectiveOrg ||
-        selectedOrgOption?.name ||
-        tokenOrgName;
+      let resolvedOrgName = selectedOrgOption?.name || tokenOrgName;
       let resolvedOrgId: string | null = selectedOrgOption?.id ?? null;
       let resolvedParticipantId = tokenParticipantId;
 
@@ -320,119 +316,7 @@ export const LoginPage = () => {
           }
         }
 
-        const fallbackOrgKey = normalizeOrgKey(
-          effectiveOrg ||
-          resolvedOrgName ||
-          matchedRegistration?.organization_name ||
-          tokenOrgName,
-        );
-        const selectedOrgKey = normalizeOrgKey(effectiveOrg) || fallbackOrgKey;
-
-        const governanceOrganizations = organizations as Organization[];
-        const matchedOrg =
-          governanceOrganizations.find((item) => item.organization_id === selectedOrgOption?.id) ??
-          governanceOrganizations.find((item) => normalizeOrgKey(item.organization_name) === selectedOrgKey) ??
-          governanceOrganizations.find((item) => normalizeOrgKey(item.organization_name) === normalizeOrgKey(resolvedOrgName)) ??
-          (matchedRegistration
-            ? governanceOrganizations.find(
-                (item) =>
-                  normalizeOrgKey(item.organization_name) === normalizeOrgKey(matchedRegistration.organization_name),
-              ) ?? null
-            : null);
-
-        if (matchedOrg) {
-          resolvedOrgId = matchedOrg.organization_id;
-          resolvedOrgName = matchedOrg.organization_name;
-        }
-
-        const matchedParticipant =
-          participants.find((item) => item.provider_id === tokenParticipantId) ??
-          (matchedRegistration?.participant_id
-            ? participants.find((item) => item.provider_id === matchedRegistration.participant_id) ?? null
-            : null) ??
-          participants.find((item) => normalizeOrgKey(item.provider_name) === normalizeOrgKey(tokenOrgName)) ??
-          null;
-
-        if (matchedParticipant?.provider_id) {
-          resolvedParticipantId = matchedParticipant.provider_id;
-          resolvedOrgName = matchedParticipant.provider_name || resolvedOrgName;
-        }
-
-        const participantDomains = resolvedParticipantId
-          ? await providersApi.listDomains(resolvedParticipantId).catch(() => [])
-          : [];
-        const participantDomainIds = participantDomains
-          .map((item) => String((item as ParticipantDomainRef)?.domain_id ?? "").trim())
-          .filter(Boolean);
-        const organizationDomainsById =
-          participantDomainIds.length > 0
-            ? await organizationsApi.listDomainsMap(
-                governanceOrganizations.map((organization) => organization.organization_id),
-              )
-            : {};
-        const backendBinding = resolveGovernanceOrganizationBinding({
-          organizations: governanceOrganizations,
-          domainsByOrganizationId: organizationDomainsById,
-          participantDomainIds,
-          participantName: matchedParticipant?.provider_name ?? resolvedOrgName ?? tokenOrgName,
-          preferredOrganizationId: selectedOrgOption?.id ?? null,
-          preferredOrganizationName: effectiveOrg || resolvedOrgName || null,
-        });
-
-        if (backendBinding.organization) {
-          resolvedOrgId = backendBinding.organization.organization_id;
-          resolvedOrgName = backendBinding.organization.organization_name;
-        }
-
-        if (role !== "SUPER_ADMIN") {
-          if (isStrictOrganizationRole && !selectedOrgOption?.id) {
-            clearLoginState();
-            throw createLoginBindingError("Akun ini wajib login dengan organisasi yang dipilih dari daftar governance.");
-          }
-
-          const trustedOrgKeys = new Set(
-            [
-              tokenOrgName,
-              matchedRegistration?.organization_name,
-              matchedParticipant?.provider_name,
-              backendBinding.organization?.organization_name,
-            ]
-              .map((value) => normalizeOrgKey(value))
-              .filter(Boolean),
-          );
-
-          const trustedParticipantIds = new Set(
-            [tokenParticipantId, matchedRegistration?.participant_id, matchedParticipant?.provider_id].filter(Boolean),
-          );
-
-          for (const candidate of backendBinding.candidates) {
-            const candidateKey = normalizeOrgKey(candidate.organization_name);
-            if (candidateKey) trustedOrgKeys.add(candidateKey);
-          }
-
-          const canBypassOrganizationSelection =
-            role === "SUPER_ADMIN" || role === "CONSUMER";
-          if (!selectedOrgKey) {
-            clearLoginState();
-            throw createLoginBindingError("Organisasi akun ini belum bisa di-resolve. Lengkapi binding participant atau pilih organisasi yang sesuai.");
-          }
-
-          const selectionMatches =
-            canBypassOrganizationSelection ||
-            trustedOrgKeys.has(selectedOrgKey) ||
-            (!effectiveOrg && trustedOrgKeys.has(fallbackOrgKey)) ||
-            Boolean(selectedOrgOption?.participantId && trustedParticipantIds.has(selectedOrgOption.participantId));
-
-          if (!selectionMatches) {
-            clearLoginState();
-            throw createLoginBindingError("Organisasi yang dipilih tidak terhubung ke akun ini.");
-          }
-        }
-
-        if (role === "PROVIDER" && !resolvedParticipantId) {
-          clearLoginState();
-          throw createLoginBindingError("Akun provider ini belum terhubung ke participant yang valid.");
-        }
+        const governanceOrganizations = organizations as Organization[];        const matchedParticipant =          participants.find((item) => item.provider_id === tokenParticipantId) ??          (matchedRegistration?.participant_id            ? participants.find((item) => item.provider_id === matchedRegistration.participant_id) ?? null            : null) ??          participants.find((item) => normalizeOrgKey(item.provider_name) === normalizeOrgKey(tokenOrgName)) ??          null;        if (matchedParticipant?.provider_id) {          resolvedParticipantId = matchedParticipant.provider_id;          resolvedOrgName = matchedParticipant.provider_name || resolvedOrgName;        }        const participantDomains = resolvedParticipantId          ? await providersApi.listDomains(resolvedParticipantId).catch(() => [])          : [];        const participantDomainIds = participantDomains          .map((item) => String((item as ParticipantDomainRef)?.domain_id ?? "").trim())          .filter(Boolean);        const organizationDomainsById =          participantDomainIds.length > 0            ? await organizationsApi.listDomainsMap(                governanceOrganizations.map((organization) => organization.organization_id),              )            : {};        const sessionBinding = resolveLoginSessionBinding({          role,          selectedOrganization: selectedOrgOption,          tokenParticipantId,          tokenOrgName,          matchedRegistration,          matchedParticipant,          organizations: governanceOrganizations,          participantDomains,          organizationDomainsById,        });        resolvedOrgId = sessionBinding.organizationId;        resolvedOrgName = sessionBinding.organizationName || resolvedOrgName;        resolvedParticipantId = sessionBinding.participantId;        if (role !== "SUPER_ADMIN" && sessionBinding.blockingReason) {          clearLoginState();          throw createLoginBindingError(sessionBinding.blockingReason);        }
       } catch (error) {
         if (error instanceof Error && error.message.startsWith("LOGIN_BINDING:")) {
           throw new Error(error.message.replace("LOGIN_BINDING:", ""));

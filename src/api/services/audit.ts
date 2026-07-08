@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { apiClient } from "../client";
+import { ctsClient } from "../client";
 import type { AuditLogListResponse } from "../types/audit";
 
 // GX-Space audit-logs (hash-chain: prev_hash/entry_hash).
@@ -7,7 +7,7 @@ const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
 
 export const auditApi = {
   list: async (): Promise<AuditLogListResponse> => {
-    const res = await apiClient.get("/audit-compliance/audit-logs");
+    const res = await ctsClient.get("/audit-compliance/audit-logs");
     return unwrap(res).map((a: any) => ({
       audit_id: a.id,
       action: a.action ?? a.event_type ?? a.operation ?? a.activity ?? "—",

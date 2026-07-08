@@ -81,6 +81,14 @@ const maskLicenseKey = (value: string) => {
   return `${value.slice(0, 4)}-${"*".repeat(Math.max(value.length - 8, 4))}-${value.slice(-4)}`;
 };
 
+const buildServicePayload = (apiBaseUrl: string, adapterEndpoint: string, services: { auth: string; cts: string; connector: string; adapter: string; monitoring: string }) => ({
+  auth: services.auth.trim() || apiBaseUrl.trim(),
+  cts: services.cts.trim() || apiBaseUrl.trim(),
+  connector: services.connector.trim() || apiBaseUrl.trim(),
+  adapter: services.adapter.trim() || adapterEndpoint.trim(),
+  monitoring: services.monitoring.trim() || apiBaseUrl.trim(),
+});
+
 const Setup = () => {
   const { setBootstrapState, source, setupStatus } = useRuntime();
   const [currentStep, setCurrentStep] = useState<WizardStep>(0);
@@ -88,6 +96,13 @@ const Setup = () => {
   const [publicAppUrl, setPublicAppUrl] = useState(window.location.origin);
   const [apiBaseUrl, setApiBaseUrl] = useState("/api/v1");
   const [adapterEndpoint, setAdapterEndpoint] = useState("");
+  const [services, setServices] = useState({
+    auth: "",
+    cts: "",
+    connector: "",
+    adapter: "",
+    monitoring: "",
+  });
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [keycloakUrl, setKeycloakUrl] = useState("");
   const [realm, setRealm] = useState("");
@@ -119,6 +134,11 @@ const Setup = () => {
   const hasBlockingErrors = useMemo(
     () => licenseBlockingErrors.length > 0 || blockingErrors.length > 0,
     [blockingErrors, licenseBlockingErrors],
+  );
+
+  const servicesPayload = useMemo(
+    () => buildServicePayload(apiBaseUrl, adapterEndpoint, services),
+    [adapterEndpoint, apiBaseUrl, services],
   );
 
   const canMovePastLicense = Boolean(licenseKey.trim() && publicAppUrl.trim());
@@ -173,6 +193,7 @@ const Setup = () => {
         apiBaseUrl: apiBaseUrl.trim(),
         publicAppUrl: publicAppUrl.trim(),
         adapterEndpoint: adapterEndpoint.trim(),
+        services: servicesPayload,
         sso: ssoPayload,
       });
       setChecks(result.checks);
@@ -204,6 +225,7 @@ const Setup = () => {
         publicAppUrl: publicAppUrl.trim(),
         apiBaseUrl: apiBaseUrl.trim(),
         adapterEndpoint: adapterEndpoint.trim(),
+        services: servicesPayload,
         sso: ssoPayload,
       });
       const nextState: RuntimeBootstrapState = {
@@ -333,6 +355,40 @@ const Setup = () => {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-slate-900">Service Routing Lanjutan</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Opsional. Isi kalau identity, CTS, connector, monitoring, atau adapter mulai dipisah. Kalau masih satu host, biarkan kosong dan wrapper akan turunkan otomatis dari URL utama.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  ["auth", "Identity & Auth"],
+                  ["cts", "CTS / Governance"],
+                  ["connector", "Connector Control Plane"],
+                  ["monitoring", "Monitoring & Runtime"],
+                  ["adapter", "Adapter Service"],
+                ].map(([serviceKey, label]) => (
+                  <div key={serviceKey} className="space-y-2">
+                    <Label htmlFor={`setup-service-${serviceKey}`}>{label}</Label>
+                    <Input
+                      id={`setup-service-${serviceKey}`}
+                      value={services[serviceKey as keyof typeof services]}
+                      onChange={(e) =>
+                        setServices((prev) => ({
+                          ...prev,
+                          [serviceKey]: e.target.value,
+                        }))
+                      }
+                      placeholder={serviceKey === "adapter" ? adapterEndpoint || "http://adapter-host" : apiBaseUrl || "http://cts-host/api/v1"}
+                      className={setupInputClassName}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-3">
               {[
                 "Wrapper akan proxy semua /api/*",
@@ -447,6 +503,17 @@ const Setup = () => {
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Adapter</p>
                 <p className="mt-2 break-all text-sm font-medium text-slate-900">{adapterEndpoint || "Belum diisi"}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Logical Services</p>
+                <div className="mt-2 grid gap-2 text-sm text-slate-700">
+                  {Object.entries(servicesPayload).map(([serviceKey, serviceUrl]) => (
+                    <div key={serviceKey} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="font-medium uppercase tracking-[0.14em] text-slate-500">{serviceKey}</span>
+                      <span className="break-all text-slate-900">{serviceUrl || "Belum diisi"}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">SSO</p>

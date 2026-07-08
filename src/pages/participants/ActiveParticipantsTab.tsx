@@ -109,6 +109,8 @@ const roleOf = (type?: string): { label: string; kkks: boolean } =>
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
+type ReadinessState = "READY" | "PARTIAL" | "MISSING";
+
 const toForm = (provider: Provider): ParticipantForm => ({
   organization_name: provider.provider_name ?? "",
   organization_type: provider.organization_type ?? "ENTERPRISE",
@@ -117,6 +119,46 @@ const toForm = (provider: Provider): ParticipantForm => ({
   contact_email: provider.contact_person?.email ?? "",
   contact_phone: provider.contact_person?.phone ?? "",
 });
+
+const getParticipantOrganizationBindingKey = (participantId: string) =>
+  `participant_org_binding:${participantId}`;
+
+const getParticipantReadiness = (
+  participant: Provider,
+  organizations: Array<{ organization_id: string; organization_name: string }>,
+) => {
+  const storedOrganizationId = localStorage.getItem(getParticipantOrganizationBindingKey(participant.provider_id)) ?? "";
+  const matchedOrganization =
+    organizations.find((organization) => organization.organization_id === storedOrganizationId) ?? null;
+  const hasOperator = Boolean(participant.contact_person?.email);
+  const hasAddress = Boolean(participant.address?.trim());
+  const hasOrganizationBinding = Boolean(storedOrganizationId && matchedOrganization);
+
+  let state: ReadinessState = "READY";
+  let label = "Siap dilanjutkan";
+  let note = "Participant sudah punya organisasi governance tersimpan dan data operator dasar.";
+
+  if (!hasOrganizationBinding && !hasOperator) {
+    state = "MISSING";
+    label = "Belum siap";
+    note = "Organisasi governance belum diikat dan email operator belum terisi.";
+  } else if (!hasOrganizationBinding || !hasOperator || !hasAddress) {
+    state = "PARTIAL";
+    label = "Perlu dilengkapi";
+    note = !hasOrganizationBinding
+      ? "Organisasi governance belum diikat, jadi domain dan login bisa meleset."
+      : !hasOperator
+        ? "Email operator belum ada, jadi aktivasi user belum aman."
+        : "Alamat operasional belum diisi lengkap.";
+  }
+
+  return {
+    state,
+    label,
+    note,
+    organizationName: matchedOrganization?.organization_name ?? null,
+  };
+};
 
 const ActiveParticipantsTab = () => {
   const navigate = useNavigate();
@@ -211,7 +253,7 @@ const ActiveParticipantsTab = () => {
   const openEditDialog = (participant: Provider) => {
     setSelectedParticipant(participant);
     setFormData(toForm(participant));
-    setBindOrgId(localStorage.getItem(`participant_org_binding:${participant.provider_id}`) ?? "");
+    setBindOrgId(localStorage.getItem(getParticipantOrganizationBindingKey(participant.provider_id)) ?? "");
     setIsEditDialogOpen(true);
   };
 
@@ -245,7 +287,7 @@ const ActiveParticipantsTab = () => {
       });
 
       if (bindOrgId && created?.id) {
-        localStorage.setItem(`participant_org_binding:${created.id}`, bindOrgId);
+        localStorage.setItem(getParticipantOrganizationBindingKey(created.id), bindOrgId);
       }
 
       // Bind selected governance domains to the new participant.
@@ -320,9 +362,9 @@ const ActiveParticipantsTab = () => {
         },
       });
       if (bindOrgId) {
-        localStorage.setItem(`participant_org_binding:${selectedParticipant.provider_id}`, bindOrgId);
+        localStorage.setItem(getParticipantOrganizationBindingKey(selectedParticipant.provider_id), bindOrgId);
       } else {
-        localStorage.removeItem(`participant_org_binding:${selectedParticipant.provider_id}`);
+        localStorage.removeItem(getParticipantOrganizationBindingKey(selectedParticipant.provider_id));
       }
       setIsEditDialogOpen(false);
       setSelectedParticipant(null);
@@ -431,6 +473,7 @@ const ActiveParticipantsTab = () => {
               <TableHead>Peran</TableHead>
               <TableHead>Alamat</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Kesiapan</TableHead>
               <TableHead>Dataplane</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -439,14 +482,14 @@ const ActiveParticipantsTab = () => {
             {isLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
               ))
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                   <Inbox className="w-8 h-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">{searchQuery ? "Tidak ada participant cocok" : "Belum ada participant"}</p>
                 </TableCell>
@@ -454,6 +497,7 @@ const ActiveParticipantsTab = () => {
             ) : (
               paged.map((participant) => {
                 const role = roleOf(participant.organization_type);
+                const readiness = getParticipantReadiness(participant, orgs);
                 return (
                   <TableRow key={participant.provider_id} className="hover:bg-muted/50">
                     <TableCell>
@@ -498,6 +542,27 @@ const ActiveParticipantsTab = () => {
                           {participant.status}
                         </Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-2">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            readiness.state === "READY"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : readiness.state === "PARTIAL"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-rose-50 text-rose-700 border-rose-200",
+                          )}
+                        >
+                          {readiness.label}
+                        </Badge>
+                        <p className="max-w-[260px] text-xs leading-relaxed text-muted-foreground">
+                          {readiness.organizationName
+                            ? `Org: ${readiness.organizationName}`
+                            : readiness.note}
+                        </p>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button

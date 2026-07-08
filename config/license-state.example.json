@@ -1,8 +1,8 @@
 {
-  "licenseKeyMasked": "LIC-XXXX-XXXX-XXXX",
-  "licenseStatus": "inactive",
-  "licensedHost": "http://localhost:8282",
-  "activatedAt": null,
+  "licenseKeyMasked": "POC-****-1234",
+  "licenseStatus": "ACTIVE",
+  "licensedHost": "localhost:8282",
+  "activatedAt": "2026-07-08T00:00:00.000Z",
   "expiresAt": null,
-  "lastValidationAt": null
+  "lastValidationAt": "2026-07-08T00:00:00.000Z"
 }

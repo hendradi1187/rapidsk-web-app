@@ -100,6 +100,14 @@ const ADMIN_LIKE_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const showLegacyDataFlow = false;
 const normalizeBindingKey = (value: string | null | undefined) =>
   String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const isValidHttpUrl = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -227,12 +235,16 @@ const Settings = () => {
     }
     if (!participantId) return toast.error("Akun tidak terhubung ke participant.");
     if (!adapterForm.domain_id) return toast.error("Pilih domain terlebih dahulu.");
-    if (!adapterForm.url) return toast.error("URL endpoint wajib diisi.");
+    const trimmedAdapterUrl = adapterForm.url.trim();
+    if (!trimmedAdapterUrl) return toast.error("URL endpoint wajib diisi.");
+    if (!isValidHttpUrl(trimmedAdapterUrl)) {
+      return toast.error("URL endpoint adapter harus berupa http/https yang valid.");
+    }
     try {
       const body = {
         domain_id: adapterForm.domain_id,
         type: "GIS_STUDIO",
-        endpoint: { url: adapterForm.url.trim() },
+        endpoint: { url: trimmedAdapterUrl },
       };
       if (editingAdapter) {
         await updateAdapterMutation.mutateAsync({ participantId, id: editingAdapter.id, body });
@@ -812,15 +824,21 @@ const Settings = () => {
 
   // Handle add GeoServer endpoint
   const handleAddEndpoint = () => {
-    if (!newEndpointForm.name || !newEndpointForm.url) {
+    const trimmedName = newEndpointForm.name.trim();
+    const trimmedUrl = newEndpointForm.url.trim();
+    if (!trimmedName || !trimmedUrl) {
       toast.error("Lengkapi nama dan URL endpoint dulu.");
+      return;
+    }
+    if (!isValidHttpUrl(trimmedUrl)) {
+      toast.error("URL endpoint harus berupa alamat http/https yang valid.");
       return;
     }
 
     const newEndpoint: GeoServerEndpoint = {
-      id: Math.max(...geoServerEndpoints.map((e) => e.id)) + 1,
-      name: newEndpointForm.name,
-      url: newEndpointForm.url,
+      id: Math.max(0, ...geoServerEndpoints.map((e) => e.id)) + 1,
+      name: trimmedName,
+      url: trimmedUrl,
       type: newEndpointForm.type,
       status: "connected",
     };
