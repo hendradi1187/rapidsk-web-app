@@ -183,7 +183,14 @@ export const organizationsApi = {
   },
 
   removeDomain: async (orgId: string, domainId: string): Promise<void> => {
-    await apiClient.delete(`/governance/organizations/${orgId}/domains/${domainId}`);
+    try {
+      await apiClient.delete(`/governance/organizations/${orgId}/domains/${domainId}`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus domain organisasi';
+      const status = err?.response?.status;
+      console.error(`[DELETE] removeDomain org=${orgId} domain=${domainId} status=${status} msg=${msg}`);
+      throw new Error(msg);
+    }
   },
 };
 
@@ -261,6 +268,40 @@ export const connectionPoolsApi = {
   },
 
   remove: async (id: string): Promise<void> => {
-    await apiClient.delete(`/onboarding/connection-pools/${id}`);
+    try {
+      await apiClient.delete(`/onboarding/connection-pools/${id}`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus connection pool';
+      const status = err?.response?.status;
+      console.error(`[DELETE] connectionPool id=${id} status=${status} msg=${msg}`);
+      throw new Error(msg);
+    }
+  },
+  /**
+   * Get connection pool scoped by domain + agreement + type.
+   * BE endpoint: GET /onboarding/{domain_id}/agreements/{agreement_id}/connection-pools/{connection_type}
+   * Used by TransferCenter before initiating transfer (SIT-L-004, SIT-R-002)
+   */
+  getByDomainAgreement: async (
+    domainId: string,
+    agreementId: string,
+    connectionType: "CONSUMER" | "PROVIDER" = "PROVIDER",
+  ): Promise<ConnectionPoolItem | null> => {
+    try {
+      const res = await apiClient.get(
+        `/onboarding/${domainId}/agreements/${agreementId}/connection-pools/${connectionType}`,
+      );
+      return unwrap(res) as ConnectionPoolItem;
+    } catch (err: unknown) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        (err as { response?: { status?: number } }).response?.status === 404
+      ) {
+        return null;
+      }
+      throw err;
+    }
   },
 };

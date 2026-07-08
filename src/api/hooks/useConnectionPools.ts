@@ -47,3 +47,17 @@ export function useDeleteConnectionPool() {
     },
   });
 }
+
+export function useConnectionPoolByScope(
+  domainId: string | undefined,
+  agreementId: string | undefined,
+  connectionType: "CONSUMER" | "PROVIDER" = "PROVIDER",
+) {
+  return useQuery({
+    queryKey: ["connection-pools", "scoped", domainId, agreementId, connectionType] as const,
+    queryFn: () =>
+      connectionPoolsApi.getByDomainAgreement(domainId!, agreementId!, connectionType),
+    enabled: !!domainId && !!agreementId,
+    staleTime: 30_000,
+  });
+}

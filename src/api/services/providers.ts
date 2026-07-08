@@ -84,7 +84,14 @@ export const providersApi = {
   },
 
   deleteDomain: async (participantId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/onboarding/participants/${participantId}/domains/${id}`);
+    try {
+      await apiClient.delete(`/onboarding/participants/${participantId}/domains/${id}`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus domain participant';
+      const status = err?.response?.status;
+      console.error(`[DELETE] deleteDomain participantId=${participantId} id=${id} status=${status} msg=${msg}`);
+      throw new Error(msg);
+    }
   },
 
   // Adapters

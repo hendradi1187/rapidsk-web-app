@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { TransferMapPreview } from "@/components/transfer/TransferMapPreview";
 import { useContracts } from "@/api/hooks/useContracts";
 import { useAgreements } from "@/api/hooks/useAgreements";
 import { useTransfers } from "@/api/hooks/useTransfers";
-import { useConnectionPools } from "@/api/hooks/useConnectionPools";
+import { useConnectionPools, useConnectionPoolByScope } from "@/api/hooks/useConnectionPools";
 import { useProviders } from "@/api/hooks/useProviders";
 import { useDomain } from "@/context/DomainContext";
 import { useAuth } from "@/context/AuthContext";
@@ -83,6 +83,21 @@ interface TransferPreviewState {
   adapterInfo?: { url: string; type: string } | null;
 }
 
+
+// ScopedPoolLoader: render-nothing component yang resolve pool per domain+agreement
+// Diperlukan karena hooks tidak bisa dipanggil di dalam loop
+interface ScopedPoolLoaderProps {
+  domainId: string | undefined;
+  agreementId: string | undefined;
+  domainKey: string;
+  onResult: (domainKey: string, pool: import("@/api/types/governance").ConnectionPoolItem | null) => void;
+}
+function ScopedPoolLoader({ domainId, agreementId, domainKey, onResult }: ScopedPoolLoaderProps) {
+  const { data } = useConnectionPoolByScope(domainId, agreementId, "CONSUMER");
+  useEffect(() => { onResult(domainKey, data ?? null); }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 const TransferCenter = () => {
   const { domainId } = useDomain();
   const { participantId, role } = useAuth();
@@ -92,6 +107,10 @@ const TransferCenter = () => {
   const [contractDetailsById, setContractDetailsById] = useState<Record<string, ContractDetail>>({});
   const effectiveParticipantId = isSuperAdmin ? overrideParticipantId : participantId;
   const adminContextReady = !isSuperAdmin || !!effectiveParticipantId;
+  const [scopedPoolMap, setScopedPoolMap] = useState<Record<string, import("@/api/types/governance").ConnectionPoolItem | null>>({});
+  const handleScopedPool = (domainKey: string, pool: import("@/api/types/governance").ConnectionPoolItem | null) => {
+    setScopedPoolMap((prev) => ({ ...prev, [domainKey]: pool }));
+  };
   const datasetsQ = useDatasets();
   const contractsQ = useContracts();
   const agreementsQ = useAgreements();
@@ -274,7 +293,7 @@ const TransferCenter = () => {
             policyResolution.status === "matched",
         };
       }),
-    [contractDetailsById, contracts, datasetPolicies, datasets, poolReady, selectedDatasetByDomain, transfers],
+    [contractDetailsById, contracts, datasetPolicies, datasets, poolReady, scopedPoolMap, selectedDatasetByDomain, transfers],
   );
 
   const readyCount = rows.filter((row) => row.ready && !row.allSent).length;
@@ -425,10 +444,15 @@ const TransferCenter = () => {
     if (row.policyResolution.status !== "matched" || !row.policyResolution.policy?.policy_id) {
       return toast.error(row.policyResolution.reason, { duration: 8000 });
     }
-    if (!poolReady) {
-      const missing = !myPool
+    // Scoped pool (per domain+agreement) diprioritaskan, fallback ke global pool
+    const scopedPool = scopedPoolMap[row.dom.key] ?? null;
+    const effectivePool = scopedPool ?? myPool ?? null;
+    const effectivePoolReady = isPoolReady(effectivePool);
+    const effectivePoolMeta = effectivePool ? resolvePoolMeta(effectivePool) : null;
+    if (!effectivePoolReady) {
+      const missing = !effectivePool
         ? "Connection pool belum dikonfigurasi untuk participant ini."
-        : !poolMeta?.endpoint
+        : !effectivePoolMeta?.endpoint
           ? "Connection pool tidak memiliki Connector Endpoint."
           : "Connection pool tidak memiliki Well-known JWT URL.";
       return toast.error(`Transfer tidak bisa dimulai: ${missing}`, { duration: 8000 });
@@ -538,7 +562,22 @@ const TransferCenter = () => {
   };
 
   return (
-    <div className="min-h-screen">
+    <Fragment>
+      {/* ScopedPoolLoader: resolve connection pool per domain+agreement (render nothing) */}
+      {rows.map((r) => {
+        const ag = (agData ?? []).find((a: { contract_id: string; id: string }) => a.contract_id === r.contract?.id);
+        if (!ag || !domainId) return null;
+        return (
+          <ScopedPoolLoader
+            key={r.dom.key}
+            domainId={domainId}
+            agreementId={ag.id}
+            domainKey={r.dom.key}
+            onResult={handleScopedPool}
+          />
+        );
+      })}
+      <div className="min-h-screen">
       <Header title="Transfer Data" subtitle="Eksekusi data plane untuk kontrak yang sudah siap di control plane" />
       <div className="p-6 space-y-6">
         <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50 p-5 shadow-sm">
@@ -791,10 +830,10 @@ const TransferCenter = () => {
                         <span className="text-xs text-rose-700">Policy dataset belum cocok</span>
                       ) : r.policyResolution.status === "ambiguous" ? (
                         <span className="text-xs text-rose-700">Policy dataset masih ganda</span>
-                      ) : !poolReady ? (
+                      ) : !isPoolReady(scopedPoolMap[r.dom.key] ?? myPool) ? (
                         <span className="inline-flex items-center gap-1 text-xs text-rose-700">
                           <ShieldAlert className="w-3.5 h-3.5" />
-                          {!myPool ? "Connection pool belum ada" : !poolMeta?.endpoint ? "Endpoint connector kosong" : "Well-known JWT URL kosong"}
+                          {!(scopedPoolMap[r.dom.key] ?? myPool) ? "Connection pool belum ada" : !resolvePoolMeta(scopedPoolMap[r.dom.key] ?? myPool!)?.endpoint ? "Endpoint connector kosong" : "Well-known JWT URL kosong"}
                         </span>
                       ) : (
                         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">{r.pendingDatasets.length} dataset siap dipilih</Badge>
@@ -953,6 +992,7 @@ const TransferCenter = () => {
         />
       )}
     </div>
+    </Fragment>
   );
 };
 

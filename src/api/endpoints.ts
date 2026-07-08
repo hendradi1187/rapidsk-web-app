@@ -23,6 +23,7 @@ export const AUTH = {
   REFRESH_TOKEN:            "/identity-provider/auth/refresh-token",
   REVOKE_TOKEN:             "/identity-provider/auth/revoke-token",
   REVOKE_USER_TOKEN:        "/identity-provider/auth/revoke-user-token",
+  SERVICE_TOKEN:            "/identity-provider/auth/service-token",
 
   // Users
   USERS:                    "/identity-provider/users/",
@@ -119,6 +120,11 @@ export const CTS = {
   SCHEMAS:                     (domainId: string) => `/data-catalog/${domainId}/schemas`,
   SCHEMA_BY_ID:                (domainId: string, id: string) => `/data-catalog/${domainId}/schemas/${id}`,
 
+  // Extended Catalog / Transfer
+  DATASET_RUNTIME_PREVIEW:     (domainId: string, id: string) => `/data-catalog/${domainId}/datasets/${id}/runtime-metadata/preview`,
+  CONN_POOL_BY_DOMAIN_AGREEMENT: (domainId: string, agreementId: string, type: string) => `/onboarding/${domainId}/agreements/${agreementId}/connection-pools/${type}`,
+  REFERENCE_TRANSFER_SNAPSHOT: (domainId: string, agreementId: string, datasetId: string) => `/cts/reference/domains/${domainId}/agreements/${agreementId}/datasets/${datasetId}/transfer-snapshot`,
+
   // Audit & Compliance
   AUDIT_LOGS:                  "/audit-compliance/audit-logs",
   COMPLIANCE_CONTROLS:         "/audit-compliance/compliance-controls",
@@ -131,6 +137,10 @@ export const CTS = {
 export const CONNECTOR = {
   TRANSFERS:                   (domainId: string) => `/connector/${domainId}/transfers`,
   TRANSFER_BY_ID:              (domainId: string, id: string) => `/connector/${domainId}/transfers/${id}`,
+  TRANSFER_STATUS:             (id: string) => `/connector/${id}/status`,
+  HEARTBEAT_SEND:              "/connector/runtime/heartbeat/send",
+  TRANSFER_EVENTS_PUBLISH:     "/connector/runtime/transfer-events/publish",
+  TRANSFER_EVENT_BY_ID:        (transferId: string) => `/cts/monitoring/transfer-events/${transferId}`,
   HEARTBEATS:                  "/cts/monitoring/connector-heartbeats",
   TRANSFER_PROJECTIONS:        "/cts/monitoring/transfer-projections",
 } as const;
@@ -154,6 +164,9 @@ export const ADAPTER = {
   INGEST_TASK_BY_ID:           (id: string) => `/data-ingestion/${encodeURIComponent(id)}`,
   OGC_COLLECTIONS:             "/ogc/collections",
   OGC_ITEMS:                   (domainCode: string) => `/ogc/collections/${encodeURIComponent(domainCode)}/items`,
+  OGC_METADATA:                '/ogc/ogc/metadata',
+  OGC_METADATA_BY_DOMAIN:      (domain: string) => `/ogc/ogc/metadata/${encodeURIComponent(domain)}`,
+  OGC_PROVIDERS:               '/ogc/ogc/providers',
 
   // Adapter Runtime (routed via adapterClient)
   RUNTIME_HEALTH:              "/adapter-runtime/health",
