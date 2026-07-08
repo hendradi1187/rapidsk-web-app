@@ -12,7 +12,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ApiEndpoint, methodColors } from "./api-endpoints";
-import apiClient from "@/api/client";
+import { ctsClient as apiClient } from "@/api/clients";
 
 interface EndpointCardProps {
   endpoint: ApiEndpoint;
