@@ -55,42 +55,42 @@ export interface ComplianceChecklistInput {
 
 export const complianceControlsApi = {
   list: async (): Promise<ComplianceControl[]> => {
-    const res = await apiClient.get("/audit-compliance/compliance-controls");
+    const res = await ctsClient.get("/audit-compliance/compliance-controls");
     return unwrap(res) as ComplianceControl[];
   },
   create: async (body: ComplianceControlInput): Promise<ComplianceControl> => {
-    const res = await apiClient.post("/audit-compliance/compliance-controls", body);
+    const res = await ctsClient.post("/audit-compliance/compliance-controls", body);
     return res.data as ComplianceControl;
   },
   update: async (
     id: string,
     body: Partial<ComplianceControlInput & { active: boolean }>,
   ): Promise<ComplianceControl> => {
-    const res = await apiClient.patch(`/audit-compliance/compliance-controls/${id}`, body);
+    const res = await ctsClient.patch(`/audit-compliance/compliance-controls/${id}`, body);
     return res.data as ComplianceControl;
   },
   remove: async (id: string): Promise<void> => {
-    await apiClient.delete(`/audit-compliance/compliance-controls/${id}`);
+    await ctsClient.delete(`/audit-compliance/compliance-controls/${id}`);
   },
 };
 
 export const complianceChecklistsApi = {
   list: async (): Promise<ComplianceChecklist[]> => {
-    const res = await apiClient.get("/audit-compliance/compliance-checklists");
+    const res = await ctsClient.get("/audit-compliance/compliance-checklists");
     return unwrap(res) as ComplianceChecklist[];
   },
   create: async (body: ComplianceChecklistInput): Promise<ComplianceChecklist> => {
-    const res = await apiClient.post("/audit-compliance/compliance-checklists", body);
+    const res = await ctsClient.post("/audit-compliance/compliance-checklists", body);
     return res.data as ComplianceChecklist;
   },
   update: async (
     id: string,
     body: Partial<ComplianceChecklistInput>,
   ): Promise<ComplianceChecklist> => {
-    const res = await apiClient.patch(`/audit-compliance/compliance-checklists/${id}`, body);
+    const res = await ctsClient.patch(`/audit-compliance/compliance-checklists/${id}`, body);
     return res.data as ComplianceChecklist;
   },
   remove: async (id: string): Promise<void> => {
-    await apiClient.delete(`/audit-compliance/compliance-checklists/${id}`);
+    await ctsClient.delete(`/audit-compliance/compliance-checklists/${id}`);
   },
 };

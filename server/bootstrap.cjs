@@ -13,6 +13,7 @@ const PUBLIC_ORGANIZATIONS_CACHE_PATH = path.join(CONFIG_DIR, "public-organizati
 const PORT = Number(process.env.RAPIDSK_PORT || process.env.PORT || 8282);
 const HOST = process.env.RAPIDSK_HOST || "0.0.0.0";
 const LICENSE_SERVER_URL = process.env.RAPIDSK_LICENSE_SERVER_URL || "";
+const SERVICE_NAMES = ["auth", "cts", "connector", "adapter", "monitoring"];
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -118,13 +119,71 @@ const isValidHttpUrl = (value) => {
 
 const normalizeBaseUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
 
+const buildRuntimeServices = (services = {}, apiBaseUrl = "", adapterEndpoint = "") => {
+  const primaryApiBaseUrl = normalizeBaseUrl(
+    services.cts ||
+      services.auth ||
+      services.connector ||
+      services.monitoring ||
+      apiBaseUrl,
+  );
+  const adapterServiceUrl = normalizeBaseUrl(services.adapter || adapterEndpoint);
+
+  return {
+    auth: normalizeBaseUrl(services.auth || primaryApiBaseUrl),
+    cts: normalizeBaseUrl(services.cts || primaryApiBaseUrl),
+    connector: normalizeBaseUrl(services.connector || primaryApiBaseUrl),
+    adapter: adapterServiceUrl,
+    monitoring: normalizeBaseUrl(services.monitoring || primaryApiBaseUrl),
+  };
+};
+
+const getRuntimeServices = (runtimeConfig) =>
+  buildRuntimeServices(
+    runtimeConfig?.services,
+    runtimeConfig?.apiBaseUrl,
+    runtimeConfig?.adapterEndpoint,
+  );
+
+const getPrimaryApiBaseUrl = (runtimeConfig) =>
+  normalizeBaseUrl(getRuntimeServices(runtimeConfig).cts || runtimeConfig?.apiBaseUrl);
+
+const getAdapterServiceUrl = (runtimeConfig) =>
+  normalizeBaseUrl(getRuntimeServices(runtimeConfig).adapter || runtimeConfig?.adapterEndpoint);
+
+const resolveApiServiceName = (pathname) => {
+  const normalizedPath = pathname.replace(/^\/api\/v\d+/, "");
+
+  if (normalizedPath.startsWith("/cts/monitoring/") || normalizedPath.startsWith("/connector/runtime/")) {
+    return "monitoring";
+  }
+
+  if (normalizedPath.startsWith("/identity-provider/")) {
+    return "auth";
+  }
+
+  if (normalizedPath.startsWith("/connector/")) {
+    return "connector";
+  }
+
+  return "cts";
+};
+
+const getApiTargetBaseUrl = (runtimeConfig, pathname) => {
+  const serviceName = resolveApiServiceName(pathname);
+  const services = getRuntimeServices(runtimeConfig);
+  return normalizeBaseUrl(services[serviceName] || services.cts || runtimeConfig?.apiBaseUrl);
+};
+
 const getPublicRuntimeConfig = (runtimeConfig) => {
   if (!runtimeConfig) return null;
+  const services = getRuntimeServices(runtimeConfig);
   return {
     initialized: Boolean(runtimeConfig.initialized),
     publicAppUrl: runtimeConfig.publicAppUrl || "",
-    apiBaseUrl: runtimeConfig.apiBaseUrl || "",
-    adapterEndpoint: runtimeConfig.adapterEndpoint || "",
+    apiBaseUrl: getPrimaryApiBaseUrl(runtimeConfig),
+    adapterEndpoint: getAdapterServiceUrl(runtimeConfig),
+    services,
     sso: {
       enabled: Boolean(runtimeConfig.sso?.enabled),
       keycloakUrl: runtimeConfig.sso?.keycloakUrl || "",
@@ -165,7 +224,7 @@ const sanitizePublicOrganizations = (payload) => {
 
 const fetchPublicOrganizationsFromBackend = async (bearerToken = "") => {
   const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
-  const apiBaseUrl = normalizeBaseUrl(runtimeConfig?.apiBaseUrl);
+  const apiBaseUrl = getPrimaryApiBaseUrl(runtimeConfig);
   if (!isValidHttpUrl(apiBaseUrl)) {
     return [];
   }
@@ -227,7 +286,7 @@ const getSetupStatus = async () => {
     runtimeConfig &&
       runtimeConfig.initialized &&
       isValidHttpUrl(runtimeConfig.publicAppUrl) &&
-      isValidHttpUrl(runtimeConfig.apiBaseUrl),
+      isValidHttpUrl(getPrimaryApiBaseUrl(runtimeConfig)),
   );
   const licenseValid = Boolean(
     licenseState &&
@@ -368,11 +427,14 @@ const performLicenseValidation = async ({ licenseKey, publicAppUrl }) => {
   };
 };
 
-const validateSetupPayload = async ({ apiBaseUrl, publicAppUrl, adapterEndpoint, sso }) => {
+const validateSetupPayload = async ({ apiBaseUrl, publicAppUrl, adapterEndpoint, services, sso }) => {
   const checks = [];
   const warnings = [];
   const blockingErrors = [];
   const permissionState = await checkServerPermissions();
+  const runtimeServices = buildRuntimeServices(services, apiBaseUrl, adapterEndpoint);
+  const primaryApiBaseUrl = normalizeBaseUrl(runtimeServices.cts || apiBaseUrl);
+  const normalizedAdapterEndpoint = normalizeBaseUrl(runtimeServices.adapter || adapterEndpoint);
 
   checks.push({
     key: "server-permission",
@@ -404,7 +466,7 @@ const validateSetupPayload = async ({ apiBaseUrl, publicAppUrl, adapterEndpoint,
     });
   }
 
-  if (!isValidHttpUrl(apiBaseUrl)) {
+  if (!isValidHttpUrl(primaryApiBaseUrl)) {
     checks.push({
       key: "api-base-url",
       label: "API Base URL",
@@ -415,8 +477,8 @@ const validateSetupPayload = async ({ apiBaseUrl, publicAppUrl, adapterEndpoint,
     return { checks, warnings, blockingErrors };
   }
 
-  const apiUrl = new URL(apiBaseUrl);
-  const apiRoot = apiBaseUrl.replace(/\/api\/v\d+\/?$/, "");
+  const apiUrl = new URL(primaryApiBaseUrl);
+  const apiRoot = primaryApiBaseUrl.replace(/\/api\/v\d+\/?$/, "");
 
   try {
     const rootResponse = await fetchWithTimeout(apiUrl.origin, { method: "GET" }, 5000);
@@ -469,7 +531,6 @@ const validateSetupPayload = async ({ apiBaseUrl, publicAppUrl, adapterEndpoint,
     warnings.push("OpenAPI endpoint belum tersedia atau tidak dapat dijangkau.");
   }
 
-  const normalizedAdapterEndpoint = normalizeBaseUrl(adapterEndpoint);
   if (!normalizedAdapterEndpoint) {
     checks.push({
       key: "adapter-endpoint",
@@ -636,18 +697,23 @@ const inspectConnectionPoolTargets = async ({ endpoint, wellKnownJwtUrl }) => {
   };
 };
 
-const buildRuntimeConfig = ({ apiBaseUrl, publicAppUrl, adapterEndpoint, sso }) => ({
-  initialized: true,
-  apiBaseUrl,
-  publicAppUrl,
-  adapterEndpoint: normalizeBaseUrl(adapterEndpoint),
-  sso: {
-    enabled: Boolean(sso?.enabled),
-    keycloakUrl: sso?.keycloakUrl || "",
-    realm: sso?.realm || "",
-    clientId: sso?.clientId || "",
-  },
-});
+const buildRuntimeConfig = ({ apiBaseUrl, publicAppUrl, adapterEndpoint, services, sso }) => {
+  const runtimeServices = buildRuntimeServices(services, apiBaseUrl, adapterEndpoint);
+
+  return {
+    initialized: true,
+    apiBaseUrl: runtimeServices.cts,
+    publicAppUrl,
+    adapterEndpoint: runtimeServices.adapter,
+    services: runtimeServices,
+    sso: {
+      enabled: Boolean(sso?.enabled),
+      keycloakUrl: sso?.keycloakUrl || "",
+      realm: sso?.realm || "",
+      clientId: sso?.clientId || "",
+    },
+  };
+};
 
 const decodeJwtPayload = (token) => {
   try {
@@ -1009,7 +1075,7 @@ const server = http.createServer(async (req, res) => {
       /\/ogc\/collections\/[^/]+\/items/.test(pathname)
     ) {
       const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
-      const adapterEndpoint = normalizeBaseUrl(runtimeConfig?.adapterEndpoint);
+      const adapterEndpoint = getAdapterServiceUrl(runtimeConfig);
       if (!isValidHttpUrl(adapterEndpoint)) {
         return sendJson(res, 503, { error: "Adapter service belum dikonfigurasi di runtime wrapper." });
       }
@@ -1036,7 +1102,7 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname.startsWith("/adapter-service/")) {
       const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
-      const adapterEndpoint = normalizeBaseUrl(runtimeConfig?.adapterEndpoint);
+      const adapterEndpoint = getAdapterServiceUrl(runtimeConfig);
       if (!isValidHttpUrl(adapterEndpoint)) {
         return sendJson(res, 503, { error: "Adapter service belum dikonfigurasi di runtime wrapper." });
       }
@@ -1048,16 +1114,15 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname.startsWith("/api/") || pathname === "/openapi.json" || pathname.startsWith("/docs")) {
       const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
-      if (!runtimeConfig?.apiBaseUrl) {
+      const targetBaseUrl = getApiTargetBaseUrl(runtimeConfig, pathname);
+      if (!isValidHttpUrl(targetBaseUrl)) {
         return sendJson(res, 503, { error: "Runtime API base URL belum dikonfigurasi." });
       }
 
-      const apiBaseUrl = normalizeBaseUrl(runtimeConfig.apiBaseUrl);
-      const apiRoot = apiBaseUrl.replace(/\/api\/v\d+\/?$/, "");
-      const targetUrl =
-        pathname.startsWith("/api/")
-          ? `${apiRoot}${pathname}${url.search}`
-          : `${apiRoot}${pathname}${url.search}`;
+      const apiRoot = targetBaseUrl.replace(/\/api\/v\d+\/?$/, "");
+      const targetUrl = pathname.startsWith("/api/")
+        ? `${apiRoot}${pathname}${url.search}`
+        : `${apiRoot}${pathname}${url.search}`;
       return proxyRequest(req, res, targetUrl);
     }
 

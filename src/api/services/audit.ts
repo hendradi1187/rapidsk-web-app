@@ -7,7 +7,7 @@ const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
 
 export const auditApi = {
   list: async (): Promise<AuditLogListResponse> => {
-    const res = await apiClient.get("/audit-compliance/audit-logs");
+    const res = await ctsClient.get("/audit-compliance/audit-logs");
     return unwrap(res).map((a: any) => ({
       audit_id: a.id,
       action: a.action ?? a.event_type ?? a.operation ?? a.activity ?? "—",

@@ -32,7 +32,7 @@ export const participantsApi = {
     address: string;
     contact_person: { name: string; email: string; phone: string };
   }): Promise<{ id: string }> => {
-    const res = await apiClient.post("/onboarding/participants", body);
+    const res = await ctsClient.post("/onboarding/participants", body);
     return res.data as { id: string };
   },
 };
@@ -40,7 +40,7 @@ export const participantsApi = {
 export const registrationsApi = {
   // PUBLIK — tanpa token.
   create: async (body: RegistrationCreate): Promise<RegistrationItem> => {
-    const res = await apiClient.post("/onboarding/registrations", body);
+    const res = await ctsClient.post("/onboarding/registrations", body);
     return res.data as RegistrationItem;
   },
   // SuperAdmin.
@@ -51,7 +51,7 @@ export const registrationsApi = {
     const rows: RegistrationItem[] = [];
 
     do {
-      const res = await apiClient.get("/onboarding/registrations", {
+      const res = await ctsClient.get("/onboarding/registrations", {
         params: { ...(status ? { status } : {}), limit, offset },
       });
       const batch = (res?.data?.data ?? res?.data ?? []) as RegistrationItem[];
@@ -67,7 +67,7 @@ export const registrationsApi = {
     id: string,
     body: { status?: string; note?: string; participant_id?: string },
   ): Promise<RegistrationItem> => {
-    const res = await apiClient.patch(`/onboarding/registrations/${id}`, body);
+    const res = await ctsClient.patch(`/onboarding/registrations/${id}`, body);
     return res.data as RegistrationItem;
   },
 };

@@ -14,7 +14,7 @@ const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
 export const vocabulariesApi = {
   list: async (domainId: string): Promise<VocabularyListResponse> => {
     if (!domainId) return [] as unknown as VocabularyListResponse;
-    const res = await apiClient.get(`/data-catalog/${domainId}/vocabularies`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/vocabularies`);
     return unwrap(res).map((v: any) => ({
       vocabulary_id: v.vocabulary_id ?? v.id,
       name: v.name,
@@ -25,7 +25,7 @@ export const vocabulariesApi = {
   },
 
   get: async (domainId: string, vocabularyId: string): Promise<Vocabulary> => {
-    const res = await apiClient.get(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`);
     const v = res.data as any;
     return {
       vocabulary_id: v.vocabulary_id ?? v.id,
@@ -37,7 +37,7 @@ export const vocabulariesApi = {
   },
 
   create: async (domainId: string, body: VocabularyCreateRequest): Promise<Vocabulary> => {
-    const res = await apiClient.post(`/data-catalog/${domainId}/vocabularies`, body);
+    const res = await ctsClient.post(`/data-catalog/${domainId}/vocabularies`, body);
     const v = res.data as any;
     return {
       vocabulary_id: v.vocabulary_id ?? v.id,
@@ -53,7 +53,7 @@ export const vocabulariesApi = {
     vocabularyId: string,
     body: VocabularyUpdateRequest,
   ): Promise<Vocabulary> => {
-    const res = await apiClient.patch(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`, body);
+    const res = await ctsClient.patch(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`, body);
     const v = res.data as any;
     return {
       vocabulary_id: v.vocabulary_id ?? v.id,
@@ -65,11 +65,11 @@ export const vocabulariesApi = {
   },
 
   remove: async (domainId: string, vocabularyId: string): Promise<void> => {
-    await apiClient.delete(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`);
+    await ctsClient.delete(`/data-catalog/${domainId}/vocabularies/${vocabularyId}`);
   },
 
   terms: async (domainId: string, vocabularyId: string): Promise<VocabularyTerm[]> => {
-    const res = await apiClient.get(`/data-catalog/${domainId}/vocabularies/${vocabularyId}/terms`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/vocabularies/${vocabularyId}/terms`);
     return unwrap(res).map((t: any) => ({
       id: t.id,
       term: t.term,

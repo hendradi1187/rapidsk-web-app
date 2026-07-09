@@ -36,11 +36,11 @@ export interface MonitoringInput {
 export const monitoringsApi = {
   list: async (domainId: string): Promise<MonitoringItem[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/onboarding/${domainId}/monitorings`);
+    const res = await ctsClient.get(`/onboarding/${domainId}/monitorings`);
     return unwrap(res) as MonitoringItem[];
   },
   create: async (domainId: string, body: MonitoringInput): Promise<MonitoringItem> => {
-    const res = await apiClient.post(`/onboarding/${domainId}/monitorings`, body);
+    const res = await ctsClient.post(`/onboarding/${domainId}/monitorings`, body);
     return res.data as MonitoringItem;
   },
   update: async (
@@ -48,10 +48,10 @@ export const monitoringsApi = {
     id: string,
     body: Partial<MonitoringInput>,
   ): Promise<MonitoringItem> => {
-    const res = await apiClient.patch(`/onboarding/${domainId}/monitorings/${id}`, body);
+    const res = await ctsClient.patch(`/onboarding/${domainId}/monitorings/${id}`, body);
     return res.data as MonitoringItem;
   },
   remove: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/onboarding/${domainId}/monitorings/${id}`);
+    await ctsClient.delete(`/onboarding/${domainId}/monitorings/${id}`);
   },
 };

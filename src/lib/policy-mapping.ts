@@ -64,7 +64,20 @@ export function resolveDatasetPolicyForDataset(
     return sameDomain && sameLevel;
   });
 
-  if (exact.length === 1) {
+  const exactDomainSpecific = domain
+    ? exact.filter((policy) => normalize(policy.domain) === normalize(domain))
+    : exact;
+
+  if (exactDomainSpecific.length === 1) {
+    return {
+      policy: exactDomainSpecific[0],
+      status: "matched",
+      reason: "Policy cocok berdasarkan domain dan level dataset.",
+      candidates: exactDomainSpecific,
+    };
+  }
+
+  if (!domain && exact.length === 1) {
     return {
       policy: exact[0],
       status: "matched",

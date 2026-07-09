@@ -14,6 +14,23 @@ import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { canManageDeploymentConfig } from "@/lib/feature-access";
 
+const buildServiceForm = (runtimeConfig?: {
+  apiBaseUrl?: string;
+  adapterEndpoint?: string;
+  services?: Partial<Record<"auth" | "cts" | "connector" | "adapter" | "monitoring", string>>;
+}) => {
+  const primaryApiBaseUrl = runtimeConfig?.services?.cts ?? runtimeConfig?.apiBaseUrl ?? "/api/v1";
+  const adapterServiceUrl = runtimeConfig?.services?.adapter ?? runtimeConfig?.adapterEndpoint ?? "";
+
+  return {
+    auth: runtimeConfig?.services?.auth ?? primaryApiBaseUrl,
+    cts: primaryApiBaseUrl,
+    connector: runtimeConfig?.services?.connector ?? primaryApiBaseUrl,
+    adapter: adapterServiceUrl,
+    monitoring: runtimeConfig?.services?.monitoring ?? primaryApiBaseUrl,
+  };
+};
+
 const DeploymentConfig = () => {
   const { runtimeConfig, licenseState, refreshRuntime } = useRuntime();
   const { role, roles, hasPermission } = useAuth();
@@ -22,6 +39,7 @@ const DeploymentConfig = () => {
     publicAppUrl: runtimeConfig?.publicAppUrl ?? window.location.origin,
     apiBaseUrl: runtimeConfig?.apiBaseUrl ?? "/api/v1",
     adapterEndpoint: runtimeConfig?.adapterEndpoint ?? "",
+    services: buildServiceForm(runtimeConfig),
     ssoEnabled: runtimeConfig?.sso.enabled ?? false,
     keycloakUrl: runtimeConfig?.sso.keycloakUrl ?? "",
     realm: runtimeConfig?.sso.realm ?? "",
@@ -39,6 +57,7 @@ const DeploymentConfig = () => {
       publicAppUrl: runtimeConfig?.publicAppUrl ?? window.location.origin,
       apiBaseUrl: runtimeConfig?.apiBaseUrl ?? "/api/v1",
       adapterEndpoint: runtimeConfig?.adapterEndpoint ?? "",
+      services: buildServiceForm(runtimeConfig),
       ssoEnabled: runtimeConfig?.sso.enabled ?? false,
       keycloakUrl: runtimeConfig?.sso.keycloakUrl ?? "",
       realm: runtimeConfig?.sso.realm ?? "",
@@ -60,6 +79,17 @@ const DeploymentConfig = () => {
     [form],
   );
 
+  const servicesPayload = useMemo(
+    () => ({
+      auth: form.services.auth.trim() || form.apiBaseUrl.trim(),
+      cts: form.services.cts.trim() || form.apiBaseUrl.trim(),
+      connector: form.services.connector.trim() || form.apiBaseUrl.trim(),
+      adapter: form.services.adapter.trim() || form.adapterEndpoint.trim(),
+      monitoring: form.services.monitoring.trim() || form.apiBaseUrl.trim(),
+    }),
+    [form],
+  );
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -68,6 +98,7 @@ const DeploymentConfig = () => {
           publicAppUrl: form.publicAppUrl.trim(),
           apiBaseUrl: form.apiBaseUrl.trim(),
           adapterEndpoint: form.adapterEndpoint.trim(),
+          services: servicesPayload,
           sso: ssoPayload,
         },
         token,
@@ -169,6 +200,42 @@ const DeploymentConfig = () => {
                 <p className="text-xs text-muted-foreground">
                   Dipakai oleh alur proses data di sisi provider. Boleh dikosongkan saat awal pemasangan, tetapi proses validasi data belum bisa dijalankan sampai alamat ini terisi.
                 </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border p-4 space-y-4">
+              <div>
+                <p className="font-medium">Pemisahan Layanan Logis</p>
+                <p className="text-sm text-muted-foreground">
+                  Gunakan ini kalau auth, CTS, connector, monitoring, atau adapter mulai dipisah ke host yang berbeda. Kalau dikosongkan, sistem tetap pakai alamat utama.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  ["auth", "Identity & Auth"],
+                  ["cts", "CTS / Governance"],
+                  ["connector", "Connector Control Plane"],
+                  ["monitoring", "Monitoring & Runtime"],
+                  ["adapter", "Adapter Service"],
+                ].map(([serviceKey, label]) => (
+                  <div key={serviceKey} className="space-y-2">
+                    <Label htmlFor={`service-${serviceKey}`}>{label}</Label>
+                    <Input
+                      id={`service-${serviceKey}`}
+                      value={form.services[serviceKey as keyof typeof form.services]}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          services: {
+                            ...prev.services,
+                            [serviceKey]: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder={serviceKey === "adapter" ? form.adapterEndpoint || "http://adapter-host" : form.apiBaseUrl || "http://cts-host/api/v1"}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 

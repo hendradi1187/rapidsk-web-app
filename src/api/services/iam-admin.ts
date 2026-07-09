@@ -94,22 +94,45 @@ export interface CreateGroupPermissionRequest {
   constraints?: Record<string, unknown>;
 }
 
+// Ambil SEMUA halaman untuk endpoint paginated. Penting: satu group bisa punya
+// ratusan permission (mis. 264). Kalau cuma ambil 1 halaman, sisanya tampil OFF
+// di matrix → di-toggle ON → POST duplikat → 409 IntegrityError.
+async function fetchAllPages<T>(
+  fetchPage: (limit: number, offset: number) => Promise<PaginatedResponse<T>>,
+): Promise<PaginatedResponse<T>> {
+  const limit = 100;
+  let offset = 0;
+  const all: T[] = [];
+  let total = 0;
+  for (let i = 0; i < 200; i++) {
+    const page = await fetchPage(limit, offset);
+    const rows = page?.data ?? [];
+    all.push(...rows);
+    total = typeof page?.total === "number" ? page.total : all.length;
+    if (rows.length < limit || all.length >= total) break;
+    offset += limit;
+  }
+  return { data: all, total: all.length, limit, offset: 0 };
+}
+
 export const iamAdminApi = {
-  async listApplications(limit = 100, offset = 0) {
-    const response = await apiClient.get<PaginatedResponse<IamApplication>>(
-      "/identity-provider/iam/applications",
-      { params: { limit, offset } },
+  async listApplications() {
+    return fetchAllPages<IamApplication>((limit, offset) =>
+      authClient
+        .get<PaginatedResponse<IamApplication>>("/identity-provider/iam/applications", {
+          params: { limit, offset },
+        })
+        .then((r) => r.data),
     );
-    return response.data;
   },
 
   async createApplication(body: CreateIamApplicationRequest) {
-    const response = await apiClient.post<IamApplication>("/identity-provider/iam/applications", body);
+    const response = await authClient.post<IamApplication>("/identity-provider/iam/applications", body);
     return response.data;
   },
 
   async updateApplication(applicationId: string, body: Partial<CreateIamApplicationRequest>) {
-    const response = await apiClient.put<IamApplication>(
+    const response = await authClient.put<IamApplication>(
       `/identity-provider/iam/applications/${applicationId}`,
       body,
     );
@@ -117,24 +140,26 @@ export const iamAdminApi = {
   },
 
   async deleteApplication(applicationId: string) {
-    await apiClient.delete(`/identity-provider/iam/applications/${applicationId}`);
+    await authClient.delete(`/identity-provider/iam/applications/${applicationId}`);
   },
 
-  async listApiResources(limit = 100, offset = 0) {
-    const response = await apiClient.get<PaginatedResponse<IamApiResource>>(
-      "/identity-provider/iam/api-resources",
-      { params: { limit, offset } },
+  async listApiResources() {
+    return fetchAllPages<IamApiResource>((limit, offset) =>
+      authClient
+        .get<PaginatedResponse<IamApiResource>>("/identity-provider/iam/api-resources", {
+          params: { limit, offset },
+        })
+        .then((r) => r.data),
     );
-    return response.data;
   },
 
   async createApiResource(body: CreateIamApiResourceRequest) {
-    const response = await apiClient.post<IamApiResource>("/identity-provider/iam/api-resources", body);
+    const response = await authClient.post<IamApiResource>("/identity-provider/iam/api-resources", body);
     return response.data;
   },
 
   async updateApiResource(apiResourceId: string, body: Partial<CreateIamApiResourceRequest>) {
-    const response = await apiClient.put<IamApiResource>(
+    const response = await authClient.put<IamApiResource>(
       `/identity-provider/iam/api-resources/${apiResourceId}`,
       body,
     );
@@ -142,24 +167,26 @@ export const iamAdminApi = {
   },
 
   async deleteApiResource(apiResourceId: string) {
-    await apiClient.delete(`/identity-provider/iam/api-resources/${apiResourceId}`);
+    await authClient.delete(`/identity-provider/iam/api-resources/${apiResourceId}`);
   },
 
-  async listPermissions(limit = 100, offset = 0) {
-    const response = await apiClient.get<PaginatedResponse<IamPermission>>(
-      "/identity-provider/iam/permissions",
-      { params: { limit, offset } },
+  async listPermissions() {
+    return fetchAllPages<IamPermission>((limit, offset) =>
+      authClient
+        .get<PaginatedResponse<IamPermission>>("/identity-provider/iam/permissions", {
+          params: { limit, offset },
+        })
+        .then((r) => r.data),
     );
-    return response.data;
   },
 
   async createPermission(body: CreateIamPermissionRequest) {
-    const response = await apiClient.post<IamPermission>("/identity-provider/iam/permissions", body);
+    const response = await authClient.post<IamPermission>("/identity-provider/iam/permissions", body);
     return response.data;
   },
 
   async updatePermission(permissionId: string, body: Partial<CreateIamPermissionRequest>) {
-    const response = await apiClient.put<IamPermission>(
+    const response = await authClient.put<IamPermission>(
       `/identity-provider/iam/permissions/${permissionId}`,
       body,
     );
@@ -167,35 +194,40 @@ export const iamAdminApi = {
   },
 
   async deletePermission(permissionId: string) {
-    await apiClient.delete(`/identity-provider/iam/permissions/${permissionId}`);
+    await authClient.delete(`/identity-provider/iam/permissions/${permissionId}`);
   },
 
   async linkPermissionApiResources(permissionId: string, apiResourceIds: string[]) {
-    const response = await apiClient.post(
+    const response = await authClient.post(
       `/identity-provider/iam/permissions/${permissionId}/api-resources`,
       { api_resource_ids: apiResourceIds },
     );
     return response.data;
   },
 
-  async listGroups(limit = 100, offset = 0) {
-    const response = await apiClient.get<PaginatedResponse<IamUserGroup>>(
-      "/identity-provider/user/groups/",
-      { params: { limit, offset } },
+  async listGroups() {
+    return fetchAllPages<IamUserGroup>((limit, offset) =>
+      authClient
+        .get<PaginatedResponse<IamUserGroup>>("/identity-provider/user/groups/", {
+          params: { limit, offset },
+        })
+        .then((r) => r.data),
     );
-    return response.data;
   },
 
-  async listGroupPermissions(groupId: string, limit = 100, offset = 0) {
-    const response = await apiClient.get<PaginatedResponse<IamGroupPermission>>(
-      `/identity-provider/iam/groups/${groupId}/permissions`,
-      { params: { limit, offset } },
+  async listGroupPermissions(groupId: string) {
+    return fetchAllPages<IamGroupPermission>((limit, offset) =>
+      authClient
+        .get<PaginatedResponse<IamGroupPermission>>(
+          `/identity-provider/iam/groups/${groupId}/permissions`,
+          { params: { limit, offset } },
+        )
+        .then((r) => r.data),
     );
-    return response.data;
   },
 
   async grantGroupPermission(groupId: string, body: CreateGroupPermissionRequest) {
-    const response = await apiClient.post<IamGroupPermission>(
+    const response = await authClient.post<IamGroupPermission>(
       `/identity-provider/iam/groups/${groupId}/permissions`,
       body,
     );
@@ -203,7 +235,7 @@ export const iamAdminApi = {
   },
 
   async updateGroupPermission(groupId: string, groupPermissionId: string, constraints: Record<string, unknown>) {
-    const response = await apiClient.put<IamGroupPermission>(
+    const response = await authClient.put<IamGroupPermission>(
       `/identity-provider/iam/groups/${groupId}/permissions/${groupPermissionId}`,
       { constraints },
     );
@@ -211,6 +243,6 @@ export const iamAdminApi = {
   },
 
   async deleteGroupPermission(groupId: string, groupPermissionId: string) {
-    await apiClient.delete(`/identity-provider/iam/groups/${groupId}/permissions/${groupPermissionId}`);
+    await authClient.delete(`/identity-provider/iam/groups/${groupId}/permissions/${groupPermissionId}`);
   },
 };

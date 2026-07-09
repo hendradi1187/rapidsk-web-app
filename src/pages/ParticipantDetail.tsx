@@ -931,6 +931,49 @@ const ParticipantDetail = () => {
                         </Button>
                       )}
                     </div>
+                    <div className="rounded-lg border border-border bg-background p-4 md:col-span-2 xl:col-span-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Urutan Perapihan Participant</p>
+                          <p className="mt-1 text-sm text-muted-foreground">Ikuti dari atas ke bawah supaya binding, domain, kontrak, dan adapter participant ini rapi.</p>
+                        </div>
+                        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">
+                          {readinessChecklist.filter((item) => item.done).length}/{readinessChecklist.length} selesai
+                        </Badge>
+                      </div>
+                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {readinessChecklist.map((item, index) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => {
+                              const next = new URLSearchParams(searchParams);
+                              if (item.targetTab === "info") {
+                                next.delete("tab");
+                              } else {
+                                next.set("tab", item.targetTab);
+                              }
+                              setSearchParams(next, { replace: true });
+                            }}
+                            className="rounded-xl border border-border bg-muted/20 p-4 text-left transition hover:border-primary/30 hover:bg-muted/40"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-1">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Langkah {index + 1}</p>
+                                <p className="text-sm font-semibold">{item.title}</p>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={item.done ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}
+                              >
+                                {item.done ? "Siap" : "Tindak lanjut"}
+                              </Badge>
+                            </div>
+                            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{item.note}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -8,6 +8,7 @@ import {
   getPreferredOrganizationName,
   setPreferredOrganization,
 } from "@/lib/session-binding";
+import { getStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
 
 export interface AvailableDomain {
@@ -44,9 +45,6 @@ const DomainContext = createContext<DomainContextValue>({
   participantDomainCount: 0,
   switchDomain: () => {},
 });
-
-const normalize = (value: string | null | undefined) =>
-  (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
  * Aturan governance_fallback:
@@ -103,6 +101,9 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 
         // ── Step 1: Resolve participant domains (binding resmi dari BE) ──────
         let participantDomainIds: string[] = [];
+        const participantDetail = participantId
+          ? await providersApi.getById(participantId).catch(() => null)
+          : null;
         if (participantId) {
           try {
             const pDomains = await providersApi.listDomains(participantId);
@@ -154,7 +155,12 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
           organizations: items,
           domainsByOrganizationId: organizationDomainsById,
           participantDomainIds,
-          preferredOrganizationId: preferredOrgId,
+          participantName: String(
+            participantDetail?.organization_name ??
+              participantDetail?.provider_name ??
+              "",
+          ).trim(),
+          preferredOrganizationId: storedParticipantOrganizationId ?? preferredOrgId,
           preferredOrganizationName: preferredOrgName,
         });
 

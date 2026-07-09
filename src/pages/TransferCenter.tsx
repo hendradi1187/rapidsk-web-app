@@ -117,12 +117,14 @@ const TransferCenter = () => {
   const transfersQ = useTransfers();
   const poolsQ = useConnectionPools();
   const providersQ = useProviders();
+  const participantAdaptersQ = useParticipantAdapters(effectiveParticipantId ?? "");
   const { data: dsData } = datasetsQ;
   const { data: cData } = contractsQ;
   const { data: agData } = agreementsQ;
   const { data: trData } = transfersQ;
   const { data: poolsData } = poolsQ;
   const { data: providersData } = providersQ;
+  const { data: participantAdaptersData } = participantAdaptersQ;
   const polQ = useQuery({
     queryKey: ["dataset-policies", domainId],
     queryFn: () => policiesApi.list(domainId!),
@@ -178,6 +180,15 @@ const TransferCenter = () => {
     [adminContextReady, trData, effectiveParticipantId, datasets],
   );
   const pools = (poolsData ?? []) as ConnectionPoolItem[];
+  const participantAdapters = useMemo(
+    () =>
+      ((participantAdaptersData ?? []) as Array<{
+        id: string;
+        type?: string;
+        endpoint?: { url?: string | null } | null;
+      }>),
+    [participantAdaptersData],
+  );
   const datasetPolicies = useMemo(
     () => ((polQ.data ?? []) as Policy[]),
     [polQ.data],
@@ -307,22 +318,39 @@ const TransferCenter = () => {
   const [transferBodyMap, setTransferBodyMap] = useState<Record<string, TransferStartBody>>(() =>
     readTransferBodyMap(),
   );
-  const resolvePersistedTransferMode = (transferId: string): TransferMode | null =>
-    transferModeMap[transferId] ?? transferBodyMap[transferId]?.mode ?? null;
+  const resolvePersistedTransferMode = (
+    transfer: { id: string; mode?: string | null } | string,
+  ): TransferMode | null => {
+    const transferId = typeof transfer === "string" ? transfer : transfer.id;
+    const rawMode =
+      transferModeMap[transferId] ??
+      transferBodyMap[transferId]?.mode ??
+      (typeof transfer === "string" ? null : transfer.mode ?? null);
+
+    if (!rawMode) return null;
+    const normalized = String(rawMode).trim().toLowerCase();
+    if (normalized.includes("persistent")) return "persistent";
+    if (normalized.includes("direct")) return "direct";
+    return null;
+  };
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [previewTransfer, setPreviewTransfer] = useState<TransferPreviewState | null>(null);
 
-  // Adapter lookup: dataset endpoint → match ke adapter url participant
+  // Adapter lookup: endpoint dataset dicocokkan dengan adapter participant yang memang terdaftar
   const adapterForDataset = (ds?: typeof datasets[number]) => {
-    if (!ds?.endpoint_url) return null;
-    // Kalau endpoint dataset mengandung keyword adapter atau cocok dengan salah satu adapter participant,
-    // kita mark sebagai via-adapter. Saat ini FE tidak punya data adapter di sini — info ini ada di
-    // ParticipantDetail. Placeholder: cek via keyword "adapter" di URL.
-    const url = ds.endpoint_url ?? "";
-    if (url.includes("adapter") || url.includes("gis-adapter") || url.includes("ds-adapter")) {
-      return { url, type: "GIS_STUDIO" };
-    }
-    return null;
+    const datasetUrl = normalizeUrlCandidate(ds?.endpoint_url);
+    if (!datasetUrl) return null;
+
+    const matchedAdapter = participantAdapters.find((adapter) => {
+      const adapterUrl = normalizeUrlCandidate(adapter.endpoint?.url);
+      return !!adapterUrl && (datasetUrl === adapterUrl || datasetUrl.startsWith(`${adapterUrl}/`));
+    });
+
+    if (!matchedAdapter) return null;
+    return {
+      url: String(matchedAdapter.endpoint?.url ?? ds?.endpoint_url ?? ""),
+      type: String(matchedAdapter.type ?? "GIS_STUDIO"),
+    };
   };
 
   useEffect(() => {
@@ -406,7 +434,11 @@ const TransferCenter = () => {
   };
 
   const resumeTransfer = async (transferId: string) => {
-    const mode = resolvePersistedTransferMode(transferId);
+    const latestKnownTransfer = transfers.find((item) => item.id === transferId);
+    const mode = resolvePersistedTransferMode({
+      id: transferId,
+      mode: latestKnownTransfer?.mode ?? null,
+    });
     const body = transferBodyMap[transferId];
     if (!mode || !body) {
       toast.warning("Data transfer lama tidak lengkap. Jalankan ulang dari tabel kewajiban.");
@@ -529,10 +561,10 @@ const TransferCenter = () => {
 
       step("memindahkan data");
       let final = "INITIATED";
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 45; i++) {
         const st = await transfersApi.status(transfer_process_id);
         final = String(st.status).toUpperCase();
-        if (final === "COMPLETED" || final === "FAILED") break;
+        if (["COMPLETED", "FAILED", "PAUSED"].includes(final)) break;
         await sleep(2000);
       }
       if (final === "COMPLETED") {
@@ -883,11 +915,11 @@ const TransferCenter = () => {
                     <TableCell className="text-sm">{dsName(t.dataset_id)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {resolvePersistedTransferMode(t.id) === "persistent"
+                        {resolvePersistedTransferMode(t) === "persistent"
                           ? "Persistent Transfer"
-                          : resolvePersistedTransferMode(t.id) === "direct"
+                          : resolvePersistedTransferMode(t) === "direct"
                             ? "Direct Stream"
-                            : "Unknown"}
+                            : "Belum tercatat"}
                       </Badge>
                     </TableCell>
                     <TableCell><Badge variant="outline" className={STATUS_STYLE[String(t.status).toUpperCase()] ?? ""}>{t.status}</Badge></TableCell>
@@ -942,7 +974,7 @@ const TransferCenter = () => {
                         )}
 
                         {/* Download untuk persistent COMPLETED */}
-                        {resolvePersistedTransferMode(t.id) === "persistent" && String(t.status).toUpperCase() === "COMPLETED" && (
+                        {resolvePersistedTransferMode(t) === "persistent" && String(t.status).toUpperCase() === "COMPLETED" && (
                           <Button size="sm" variant="outline" className="h-7 text-xs"
                             onClick={() => downloadPersistentResult(t)}>
                             <Download className="w-3 h-3 mr-1" /> Download

@@ -22,7 +22,7 @@ export const juknisApi = {
     domainId: string,
     body: { overrides?: Record<string, JuknisOverride>; include_dictionary?: boolean },
   ): Promise<JuknisApplyResult> => {
-    const res = await apiClient.post(`/policy-contract/${domainId}/apply-juknis`, {
+    const res = await ctsClient.post(`/policy-contract/${domainId}/apply-juknis`, {
       overrides: body.overrides ?? {},
       include_dictionary: body.include_dictionary ?? true,
     });

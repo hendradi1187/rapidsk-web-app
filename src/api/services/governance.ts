@@ -87,7 +87,7 @@ export const organizationsApi = {
     const rows: Organization[] = [];
 
     do {
-      const res = await apiClient.get("/governance/organizations/", {
+      const res = await ctsClient.get("/governance/organizations/", {
         params: { limit, offset },
       });
       const batch = unwrap(res).map(normalizeOrganization) as Organization[];
@@ -109,7 +109,7 @@ export const organizationsApi = {
   },
 
   listDomains: async (orgId: string): Promise<OrganizationDomain[]> => {
-    const res = await apiClient.get(`/governance/organizations/${orgId}/domains`);
+    const res = await ctsClient.get(`/governance/organizations/${orgId}/domains`);
     return unwrap(res).map((d: any) => ({
       domain_id: d.id,
       domain_name: d.name,
@@ -137,17 +137,17 @@ export const organizationsApi = {
   },
 
   create: async (data: OrganizationCreateRequest): Promise<Organization> => {
-    const res = await apiClient.post("/governance/organizations/", buildOrganizationCreatePayload(data));
+    const res = await ctsClient.post("/governance/organizations/", buildOrganizationCreatePayload(data));
     return normalizeOrganization(res.data);
   },
 
   update: async (id: string, data: OrganizationUpdateRequest): Promise<Organization> => {
-    const res = await apiClient.patch(`/governance/organizations/${id}`, data);
+    const res = await ctsClient.patch(`/governance/organizations/${id}`, data);
     return normalizeOrganization(res.data);
   },
 
   remove: async (id: string): Promise<void> => {
-    await apiClient.delete(`/governance/organizations/${id}`);
+    await ctsClient.delete(`/governance/organizations/${id}`);
   },
 
   // Buat governance domain di bawah organisasi. code 2–20, description ≥10.
@@ -155,7 +155,7 @@ export const organizationsApi = {
     orgId: string,
     data: OrganizationDomainCreateRequest,
   ): Promise<OrganizationDomain> => {
-    const res = await apiClient.post(`/governance/organizations/${orgId}/domains`, data);
+    const res = await ctsClient.post(`/governance/organizations/${orgId}/domains`, data);
     const d = res.data as any;
     return {
       domain_id: d.id,
@@ -171,7 +171,7 @@ export const organizationsApi = {
     domainId: string,
     data: OrganizationDomainUpdateRequest,
   ): Promise<OrganizationDomain> => {
-    const res = await apiClient.patch(`/governance/organizations/${orgId}/domains/${domainId}`, data);
+    const res = await ctsClient.patch(`/governance/organizations/${orgId}/domains/${domainId}`, data);
     const d = res.data as any;
     return {
       domain_id: d.id,
@@ -232,38 +232,38 @@ const mapPolicy = (p: any): Policy => ({
 // Dataset-policies (domain-scoped) → tipe Policy flat + type + level + domain.
 export const policiesApi = {
   list: async (domainId: string): Promise<PolicyListResponse> => {
-    const res = await apiClient.get(`/policy-contract/${domainId}/dataset-policies`);
+    const res = await ctsClient.get(`/policy-contract/${domainId}/dataset-policies`);
     return unwrap(res).map(mapPolicy) as unknown as PolicyListResponse;
   },
 
   create: async (domainId: string, body: PolicyCreateRequest): Promise<Policy> => {
-    const res = await apiClient.post(`/policy-contract/${domainId}/dataset-policies`, body);
+    const res = await ctsClient.post(`/policy-contract/${domainId}/dataset-policies`, body);
     return mapPolicy(res.data as any);
   },
 
   update: async (domainId: string, policyId: string, body: PolicyUpdateRequest): Promise<Policy> => {
-    const res = await apiClient.patch(`/policy-contract/${domainId}/dataset-policies/${policyId}`, body);
+    const res = await ctsClient.patch(`/policy-contract/${domainId}/dataset-policies/${policyId}`, body);
     return mapPolicy(res.data as any);
   },
 
   remove: async (domainId: string, policyId: string): Promise<void> => {
-    await apiClient.delete(`/policy-contract/${domainId}/dataset-policies/${policyId}`);
+    await ctsClient.delete(`/policy-contract/${domainId}/dataset-policies/${policyId}`);
   },
 };
 
 export const connectionPoolsApi = {
   list: async (): Promise<ConnectionPoolItem[]> => {
-    const res = await apiClient.get("/onboarding/connection-pools");
+    const res = await ctsClient.get("/onboarding/connection-pools");
     return unwrap(res) as ConnectionPoolItem[];
   },
 
   create: async (body: ConnectionPoolCreateRequest): Promise<ConnectionPoolItem> => {
-    const res = await apiClient.post("/onboarding/connection-pools", body);
+    const res = await ctsClient.post("/onboarding/connection-pools", body);
     return res.data as ConnectionPoolItem;
   },
 
   update: async (id: string, body: ConnectionPoolUpdateRequest): Promise<ConnectionPoolItem> => {
-    const res = await apiClient.patch(`/onboarding/connection-pools/${id}`, body);
+    const res = await ctsClient.patch(`/onboarding/connection-pools/${id}`, body);
     return res.data as ConnectionPoolItem;
   },
 

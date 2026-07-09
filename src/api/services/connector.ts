@@ -1,18 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { connectorClient as apiClient } from "../clients";
 
-// Connector transfer (read-only). BE: GET /connector/{domainId}/transfers → array.
 export interface TransferItem {
   id: string;
   domain_id: string;
   agreement_id: string;
   dataset_id: string;
-  status: string; // INITIATED | TRANSFERRING | COMPLETED | FAILED | PAUSED
+  status: string;
+  mode?: string | null;
   total_size?: number | null;
   transferred_size?: number;
   bytes_transferred?: number;
-  checksum_sha256?: string | null; // integritas data (diisi saat COMPLETED)
-  record_count?: number | null; // jumlah fitur/record (best-effort)
+  checksum_sha256?: string | null;
+  record_count?: number | null;
   error_message?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -58,10 +58,12 @@ export interface TransferProjectionItem {
 
 export type TransferMode = "direct" | "persistent";
 
+const clampMonitoringLimit = (limit: number) => Math.min(100, Math.max(1, Math.trunc(limit || 100)));
+
 export const transfersApi = {
   list: async (domainId: string): Promise<TransferItem[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/connector/${domainId}/transfers`);
+    const res = await connectorClient.get(`/connector/${domainId}/transfers`);
     const data = (res?.data?.data ?? res?.data ?? []) as any[];
     return data.map((t) => ({
       id: t.id,
@@ -69,6 +71,7 @@ export const transfersApi = {
       agreement_id: t.agreement_id,
       dataset_id: t.dataset_id,
       status: t.status,
+      mode: t.mode ?? null,
       total_size: t.total_size,
       transferred_size: t.transferred_size,
       bytes_transferred: t.bytes_transferred,
@@ -80,13 +83,12 @@ export const transfersApi = {
     }));
   },
 
-  // Mulai proses transfer: buat transfer process (INITIATED).
   initiate: async (body: {
     domain_id: string;
     agreement_id: string;
     dataset_id: string;
   }): Promise<{ transfer_process_id: string; status?: string }> => {
-    const res = await apiClient.post(`/connector/consumer/initiate`, body);
+    const res = await connectorClient.post(`/connector/consumer/initiate`, body);
     const d = res?.data ?? {};
     return {
       transfer_process_id: d.transfer_process_id ?? d.id,
@@ -107,16 +109,15 @@ export const transfersApi = {
     transfer_id: string;
     status: string;
   }> => {
-    const res = await apiClient.post(`/connector/provider/initiate`, body);
+    const res = await connectorClient.post(`/connector/provider/initiate`, body);
     return res.data;
   },
 
-  // Jalankan pemindahan data (direct). BE butuh body: domain_id, agreement_id, dataset_id.
   startDirect: async (
     transferProcessId: string,
     body: { domain_id: string; agreement_id: string; dataset_id: string; resume_from_byte?: number },
   ): Promise<void> => {
-    await apiClient.post(`/connector/consumer/direct/${transferProcessId}/start`, body);
+    await connectorClient.post(`/connector/consumer/direct/${transferProcessId}/start`, body);
   },
 
   providerStartDirect: async (
@@ -130,7 +131,7 @@ export const transfersApi = {
       transfer_mode?: "direct_stream" | "persistent";
     },
   ): Promise<void> => {
-    await apiClient.post(`/connector/provider/direct/${transferProcessId}/start`, body);
+    await connectorClient.post(`/connector/provider/direct/${transferProcessId}/start`, body);
   },
 
   providerCheck: async (
@@ -144,24 +145,22 @@ export const transfersApi = {
       transfer_mode?: "direct_stream" | "persistent";
     },
   ): Promise<Record<string, unknown>> => {
-    const res = await apiClient.post(`/connector/provider/${transferProcessId}/check`, body);
+    const res = await connectorClient.post(`/connector/provider/${transferProcessId}/check`, body);
     return res.data;
   },
 
-  // Jalankan pemindahan data (persistent). BE butuh body: domain_id, agreement_id, dataset_id.
   startPersistent: async (
     transferProcessId: string,
     body: { domain_id: string; agreement_id: string; dataset_id: string; resume_from_byte?: number },
   ): Promise<void> => {
-    await apiClient.post(`/connector/consumer/persistent/${transferProcessId}/start`, body);
+    await connectorClient.post(`/connector/consumer/persistent/${transferProcessId}/start`, body);
   },
 
-  // Download data persistent.
   downloadPersistent: async (
     transferProcessId: string,
     body: { domain_id: string; agreement_id: string; dataset_id: string },
   ): Promise<{ blob: Blob; filename: string }> => {
-    const res = await apiClient.get(
+    const res = await connectorClient.get(
       `/connector/consumer/persistent/${transferProcessId}/download/${body.domain_id}/domain/${body.agreement_id}/agreement/${body.dataset_id}/dataset`,
       { responseType: "blob" },
     );
@@ -173,22 +172,37 @@ export const transfersApi = {
     };
   },
 
-  // Status satu transfer.
   status: async (transferProcessId: string): Promise<TransferItem> => {
-    const res = await apiClient.get(`/connector/${transferProcessId}/status`);
-    return res.data as TransferItem;
+    const res = await connectorClient.get(`/connector/${transferProcessId}/status`);
+    const data = (res?.data?.data ?? res?.data ?? {}) as Record<string, unknown>;
+    return {
+      id: String(data.id ?? transferProcessId),
+      domain_id: String(data.domain_id ?? ""),
+      agreement_id: String(data.agreement_id ?? ""),
+      dataset_id: String(data.dataset_id ?? ""),
+      status: String(data.status ?? "UNKNOWN"),
+      mode: typeof data.mode === "string" ? data.mode : null,
+      total_size: typeof data.total_size === "number" ? data.total_size : null,
+      transferred_size: typeof data.transferred_size === "number" ? data.transferred_size : undefined,
+      bytes_transferred: typeof data.bytes_transferred === "number" ? data.bytes_transferred : undefined,
+      checksum_sha256: typeof data.checksum_sha256 === "string" ? data.checksum_sha256 : null,
+      record_count: typeof data.record_count === "number" ? data.record_count : null,
+      error_message: typeof data.error_message === "string" ? data.error_message : null,
+      created_at: typeof data.created_at === "string" ? data.created_at : null,
+      updated_at: typeof data.updated_at === "string" ? data.updated_at : null,
+    };
   },
 
   listHeartbeats: async (limit = 100): Promise<ConnectorHeartbeatItem[]> => {
-    const res = await apiClient.get(`/cts/monitoring/connector-heartbeats`, {
-      params: { limit },
+    const res = await monitoringClient.get(`/cts/monitoring/connector-heartbeats`, {
+      params: { limit: clampMonitoringLimit(limit) },
     });
     return (res.data ?? []) as ConnectorHeartbeatItem[];
   },
 
   listTransferProjections: async (limit = 100): Promise<TransferProjectionItem[]> => {
-    const res = await apiClient.get(`/cts/monitoring/transfer-projections`, {
-      params: { limit },
+    const res = await monitoringClient.get(`/cts/monitoring/transfer-projections`, {
+      params: { limit: clampMonitoringLimit(limit) },
     });
     return (res.data ?? []) as TransferProjectionItem[];
   },
@@ -201,7 +215,7 @@ export const transfersApi = {
     instance_id?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<{ status: string }> => {
-    const res = await apiClient.post(`/connector/runtime/heartbeat/send`, body);
+    const res = await monitoringClient.post(`/connector/runtime/heartbeat/send`, body);
     return res.data;
   },
 
@@ -209,7 +223,7 @@ export const transfersApi = {
     limit?: number;
     max_retry_count?: number;
   }): Promise<{ sent: number; failed: number; pending_before: number }> => {
-    const res = await apiClient.post(`/connector/runtime/transfer-events/publish`, body);
+    const res = await monitoringClient.post(`/connector/runtime/transfer-events/publish`, body);
     return res.data;
   },
 };

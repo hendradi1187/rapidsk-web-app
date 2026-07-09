@@ -35,7 +35,7 @@ const fetchAllContracts = async (url: string): Promise<any[]> => {
   let offset = 0;
   const limit = 100;
   for (let i = 0; i < 100; i++) {
-    const res = await apiClient.get(url, { params: { limit, offset } });
+    const res = await ctsClient.get(url, { params: { limit, offset } });
     const body = res?.data;
     const rows = body?.data ?? body ?? [];
     out.push(...rows);
@@ -62,7 +62,7 @@ export const contractsApi = {
   },
 
   get: async (domainId: string, id: string): Promise<ContractDetail> => {
-    const res = await apiClient.get(`/policy-contract/${domainId}/contracts/${id}`);
+    const res = await ctsClient.get(`/policy-contract/${domainId}/contracts/${id}`);
     return res.data as ContractDetail;
   },
 
@@ -78,7 +78,7 @@ export const contractsApi = {
     },
   ): Promise<ContractDetail> => {
     const { datasets, ...rest } = body;
-    const res = await apiClient.post(`/policy-contract/${domainId}/contracts`, {
+    const res = await ctsClient.post(`/policy-contract/${domainId}/contracts`, {
       ...rest,
       contract_policies: [],
       datasets: datasets ?? [],
@@ -93,7 +93,7 @@ export const contractsApi = {
     contract: { id: string; consumer_id?: string; provider_id?: string; name: string },
     status: "APPROVED" | "REJECTED" | "ACTIVE" | "CANCELLED" | "EXPIRED",
   ): Promise<ContractDetail> => {
-    const res = await apiClient.patch(
+    const res = await ctsClient.patch(
       `/policy-contract/${domainId}/contracts/${contract.id}`,
       {
         consumer_id: contract.consumer_id,
@@ -112,7 +112,7 @@ export const contractsApi = {
     dataset_id: string,
     dataset_policy_id: string,
   ): Promise<ContractDetail> => {
-    const res = await apiClient.patch(
+    const res = await ctsClient.patch(
       `/policy-contract/${domainId}/contracts/${contract.id}`,
       {
         consumer_id: contract.consumer_id,
@@ -127,7 +127,7 @@ export const contractsApi = {
 
   agreements: async (domainId: string): Promise<any[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/policy-contract/${domainId}/agreements`);
+    const res = await ctsClient.get(`/policy-contract/${domainId}/agreements`);
     return unwrap(res);
   },
 };
@@ -137,7 +137,7 @@ export const contractsApi = {
 export const agreementsApi = {
   list: async (domainId: string): Promise<AgreementItem[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/policy-contract/${domainId}/agreements`);
+    const res = await ctsClient.get(`/policy-contract/${domainId}/agreements`);
     return unwrap(res).map((a: any) => ({
       id: a.id,
       contract_id: a.contract_id,
@@ -153,7 +153,7 @@ export const agreementsApi = {
     domainId: string,
     body: { contract_id: string; effective_from: string; effective_to: string },
   ): Promise<AgreementItem> => {
-    const res = await apiClient.post(
+    const res = await ctsClient.post(
       `/policy-contract/${domainId}/agreements`,
       body,
     );
@@ -166,7 +166,7 @@ export const agreementsApi = {
     agreement: { id: string; contract_id: string },
     status: "ACTIVE" | "APPROVED" | "REJECTED",
   ): Promise<AgreementItem> => {
-    const res = await apiClient.patch(
+    const res = await ctsClient.patch(
       `/policy-contract/${domainId}/agreements/${agreement.id}`,
       { contract_id: agreement.contract_id, status },
     );
@@ -203,7 +203,7 @@ export const contractPoliciesApi = {
     return rows as ContractPolicyItem[];
   },
   create: async (domainId: string, body: ContractPolicyInput): Promise<ContractPolicyItem> => {
-    const res = await apiClient.post(`/policy-contract/${domainId}/contract-policies`, body);
+    const res = await ctsClient.post(`/policy-contract/${domainId}/contract-policies`, body);
     return res.data as ContractPolicyItem;
   },
   update: async (
@@ -211,10 +211,10 @@ export const contractPoliciesApi = {
     id: string,
     body: Partial<ContractPolicyInput>,
   ): Promise<ContractPolicyItem> => {
-    const res = await apiClient.patch(`/policy-contract/${domainId}/contract-policies/${id}`, body);
+    const res = await ctsClient.patch(`/policy-contract/${domainId}/contract-policies/${id}`, body);
     return res.data as ContractPolicyItem;
   },
   remove: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/policy-contract/${domainId}/contract-policies/${id}`);
+    await ctsClient.delete(`/policy-contract/${domainId}/contract-policies/${id}`);
   },
 };

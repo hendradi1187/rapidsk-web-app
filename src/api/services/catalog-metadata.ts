@@ -39,7 +39,7 @@ export interface DatasetMetadataRow {
 export const vocabularyTermsApi = {
   list: async (domainId: string): Promise<VocabularyTermRow[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/data-catalog/${domainId}/vocabulary-terms`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/vocabulary-terms`);
     return unwrap(res) as VocabularyTermRow[];
   },
   create: async (
@@ -52,7 +52,7 @@ export const vocabularyTermsApi = {
       vocabulary_id: string;
     },
   ): Promise<VocabularyTermRow> => {
-    const res = await apiClient.post(`/data-catalog/${domainId}/vocabulary-terms`, body);
+    const res = await ctsClient.post(`/data-catalog/${domainId}/vocabulary-terms`, body);
     return res.data as VocabularyTermRow;
   },
   update: async (
@@ -60,25 +60,25 @@ export const vocabularyTermsApi = {
     id: string,
     body: Partial<{ term: string; datatype: string; unit: string | null; description: string | null }>,
   ): Promise<VocabularyTermRow> => {
-    const res = await apiClient.patch(`/data-catalog/${domainId}/vocabulary-terms/${id}`, body);
+    const res = await ctsClient.patch(`/data-catalog/${domainId}/vocabulary-terms/${id}`, body);
     return res.data as VocabularyTermRow;
   },
   remove: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/data-catalog/${domainId}/vocabulary-terms/${id}`);
+    await ctsClient.delete(`/data-catalog/${domainId}/vocabulary-terms/${id}`);
   },
 };
 
 export const metadataSchemasApi = {
   list: async (domainId: string): Promise<MetadataSchemaRow[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/data-catalog/${domainId}/metadata-schemas`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/metadata-schemas`);
     return unwrap(res) as MetadataSchemaRow[];
   },
   create: async (
     domainId: string,
     body: { schema_id: string; vocabulary_term_id: string; required: boolean; cardinality: Cardinality },
   ): Promise<MetadataSchemaRow> => {
-    const res = await apiClient.post(`/data-catalog/${domainId}/metadata-schemas`, body);
+    const res = await ctsClient.post(`/data-catalog/${domainId}/metadata-schemas`, body);
     return res.data as MetadataSchemaRow;
   },
   update: async (
@@ -86,25 +86,25 @@ export const metadataSchemasApi = {
     id: string,
     body: Partial<{ schema_id: string; vocabulary_term_id: string; required: boolean; cardinality: Cardinality }>,
   ): Promise<MetadataSchemaRow> => {
-    const res = await apiClient.patch(`/data-catalog/${domainId}/metadata-schemas/${id}`, body);
+    const res = await ctsClient.patch(`/data-catalog/${domainId}/metadata-schemas/${id}`, body);
     return res.data as MetadataSchemaRow;
   },
   remove: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/data-catalog/${domainId}/metadata-schemas/${id}`);
+    await ctsClient.delete(`/data-catalog/${domainId}/metadata-schemas/${id}`);
   },
 };
 
 export const datasetMetadatasApi = {
   list: async (domainId: string): Promise<DatasetMetadataRow[]> => {
     if (!domainId) return [];
-    const res = await apiClient.get(`/data-catalog/${domainId}/dataset-metadatas`);
+    const res = await ctsClient.get(`/data-catalog/${domainId}/dataset-metadatas`);
     return unwrap(res) as DatasetMetadataRow[];
   },
   create: async (
     domainId: string,
     body: { dataset_id: string; vocabulary_term_id: string; source: string; source_ref: string },
   ): Promise<DatasetMetadataRow> => {
-    const res = await apiClient.post(`/data-catalog/${domainId}/dataset-metadatas`, body);
+    const res = await ctsClient.post(`/data-catalog/${domainId}/dataset-metadatas`, body);
     return res.data as DatasetMetadataRow;
   },
   update: async (
@@ -112,10 +112,10 @@ export const datasetMetadatasApi = {
     id: string,
     body: Partial<{ dataset_id: string; vocabulary_term_id: string; source: string; source_ref: string }>,
   ): Promise<DatasetMetadataRow> => {
-    const res = await apiClient.patch(`/data-catalog/${domainId}/dataset-metadatas/${id}`, body);
+    const res = await ctsClient.patch(`/data-catalog/${domainId}/dataset-metadatas/${id}`, body);
     return res.data as DatasetMetadataRow;
   },
   remove: async (domainId: string, id: string): Promise<void> => {
-    await apiClient.delete(`/data-catalog/${domainId}/dataset-metadatas/${id}`);
+    await ctsClient.delete(`/data-catalog/${domainId}/dataset-metadatas/${id}`);
   },
 };

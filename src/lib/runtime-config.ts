@@ -19,6 +19,21 @@ export interface RuntimeSsoConfig {
   clientId: string;
 }
 
+export type RuntimeServiceName =
+  | "auth"
+  | "cts"
+  | "connector"
+  | "adapter"
+  | "monitoring";
+
+export interface RuntimeServicesConfig {
+  auth: string;
+  cts: string;
+  connector: string;
+  adapter: string;
+  monitoring: string;
+}
+
 export interface RuntimeConfig {
   initialized: boolean;
   publicAppUrl: string;
@@ -26,6 +41,7 @@ export interface RuntimeConfig {
   apiBaseUrl: string;
   /** Legacy adapter endpoint — kept for backward compat, prefer services.adapter */
   adapterEndpoint: string;
+  services: RuntimeServicesConfig;
   sso: RuntimeSsoConfig;
   /** Logical service URL map — primary source of truth for all HTTP clients */
   services: RuntimeServiceMap;
@@ -135,6 +151,35 @@ const parseJson = async <T>(response: Response): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+export function normalizeRuntimeConfig(
+  runtimeConfig?: Partial<RuntimeConfig> | null,
+): RuntimeConfig {
+  const normalizedApiBaseUrl = normalizeBaseUrl(
+    runtimeConfig?.apiBaseUrl || runtimeConfig?.services?.cts || defaultPrimaryApiBaseUrl,
+  );
+  const normalizedAdapterEndpoint = normalizeBaseUrl(
+    runtimeConfig?.adapterEndpoint || runtimeConfig?.services?.adapter || defaultAdapterEndpoint,
+  );
+
+  return {
+    initialized: Boolean(runtimeConfig?.initialized),
+    publicAppUrl: String(runtimeConfig?.publicAppUrl || defaultPublicAppUrl || ""),
+    apiBaseUrl: normalizedApiBaseUrl,
+    adapterEndpoint: normalizedAdapterEndpoint,
+    services: buildRuntimeServices(
+      runtimeConfig?.services,
+      normalizedApiBaseUrl,
+      normalizedAdapterEndpoint,
+    ),
+    sso: {
+      enabled: Boolean(runtimeConfig?.sso?.enabled),
+      keycloakUrl: String(runtimeConfig?.sso?.keycloakUrl || ""),
+      realm: String(runtimeConfig?.sso?.realm || ""),
+      clientId: String(runtimeConfig?.sso?.clientId || ""),
+    },
+  };
+}
+
 export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState> {
   try {
     const statusResponse = await fetch("/setup/status", {
@@ -154,6 +199,7 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
       warnings?: string[];
       blockingErrors?: string[];
       licenseState?: LicenseState | null;
+      serverPermissionValid?: boolean;
     }>(statusResponse);
 
     const setupStatus: SetupStatus = {
@@ -253,7 +299,7 @@ export function setRuntimeBootstrapState(state: RuntimeBootstrapState): void {
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
-  return getRuntimeBootstrapState().runtimeConfig ?? defaultRuntimeConfig;
+  return normalizeRuntimeConfig(getRuntimeBootstrapState().runtimeConfig ?? defaultRuntimeConfig);
 }
 
 export function getRuntimeServices(): RuntimeServiceMap {
@@ -266,7 +312,11 @@ export function getRuntimePublicAppUrl(): string {
 
 /** @deprecated use getRuntimeServices().cts or appropriate service key */
 export function getRuntimeBackendApiBaseUrl(): string {
-  return getRuntimeConfig().apiBaseUrl || defaultApiBaseUrl;
+  return (
+    getRuntimeServiceUrl("cts") ||
+    getRuntimeConfig().apiBaseUrl ||
+    normalizeBaseUrl(defaultPrimaryApiBaseUrl)
+  );
 }
 
 /** @deprecated use getRuntimeServices().adapter */
@@ -277,6 +327,10 @@ export function getRuntimeAdapterEndpoint(): string {
 /** Path-based routing — always /api/v1 for reverse proxy in prod. */
 export function getFrontendApiBasePath(): string {
   return "/api/v1";
+}
+
+export function getFrontendAdapterRuntimeBasePath(): string {
+  return "/adapter-runtime";
 }
 
 export function getRuntimeSsoConfig(): RuntimeSsoConfig {
