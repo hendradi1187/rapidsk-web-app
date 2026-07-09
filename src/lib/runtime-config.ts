@@ -74,6 +74,36 @@ export interface RuntimeBootstrapState {
   licenseState: LicenseState | null;
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+const normalizeBaseUrl = (value: string | undefined | null): string =>
+  String(value || '').trim().replace(/\/+$/, '');
+
+const buildRuntimeServices = (
+  services?: Partial<RuntimeServicesConfig> | null,
+  apiBaseUrl?: string | null,
+  adapterEndpoint?: string | null,
+): RuntimeServicesConfig => {
+  const normalizedPrimary = normalizeBaseUrl(
+    services?.cts ||
+      services?.auth ||
+      services?.connector ||
+      services?.monitoring ||
+      apiBaseUrl ||
+      defaultPrimaryApiBaseUrl,
+  );
+  const normalizedAdapter = normalizeBaseUrl(
+    services?.adapter || adapterEndpoint || defaultAdapterEndpoint,
+  );
+
+  return {
+    auth: normalizeBaseUrl(services?.auth || normalizedPrimary),
+    cts: normalizeBaseUrl(services?.cts || normalizedPrimary),
+    connector: normalizeBaseUrl(services?.connector || normalizedPrimary),
+    adapter: normalizedAdapter,
+    monitoring: normalizeBaseUrl(services?.monitoring || normalizedPrimary),
+  };
+};
+
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 const defaultApiBaseUrl =
   import.meta.env.VITE_API_BASE_URL || "/api/v1";

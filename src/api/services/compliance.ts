@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ctsClient as apiClient } from "../clients";
+import { ctsClient } from "../clients";
 
 // Modul kepatuhan (audit-compliance). Dua entitas:
 //  - Control  : definisi kontrol/kendali dari sebuah framework (mis. ISO, SPBE).

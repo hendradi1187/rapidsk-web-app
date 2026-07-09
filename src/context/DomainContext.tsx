@@ -98,6 +98,9 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 
         const preferredOrgId = getPreferredOrganizationId();
         const preferredOrgName = getPreferredOrganizationName();
+        const storedParticipantOrganizationId = participantId
+          ? getStoredParticipantOrganizationId(participantId)
+          : null;
 
         // ── Step 1: Resolve participant domains (binding resmi dari BE) ──────
         let participantDomainIds: string[] = [];
@@ -189,12 +192,32 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
         }
 
         // ── Step 4: Load domains untuk org terpilih ──────────────────────────
-        const domains: AvailableDomain[] = hasParticipantBinding
-          ? ((organizationDomainsById[chosenOrg.organization_id] ??
-              []) as AvailableDomain[])
-          : ((await organizationsApi.listDomains(
-              chosenOrg.organization_id
-            )) as AvailableDomain[]);
+        // Untuk SUPER_ADMIN/ADMIN (governance_fallback), kumpulkan semua domains
+        // dari semua orgs sehingga domain selector di navbar tampil lengkap.
+        let domains: AvailableDomain[];
+        if (!hasParticipantBinding && roleAllowsFallback) {
+          // Load domains dari semua orgs secara paralel
+          const allDomainArrays = await Promise.all(
+            items.map((org) =>
+              organizationsApi.listDomains(org.organization_id).catch(() => [] as AvailableDomain[])
+            )
+          );
+          const seen = new Set<string>();
+          domains = allDomainArrays
+            .flat()
+            .filter((d: AvailableDomain) => {
+              if (seen.has(d.domain_id)) return false;
+              seen.add(d.domain_id);
+              return true;
+            });
+        } else {
+          domains = hasParticipantBinding
+            ? ((organizationDomainsById[chosenOrg.organization_id] ??
+                []) as AvailableDomain[])
+            : ((await organizationsApi.listDomains(
+                chosenOrg.organization_id
+              )) as AvailableDomain[]);
+        }
 
         // ── Step 5: Tentukan source label ─────────────────────────────────────
         // governance_fallback HANYA untuk admin tanpa participant binding.
@@ -279,3 +302,4 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useDomain = (): DomainContextValue => useContext(DomainContext);
+

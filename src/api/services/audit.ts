@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ctsClient as apiClient } from "../clients";
+import { ctsClient } from "../clients";
 import type { AuditLogListResponse } from "../types/audit";
 
 // GX-Space audit-logs (hash-chain: prev_hash/entry_hash).

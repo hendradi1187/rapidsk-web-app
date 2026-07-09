@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { monitoringClient as apiClient } from "../clients";
+import { ctsClient } from "../clients";
 
 // Konfigurasi monitoring per domain × participant (onboarding/{domain_id}/monitorings).
 // Mengatur logging, aturan kepatuhan, dan notifikasi untuk sebuah participant.

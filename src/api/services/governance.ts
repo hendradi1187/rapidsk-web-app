@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ctsClient as apiClient } from "../clients";
+import { ctsClient } from "../clients";
 import type {
   ConnectionPoolCreateRequest,
   ConnectionPoolItem,
@@ -184,7 +184,7 @@ export const organizationsApi = {
 
   removeDomain: async (orgId: string, domainId: string): Promise<void> => {
     try {
-      await apiClient.delete(`/governance/organizations/${orgId}/domains/${domainId}`);
+      await ctsClient.delete(`/governance/organizations/${orgId}/domains/${domainId}`);
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus domain organisasi';
       const status = err?.response?.status;
@@ -269,7 +269,7 @@ export const connectionPoolsApi = {
 
   remove: async (id: string): Promise<void> => {
     try {
-      await apiClient.delete(`/onboarding/connection-pools/${id}`);
+      await ctsClient.delete(`/onboarding/connection-pools/${id}`);
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus connection pool';
       const status = err?.response?.status;
@@ -288,7 +288,7 @@ export const connectionPoolsApi = {
     connectionType: "CONSUMER" | "PROVIDER" = "PROVIDER",
   ): Promise<ConnectionPoolItem | null> => {
     try {
-      const res = await apiClient.get(
+      const res = await ctsClient.get(
         `/onboarding/${domainId}/agreements/${agreementId}/connection-pools/${connectionType}`,
       );
       return unwrap(res) as ConnectionPoolItem;

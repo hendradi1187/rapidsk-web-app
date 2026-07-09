@@ -1,4 +1,4 @@
-import { authClient as apiClient } from "../clients";
+import { authClient } from "../clients";
 
 interface PaginatedResponse<T> {
   data: T[];

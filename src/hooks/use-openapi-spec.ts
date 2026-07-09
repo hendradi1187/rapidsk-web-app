@@ -18,13 +18,10 @@ async function fetchOpenApiSpec(): Promise<OpenApiSpecResult> {
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     spec = await response.json();
-  } catch {
-    // Fallback to local copy in public/
-    source = "local";
-    const fallbackResponse = await fetch("/openapi.json");
-    if (!fallbackResponse.ok)
-      throw new Error("Failed to load OpenAPI specification");
-    spec = await fallbackResponse.json();
+  } catch (e) {
+    throw new Error(
+      `Gagal mengambil spesifikasi OpenAPI: ${e instanceof Error ? e.message : "network error"}`
+    );
   }
 
   const categories = parseOpenApiSpec(spec);
