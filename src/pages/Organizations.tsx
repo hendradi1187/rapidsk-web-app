@@ -58,6 +58,7 @@ import {
 import type { Organization, OrganizationDomain } from "@/api/types/governance";
 import { useAuth } from "@/context/AuthContext";
 import { canManageOrganizations } from "@/lib/feature-access";
+import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
 
 const ROLE_BY_CODE: Record<string, string> = {
   REGULATOR: "SKK Migas (Regulator)",
@@ -76,7 +77,7 @@ const emptyOrganizationForm = {
 const autoCode = (name: string): string => {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length >= 3) return words.map((w) => w[0]).join("").toUpperCase().slice(0, 20);
-  return words.join("").toUpperCase().slice(0, 20);
+  return sanitizeGovernanceCode(words.join(""));
 };
 
 const emptyDomainForm = {
@@ -176,7 +177,7 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
 
     const payload = {
       name: domainForm.name.trim(),
-      code: domainForm.code.trim(),
+      code: sanitizeGovernanceCode(domainForm.code),
       description: domainForm.description.trim(),
     };
 
@@ -347,7 +348,7 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
               <Input
                 id="domain-code"
                 value={domainForm.code}
-                onChange={(e) => setDomainForm((prev) => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                onChange={(e) => setDomainForm((prev) => ({ ...prev, code: sanitizeGovernanceCode(e.target.value) }))}
                 placeholder="Contoh: WK"
               />
             </div>

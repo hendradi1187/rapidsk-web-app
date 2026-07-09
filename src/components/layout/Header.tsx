@@ -16,6 +16,11 @@ import { useLogout } from "@/api/hooks/useAuth";
 import { useAuth, type AppRole } from "@/context/AuthContext";
 import { useDomain } from "@/context/DomainContext";
 import { ROLE_LABELS } from "@/config/rbac";
+import {
+  clearAppNotifications,
+  removeAppNotification,
+  useAppNotifications,
+} from "@/lib/app-notifications";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -33,11 +38,29 @@ const ROLE_BADGE_CLASS: Record<AppRole, string> = {
   GIS_ANALYST: "border-emerald-500 text-emerald-500",
 };
 
+const LEVEL_BADGE_CLASS = {
+  error: "bg-red-100 text-red-700 border-red-200",
+  warning: "bg-amber-100 text-amber-700 border-amber-200",
+  info: "bg-sky-100 text-sky-700 border-sky-200",
+  success: "bg-emerald-100 text-emerald-700 border-emerald-200",
+} as const;
+
+const formatNotificationTime = (createdAt: number) => {
+  const diffMs = Date.now() - createdAt;
+  const diffMin = Math.max(1, Math.floor(diffMs / 60000));
+  if (diffMin < 60) return `${diffMin}m lalu`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}j lalu`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay}h lalu`;
+};
+
 export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
   const { user, role } = useAuth();
   const { domainId, domainName, availableDomains, switchDomain } = useDomain();
+  const notifications = useAppNotifications();
   const canSwitchDomain = (role === "SUPER_ADMIN" || role === "ADMIN") && availableDomains.length > 1;
 
   const userName = user?.full_name || "User";
@@ -67,7 +90,6 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Search */}
           <div className="relative hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -76,7 +98,6 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
             />
           </div>
 
-          {/* Domain Switcher — hanya untuk SUPER_ADMIN / ADMIN dengan >1 domain */}
           {canSwitchDomain && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -109,13 +130,69 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
             </DropdownMenu>
           )}
 
-          {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full animate-pulse-amber" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative" aria-label="Notifikasi aplikasi">
+                <Bell className="w-5 h-5" />
+                {notifications.length > 0 ? (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-[10px] font-semibold text-accent-foreground flex items-center justify-center">
+                    {notifications.length > 9 ? "9+" : notifications.length}
+                  </span>
+                ) : (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-muted-foreground/40 rounded-full" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-96">
+              <DropdownMenuLabel className="flex items-center justify-between gap-2">
+                <span>Notifikasi</span>
+                {notifications.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => clearAppNotifications()}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    Bersihkan
+                  </button>
+                ) : null}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {notifications.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-muted-foreground">
+                  Belum ada notifikasi penting. Error global backend dan status penting akan muncul di sini.
+                </div>
+              ) : (
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.map((item) => (
+                    <div key={item.id} className="border-b border-border/60 px-3 py-3 last:border-b-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className={LEVEL_BADGE_CLASS[item.level]}>
+                              {item.level.toUpperCase()}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{formatNotificationTime(item.createdAt)}</span>
+                          </div>
+                          <p className="text-sm font-medium leading-snug">{item.title}</p>
+                          {item.description ? (
+                            <p className="text-xs text-muted-foreground leading-snug">{item.description}</p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeAppNotification(item.id)}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          tutup
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-          {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2 px-2">

@@ -11,25 +11,53 @@ const toMessage = (value: Primitive): string | null => {
   return null;
 };
 
+const mapKnownBackendMessage = (message: string): string => {
+  const normalized = message.trim();
+  const lowered = normalized.toLowerCase();
+
+  if (
+    lowered.includes("internal.local") &&
+    lowered.includes("email")
+  ) {
+    return "Backend IAM masih punya email dummy/reserved seperti @internal.local, jadi daftar user belum bisa dimuat sampai data itu dibersihkan di backend atau database.";
+  }
+
+  if (
+    lowered.includes("special-use or reserved name") &&
+    lowered.includes("email")
+  ) {
+    return "Backend IAM menolak email dummy/reserved, jadi daftar user belum bisa dimuat sampai data user bermasalah dibersihkan di backend atau database.";
+  }
+
+  if (
+    lowered.includes("domain code must be uppercase alphanumeric") ||
+    lowered.includes("uppercase alphanumeric with _ or - only")
+  ) {
+    return "Kode domain harus 2-20 karakter, huruf besar/angka saja, dan hanya boleh memakai underscore (_) atau dash (-).";
+  }
+
+  return normalized;
+};
+
 const formatLoc = (loc: unknown): string | null => {
   if (!Array.isArray(loc)) return null;
-  const path = loc
+  const pathValue = loc
     .map((item) => String(item))
     .filter((item) => item && item !== "body" && item !== "query" && item !== "path")
     .join(".");
-  return path || null;
+  return pathValue || null;
 };
 
 const flattenErrorsObject = (value: Record<string, unknown>): string[] =>
   Object.entries(value).flatMap(([field, detail]) => {
     if (Array.isArray(detail)) {
       return detail
-        .map((item) => toMessage(item as Primitive))
+        .map((item) => toMessage(item))
         .filter((item): item is string => Boolean(item))
         .map((item) => `${field}: ${item}`);
     }
 
-    const single = toMessage(detail as Primitive);
+    const single = toMessage(detail);
     return single ? [`${field}: ${single}`] : [];
   });
 
@@ -40,19 +68,25 @@ const extractMessages = (payload: unknown): string[] => {
     return payload.flatMap((item) => extractMessages(item));
   }
 
-  const single = toMessage(payload as Primitive);
+  const single = toMessage(payload);
   if (single) return [single];
 
   if (!isRecord(payload)) return [];
 
-  const directKeys = ["detail", "error", "message"] as const;
+  if ("field" in payload && "message" in payload) {
+    const field = toMessage(payload.field);
+    const message = toMessage(payload.message);
+    if (field && message) return [`${field}: ${message}`];
+  }
+
+  const directKeys = ["detail", "error", "message"];
   const directMessages = directKeys
     .flatMap((key) => {
       const value = payload[key];
       if (Array.isArray(value)) {
         return value.flatMap((item) => {
           if (isRecord(item) && ("msg" in item || "loc" in item)) {
-            const msg = toMessage(item.msg as Primitive);
+            const msg = toMessage(item.msg);
             const loc = formatLoc(item.loc);
             if (msg && loc) return `${loc}: ${msg}`;
             return msg ? [msg] : [];
@@ -78,7 +112,7 @@ const extractMessages = (payload: unknown): string[] => {
 };
 
 const dedupeMessages = (messages: string[]): string[] =>
-  Array.from(new Set(messages.map((item) => item.trim()).filter(Boolean)));
+  Array.from(new Set(messages.map((item) => mapKnownBackendMessage(item)).filter(Boolean)));
 
 const statusFallback = (status?: number, fallback?: string): string => {
   switch (status) {
@@ -120,7 +154,7 @@ export const getApiErrorMessage = (error: unknown, fallback?: string): string =>
   }
 
   if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
+    return mapKnownBackendMessage(error.message);
   }
 
   return fallback || "Terjadi kesalahan yang belum diketahui.";

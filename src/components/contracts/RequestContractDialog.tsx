@@ -121,7 +121,7 @@ export function RequestContractDialog({
 
   const submit = async () => {
     if (!valid) {
-      toast.error("Lengkapi pemohon, penyedia, nama (≥3), dan deskripsi.");
+      toast.error("Lengkapi pemohon, penyedia, pilih minimal satu dataset, nama (>=3), dan deskripsi.");
       return;
     }
     try {

@@ -28,6 +28,9 @@ import {
 } from "@/components/ui/select";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useDomain } from "@/context/DomainContext";
+import { useDatasets } from "@/api/hooks/useDatasets";
+import { useVocabularies } from "@/api/hooks/useVocabularies";
+import { schemasApi } from "@/api/services/schemas";
 import {
   vocabularyTermsApi,
   metadataSchemasApi,
@@ -71,6 +74,13 @@ const CatalogMetadata = () => {
   const [metaForm, setMetaForm] = useState({ dataset_id: "", vocabulary_term_id: "", source: "", source_ref: "" });
   const [deletingMeta, setDeletingMeta] = useState<DatasetMetadataRow | null>(null);
 
+  const vocabulariesQ = useVocabularies();
+  const datasetsQ = useDatasets();
+  const schemaCatalogQ = useQuery({
+    queryKey: ["catalog-metadata", "schema-catalog", domainId],
+    queryFn: () => schemasApi.list(domainId!),
+    enabled: !!domainId,
+  });
   const termsQ = useQuery({
     queryKey: ["catalog-metadata", "terms", domainId],
     queryFn: () => vocabularyTermsApi.list(domainId!),
@@ -90,6 +100,9 @@ const CatalogMetadata = () => {
   const terms = termsQ.data ?? [];
   const schemas = schemasQ.data ?? [];
   const metas = metasQ.data ?? [];
+  const vocabularyOptions = (vocabulariesQ.data ?? []) as Array<{ vocabulary_id: string; name: string }>;
+  const schemaOptions = (schemaCatalogQ.data ?? []) as Array<{ schema_id: string; vocabulary_name?: string | null; version?: string | null }>;
+  const datasetOptions = (datasetsQ.data ?? []) as Array<{ dataset_id: string; dataset_name: string }>;
 
   const termLabel = useMemo(() => {
     const map: Record<string, string> = {};
@@ -100,7 +113,7 @@ const CatalogMetadata = () => {
   // ── Vocabulary term handlers ──
   const openCreateTerm = () => {
     setEditingTerm(null);
-    setTermForm({ term: "", datatype: "", unit: "", description: "", vocabulary_id: "" });
+    setTermForm({ term: "", datatype: "", unit: "", description: "", vocabulary_id: vocabularyOptions[0]?.vocabulary_id ?? "" });
     setTermDialogOpen(true);
   };
   const openEditTerm = (t: VocabularyTermRow) => {
@@ -116,6 +129,14 @@ const CatalogMetadata = () => {
   };
   const saveTerm = async () => {
     if (!domainId) return;
+    if (!termForm.term.trim() || !termForm.datatype.trim()) {
+      toast.error("Istilah dan tipe data wajib diisi.");
+      return;
+    }
+    if (!editingTerm && !termForm.vocabulary_id.trim()) {
+      toast.error("Pilih vocabulary induk dulu sebelum menambah istilah.");
+      return;
+    }
     try {
       setBusyAction("save-term");
       if (editingTerm) {
@@ -162,7 +183,7 @@ const CatalogMetadata = () => {
   // ── Metadata schema handlers ──
   const openCreateSchema = () => {
     setEditingSchema(null);
-    setSchemaForm({ schema_id: "", vocabulary_term_id: terms[0]?.id ?? "", required: false, cardinality: "SINGLE" });
+    setSchemaForm({ schema_id: schemaOptions[0]?.schema_id ?? "", vocabulary_term_id: terms[0]?.id ?? "", required: false, cardinality: "SINGLE" });
     setSchemaDialogOpen(true);
   };
   const openEditSchema = (s: MetadataSchemaRow) => {
@@ -177,6 +198,14 @@ const CatalogMetadata = () => {
   };
   const saveSchema = async () => {
     if (!domainId) return;
+    if (!schemaForm.schema_id.trim()) {
+      toast.error("Pilih schema yang sudah ada. Field ini harus mengacu ke schema katalog yang valid.");
+      return;
+    }
+    if (!schemaForm.vocabulary_term_id.trim()) {
+      toast.error("Pilih istilah yang akan diikat ke schema.");
+      return;
+    }
     try {
       setBusyAction("save-schema");
       const body = {
@@ -218,7 +247,7 @@ const CatalogMetadata = () => {
   // ── Dataset metadata handlers ──
   const openCreateMeta = () => {
     setEditingMeta(null);
-    setMetaForm({ dataset_id: "", vocabulary_term_id: terms[0]?.id ?? "", source: "", source_ref: "" });
+    setMetaForm({ dataset_id: datasetOptions[0]?.dataset_id ?? "", vocabulary_term_id: terms[0]?.id ?? "", source: "", source_ref: "" });
     setMetaDialogOpen(true);
   };
   const openEditMeta = (m: DatasetMetadataRow) => {
@@ -233,6 +262,18 @@ const CatalogMetadata = () => {
   };
   const saveMeta = async () => {
     if (!domainId) return;
+    if (!metaForm.dataset_id.trim()) {
+      toast.error("Pilih dataset yang valid dulu.");
+      return;
+    }
+    if (!metaForm.vocabulary_term_id.trim()) {
+      toast.error("Pilih istilah metadata yang valid.");
+      return;
+    }
+    if (!metaForm.source.trim() || !metaForm.source_ref.trim()) {
+      toast.error("Sumber dan referensi sumber wajib diisi.");
+      return;
+    }
     try {
       setBusyAction("save-meta");
       const body = {
@@ -525,8 +566,23 @@ const CatalogMetadata = () => {
             </div>
             {!editingTerm ? (
               <div className="space-y-2">
-                <Label>Vocabulary ID</Label>
-                <Input value={termForm.vocabulary_id} onChange={(e) => setTermForm((p) => ({ ...p, vocabulary_id: e.target.value }))} placeholder="ID vocabulary induk" />
+                <Label>Vocabulary Induk</Label>
+                {vocabularyOptions.length > 0 ? (
+                  <Select value={termForm.vocabulary_id} onValueChange={(value) => setTermForm((p) => ({ ...p, vocabulary_id: value }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih vocabulary" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vocabularyOptions.map((vocabulary) => (
+                        <SelectItem key={vocabulary.vocabulary_id} value={vocabulary.vocabulary_id}>
+                          {vocabulary.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input value={termForm.vocabulary_id} onChange={(e) => setTermForm((p) => ({ ...p, vocabulary_id: e.target.value }))} placeholder="ID vocabulary induk" />
+                )}
               </div>
             ) : null}
             <div className="space-y-2 md:col-span-2">
@@ -553,8 +609,23 @@ const CatalogMetadata = () => {
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
-              <Label>ID Aturan</Label>
-              <Input value={schemaForm.schema_id} onChange={(e) => setSchemaForm((p) => ({ ...p, schema_id: e.target.value }))} placeholder="mis. schema-sumur-01" />
+              <Label>Schema Katalog</Label>
+              {schemaOptions.length > 0 ? (
+                <Select value={schemaForm.schema_id} onValueChange={(value) => setSchemaForm((p) => ({ ...p, schema_id: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih schema yang sudah terdaftar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schemaOptions.map((schema) => (
+                      <SelectItem key={schema.schema_id} value={schema.schema_id}>
+                        {(schema.vocabulary_name ?? "Schema")} · v{schema.version ?? "?"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={schemaForm.schema_id} onChange={(e) => setSchemaForm((p) => ({ ...p, schema_id: e.target.value }))} placeholder="Schema UUID" />
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Istilah</Label>
@@ -599,8 +670,23 @@ const CatalogMetadata = () => {
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
-              <Label>Dataset ID</Label>
-              <Input value={metaForm.dataset_id} onChange={(e) => setMetaForm((p) => ({ ...p, dataset_id: e.target.value }))} placeholder="ID dataset" />
+              <Label>Dataset</Label>
+              {datasetOptions.length > 0 ? (
+                <Select value={metaForm.dataset_id} onValueChange={(value) => setMetaForm((p) => ({ ...p, dataset_id: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih dataset" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {datasetOptions.map((dataset) => (
+                      <SelectItem key={dataset.dataset_id} value={dataset.dataset_id}>
+                        {dataset.dataset_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={metaForm.dataset_id} onChange={(e) => setMetaForm((p) => ({ ...p, dataset_id: e.target.value }))} placeholder="Dataset UUID" />
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Istilah</Label>

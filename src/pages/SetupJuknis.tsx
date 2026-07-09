@@ -4,7 +4,6 @@ import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -15,18 +14,18 @@ import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { organizationsApi } from "@/api/services/governance";
 import { juknisApi, type JuknisApplyResult } from "@/api/services/juknis";
+import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
 
 const STEPS = ["Organisasi", "Governance Domain", "Paket Juknis", "Terapkan"];
 
 const LEVELS = [
-  { v: "L0", l: "L0 · PUBLIK (penuh)" },
-  { v: "L1", l: "L1 · PUBLIK (terbatas)" },
-  { v: "L2", l: "L2 · INTERNAL" },
-  { v: "L3", l: "L3 · TERBATAS" },
-  { v: "L4", l: "L4 · RAHASIA (tidak dipublikasikan)" },
+  { v: "L0", l: "L0 � PUBLIK (penuh)" },
+  { v: "L1", l: "L1 � PUBLIK (terbatas)" },
+  { v: "L2", l: "L2 � INTERNAL" },
+  { v: "L3", l: "L3 � TERBATAS" },
+  { v: "L4", l: "L4 � RAHASIA (tidak dipublikasikan)" },
 ];
 
-// default paket Juknis (selaras BE)
 const DEFAULT_ROWS = [
   { key: "wilayah_kerja", label: "Wilayah Kerja", sub: "PSC Area", classification: "L1", retention_years: 0 },
   { key: "lapangan", label: "Lapangan", sub: "Field", classification: "L2", retention_years: 5 },
@@ -40,6 +39,17 @@ const setupOrgCode = (name: string) => {
   if (words.length >= 3) return words.map((word) => word[0]).join("").toUpperCase().slice(0, 20);
   return words.join("").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
 };
+
+const sanitizeDomainCode = (value: string) =>
+  value
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "_")
+    .replace(/_{2,}/g, "_")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[_-]+|[_-]+$/g, "")
+    .slice(0, 20);
+
+const isValidDomainCode = (value: string) => /^[A-Z0-9_-]{2,20}$/.test(value);
 
 const Stepper = ({ step }: { step: number }) => (
   <div className="flex items-center gap-2 flex-wrap">
@@ -62,7 +72,6 @@ const Stepper = ({ step }: { step: number }) => (
 const SetupJuknis = () => {
   const [step, setStep] = useState(0);
 
-  // Step 1 — Organisasi
   const orgQ = useQuery({ queryKey: ["setup", "orgs"], queryFn: () => organizationsApi.list() });
   const orgs = (orgQ.data ?? []) as Array<{ organization_id: string; organization_name: string }>;
   const [orgId, setOrgId] = useState("");
@@ -94,10 +103,11 @@ const SetupJuknis = () => {
     if (newOrgName.trim().length < 3) return toast.error("Nama organisasi minimal 3 karakter.");
     setCreatingOrg(true);
     try {
+      const trimmedName = newOrgName.trim();
       const created = await organizationsApi.create({
-        organization_name: newOrgName.trim(),
-        code: setupOrgCode(newOrgName),
-        description: `Organisasi ${newOrgName.trim()} untuk governance dan penerapan paket Juknis.`,
+        organization_name: trimmedName,
+        code: setupOrgCode(trimmedName),
+        description: `Organisasi ${trimmedName} untuk governance dan penerapan paket Juknis.`,
       });
       await orgQ.refetch();
       setOrgId(created.organization_id);
@@ -110,7 +120,6 @@ const SetupJuknis = () => {
     }
   };
 
-  // Step 2 — Domain
   const domQ = useQuery({
     queryKey: ["setup", "domains", orgId],
     queryFn: () => organizationsApi.listDomains(orgId),
@@ -118,7 +127,11 @@ const SetupJuknis = () => {
   });
   const domains = domQ.data ?? [];
   const [domainId, setDomainId] = useState("");
-  const [newDomain, setNewDomain] = useState({ name: "Data Migas Geospasial", code: "MIGAS-GEO", description: "Domain data geospasial migas SKK Migas (5 domain)." });
+  const [newDomain, setNewDomain] = useState({
+    name: "Data Migas Geospasial",
+    code: "MIGAS_GEO",
+    description: "Domain data geospasial migas SKK Migas untuk paket 5 domain.",
+  });
   const [creatingDomain, setCreatingDomain] = useState(false);
 
   useEffect(() => {
@@ -126,13 +139,29 @@ const SetupJuknis = () => {
   }, [domains, domainId]);
 
   const createDomain = async () => {
-    if (newDomain.name.length < 3 || newDomain.code.length < 2 || newDomain.description.length < 10)
-      return toast.error("Lengkapi nama (≥3), code (≥2), deskripsi (≥10).");
+    const trimmedName = newDomain.name.trim();
+    const trimmedDescription = newDomain.description.trim();
+    const sanitizedCode = sanitizeGovernanceCode(newDomain.code);
+
+    if (trimmedName.length < 3 || trimmedDescription.length < 10) {
+      return toast.error("Lengkapi nama (>=3) dan deskripsi (>=10).", { duration: 5000 });
+    }
+
+    if (!isValidGovernanceCode(sanitizedCode)) {
+      return toast.error("Code domain harus 2-20 karakter dan hanya boleh huruf besar, angka, _ atau -.");
+    }
+
     setCreatingDomain(true);
     try {
-      const d = await organizationsApi.createDomain(orgId, newDomain);
+      const payload = {
+        name: trimmedName,
+        code: sanitizedCode,
+        description: trimmedDescription,
+      };
+      const createdDomain = await organizationsApi.createDomain(orgId, payload);
       await domQ.refetch();
-      setDomainId(d.domain_id);
+      setDomainId(createdDomain.domain_id);
+      setNewDomain((prev) => ({ ...prev, code: sanitizedCode }));
       toast.success("Governance domain dibuat.");
     } catch (e: unknown) {
       toast.error(getApiErrorMessage(e, "Gagal membuat domain"));
@@ -141,19 +170,22 @@ const SetupJuknis = () => {
     }
   };
 
-  // Step 3 — Paket Juknis
   const [rows, setRows] = useState(DEFAULT_ROWS);
   const [includeDict, setIncludeDict] = useState(true);
   const setRow = (key: string, patch: Partial<(typeof DEFAULT_ROWS)[number]>) =>
-    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setRows((currentRows) => currentRows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
 
-  // Step 4 — Terapkan
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<JuknisApplyResult | null>(null);
   const overrides = useMemo(() => {
-    const o: Record<string, { classification: string; retention_years: number }> = {};
-    for (const r of rows) o[r.key] = { classification: r.classification, retention_years: r.retention_years };
-    return o;
+    const mapped: Record<string, { classification: string; retention_years: number }> = {};
+    for (const row of rows) {
+      mapped[row.key] = {
+        classification: row.classification,
+        retention_years: row.retention_years,
+      };
+    }
+    return mapped;
   }, [rows]);
 
   const apply = async () => {
@@ -178,7 +210,6 @@ const SetupJuknis = () => {
       <div className="p-6 space-y-6 max-w-4xl">
         <div className="panel p-4"><Stepper step={step} /></div>
 
-        {/* STEP 1 */}
         {step === 0 && (
           <div className="panel p-6 space-y-4">
             <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-accent" /><h3 className="font-semibold">Pilih / Buat Organisasi</h3></div>
@@ -192,7 +223,7 @@ const SetupJuknis = () => {
                     <Select value={orgId} onValueChange={setOrgId}>
                       <SelectTrigger><SelectValue placeholder="Pilih organisasi" /></SelectTrigger>
                       <SelectContent>
-                        {orgs.map((o) => <SelectItem key={o.organization_id} value={o.organization_id}>{o.organization_name}</SelectItem>)}
+                        {orgs.map((org) => <SelectItem key={org.organization_id} value={org.organization_id}>{org.organization_name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -211,7 +242,6 @@ const SetupJuknis = () => {
           </div>
         )}
 
-        {/* STEP 2 */}
         {step === 1 && (
           <div className="panel p-6 space-y-4">
             <div className="flex items-center gap-2"><Layers className="w-5 h-5 text-accent" /><h3 className="font-semibold">Governance Domain</h3></div>
@@ -221,7 +251,7 @@ const SetupJuknis = () => {
                 <Select value={domainId} onValueChange={setDomainId}>
                   <SelectTrigger><SelectValue placeholder="Pilih domain" /></SelectTrigger>
                   <SelectContent>
-                    {domains.map((d) => <SelectItem key={d.domain_id} value={d.domain_id}>{d.domain_name} ({d.code})</SelectItem>)}
+                    {domains.map((domain) => <SelectItem key={domain.domain_id} value={domain.domain_id}>{domain.domain_name} ({domain.code})</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -229,39 +259,47 @@ const SetupJuknis = () => {
             <div className="rounded-lg border border-dashed border-border p-3 space-y-3">
               <Label className="text-xs text-muted-foreground">Atau buat governance domain baru</Label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Input placeholder="Nama" value={newDomain.name} onChange={(e) => setNewDomain({ ...newDomain, name: e.target.value })} />
-                <Input placeholder="Code" value={newDomain.code} onChange={(e) => setNewDomain({ ...newDomain, code: e.target.value })} />
+                <Input placeholder="Nama" value={newDomain.name} onChange={(e) => setNewDomain((prev) => ({ ...prev, name: e.target.value }))} />
+                <Input
+                  placeholder="Code"
+                  value={newDomain.code}
+                  onChange={(e) => setNewDomain((prev) => ({ ...prev, code: sanitizeGovernanceCode(e.target.value) }))}
+                />
                 <Button variant="outline" onClick={createDomain} disabled={creatingDomain || !orgId}>
                   {creatingDomain && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Buat Domain
                 </Button>
               </div>
-              <Input placeholder="Deskripsi (≥10 karakter)" value={newDomain.description} onChange={(e) => setNewDomain({ ...newDomain, description: e.target.value })} />
+              <p className="text-xs text-muted-foreground">Code domain hanya boleh huruf besar, angka, underscore (`_`) atau dash (`-`), panjang 2-20 karakter.</p>
+              <Input
+                placeholder="Deskripsi (>=10 karakter)"
+                value={newDomain.description}
+                onChange={(e) => setNewDomain((prev) => ({ ...prev, description: e.target.value }))}
+              />
             </div>
           </div>
         )}
 
-        {/* STEP 3 */}
         {step === 2 && (
           <div className="panel p-6 space-y-4">
-            <div className="flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-accent" /><h3 className="font-semibold">Paket Juknis — 5 Domain</h3></div>
-            <p className="text-sm text-muted-foreground">Semua sudah ter-isi default baku. Anda cukup meninjau, dan boleh menyesuaikan <b>klasifikasi</b> & <b>masa kerahasiaan (tahun)</b> per domain.</p>
+            <div className="flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-accent" /><h3 className="font-semibold">Paket Juknis - 5 Domain</h3></div>
+            <p className="text-sm text-muted-foreground">Semua sudah ter-isi default baku. Anda cukup meninjau, dan boleh menyesuaikan <b>klasifikasi</b> dan <b>masa kerahasiaan (tahun)</b> per domain.</p>
             <div className="space-y-2">
-              {rows.map((r) => (
-                <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_200px_160px] gap-3 items-center rounded-lg border border-border p-3">
+              {rows.map((row) => (
+                <div key={row.key} className="grid grid-cols-1 sm:grid-cols-[1fr_200px_160px] gap-3 items-center rounded-lg border border-border p-3">
                   <div>
-                    <p className="font-medium text-sm">{r.label}</p>
-                    <p className="text-xs text-muted-foreground">{r.sub}</p>
+                    <p className="font-medium text-sm">{row.label}</p>
+                    <p className="text-xs text-muted-foreground">{row.sub}</p>
                   </div>
                   <div>
                     <Label className="text-[10px] text-muted-foreground">Klasifikasi</Label>
-                    <Select value={r.classification} onValueChange={(v) => setRow(r.key, { classification: v })}>
+                    <Select value={row.classification} onValueChange={(value) => setRow(row.key, { classification: value })}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>{LEVELS.map((l) => <SelectItem key={l.v} value={l.v}>{l.l}</SelectItem>)}</SelectContent>
+                      <SelectContent>{LEVELS.map((level) => <SelectItem key={level.v} value={level.v}>{level.l}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label className="text-[10px] text-muted-foreground">Kerahasiaan (thn)</Label>
-                    <Input type="number" min={0} className="h-9" value={r.retention_years} onChange={(e) => setRow(r.key, { retention_years: Number(e.target.value) })} />
+                    <Input type="number" min={0} className="h-9" value={row.retention_years} onChange={(e) => setRow(row.key, { retention_years: Number(e.target.value) })} />
                   </div>
                 </div>
               ))}
@@ -273,7 +311,6 @@ const SetupJuknis = () => {
           </div>
         )}
 
-        {/* STEP 4 */}
         {step === 3 && (
           <div className="panel p-6 space-y-4">
             <div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-accent" /><h3 className="font-semibold">Terapkan Paket Juknis</h3></div>
@@ -290,7 +327,7 @@ const SetupJuknis = () => {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                  <CheckCircle2 className="w-5 h-5" /> Paket Juknis diterapkan — platform siap menerima KKKS.
+                  <CheckCircle2 className="w-5 h-5" /> Paket Juknis diterapkan - platform siap menerima KKKS.
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
@@ -298,13 +335,13 @@ const SetupJuknis = () => {
                     ["Contract-policy", result.contract_policies_created],
                     ["Vocabulary", result.vocabularies_created],
                     ["Schema", result.schemas_created],
-                  ].map(([l, n]) => (
-                    <div key={l as string} className="stat-card"><p className="text-2xl font-bold">{n as number}</p><p className="text-xs text-muted-foreground">{l}</p></div>
+                  ].map(([label, total]) => (
+                    <div key={label as string} className="stat-card"><p className="text-2xl font-bold">{total as number}</p><p className="text-xs text-muted-foreground">{label}</p></div>
                   ))}
                 </div>
                 {result.errors?.length > 0 && (
                   <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    {result.errors.length} item dilewati (kemungkinan sudah ada): {result.errors.slice(0, 3).join(", ")}…
+                    {result.errors.length} item dilewati (kemungkinan sudah ada): {result.errors.slice(0, 3).join(", ")}...
                   </div>
                 )}
               </div>
@@ -312,13 +349,12 @@ const SetupJuknis = () => {
           </div>
         )}
 
-        {/* Nav */}
         <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+          <Button variant="outline" onClick={() => setStep((currentStep) => Math.max(0, currentStep - 1))} disabled={step === 0}>
             <ArrowLeft className="w-4 h-4 mr-2" /> Kembali
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => setStep((s) => s + 1)} disabled={!canNext}>
+            <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => setStep((currentStep) => currentStep + 1)} disabled={!canNext}>
               Lanjut <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (

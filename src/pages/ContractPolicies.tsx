@@ -54,6 +54,7 @@ const classTone = (value: string) => {
 };
 
 const toDateInput = (iso?: string) => (iso ? new Date(iso).toISOString().slice(0, 10) : "");
+const toIsoDate = (value: string) => `${value}T00:00:00Z`;
 
 const ContractPolicies = () => {
   const { domainId, domainName } = useDomain();
@@ -103,13 +104,17 @@ const ContractPolicies = () => {
       toast.error("Masa berlaku (mulai dan sampai) wajib diisi.");
       return;
     }
+    if (new Date(form.effective_from).getTime() > new Date(form.effective_to).getTime()) {
+      toast.error("Tanggal kebijakan tidak valid. Berlaku Dari tidak boleh lebih besar dari Berlaku Sampai.");
+      return;
+    }
     try {
       setBusyAction("save");
       const body = {
         name: form.name.trim(),
         data_clasification: form.data_clasification,
-        effective_from: new Date(form.effective_from).toISOString(),
-        effective_to: new Date(form.effective_to).toISOString(),
+        effective_from: toIsoDate(form.effective_from),
+        effective_to: toIsoDate(form.effective_to),
         description: form.description.trim() || null,
       };
       if (editing) {

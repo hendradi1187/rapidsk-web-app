@@ -127,6 +127,7 @@ const AccessControl = () => {
   const [identityCategories, setIdentityCategories] = useState<IdentityCategory[]>([]);
   const [identityGroups, setIdentityGroups] = useState<IdentityGroup[]>([]);
   const [identityUsers, setIdentityUsers] = useState<IdentityUser[]>([]);
+  const [userDirectoryIssue, setUserDirectoryIssue] = useState<string | null>(null);
   const [bindingProviders, setBindingProviders] = useState<any[]>([]);
   const [bindingRegistrations, setBindingRegistrations] = useState<any[]>([]);
   const [bindingOrganizations, setBindingOrganizations] = useState<any[]>([]);
@@ -187,18 +188,33 @@ const AccessControl = () => {
   };
 
   const loadBindingAuditData = async () => {
-    const [categoriesRes, groupsRes, usersRes, providersRes, registrationsRes, organizationsRes] = await Promise.all([
+    const [categoriesRes, groupsRes, providersRes, registrationsRes, organizationsRes] = await Promise.all([
       userCategoriesApi.list(),
       userGroupsApi.list(),
-      usersApi.list(),
       providersApi.list(),
       registrationsApi.list(),
       organizationsApi.list(),
     ]);
 
+    let nextUsers: IdentityUser[] = [];
+    try {
+      nextUsers = await usersApi.list();
+      setUserDirectoryIssue(null);
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(
+        error,
+        "Daftar user IAM belum bisa dimuat karena backend masih punya data email dummy/reserved.",
+      );
+      setUserDirectoryIssue(message);
+      toast.warning(message, {
+        description: "Tab dan fitur access control lain tetap bisa dipakai sambil menunggu data user dibersihkan di backend.",
+        duration: 9000,
+      });
+    }
+
     setIdentityCategories(categoriesRes);
     setIdentityGroups(groupsRes);
-    setIdentityUsers(usersRes);
+    setIdentityUsers(nextUsers);
     setBindingProviders(providersRes as any[]);
     setBindingRegistrations(registrationsRes as any[]);
     setBindingOrganizations(organizationsRes as any[]);
@@ -850,13 +866,27 @@ const AccessControl = () => {
           </TabsContent>
 
           <TabsContent value="users" className="space-y-4">
-            <UserDirectoryPanel
-              users={identityUsers}
-              categories={identityCategories}
-              groups={identityGroups}
-              participants={bindingProviders}
-              onChanged={() => loadBaseData()}
-            />
+            {userDirectoryIssue ? (
+              <Card className="panel border-amber-200 bg-amber-50/60">
+                <CardHeader>
+                  <CardTitle>Directory User Sementara Ditahan</CardTitle>
+                  <CardDescription>
+                    Endpoint daftar user dari backend sedang membawa data email dummy atau reserved, jadi FE sengaja tidak memaksa render daftar user agar tab access control lain tetap jalan.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-amber-900">{userDirectoryIssue}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <UserDirectoryPanel
+                users={identityUsers}
+                categories={identityCategories}
+                groups={identityGroups}
+                participants={bindingProviders}
+                onChanged={() => loadBaseData()}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="applications" className="space-y-4">

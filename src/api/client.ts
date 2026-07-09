@@ -1,9 +1,11 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
+import { toast } from "sonner";
 import {
   ensureValidToken,
   getKeycloakToken,
   isKeycloakConfigured,
 } from "@/auth/keycloak";
+import { addAppNotification } from "@/lib/app-notifications";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   getFrontendAdapterRuntimeBasePath,
@@ -18,6 +20,14 @@ const AUTH_LOGOUT_ENDPOINTS = [
   "/identity-provider/auth/revoke-token",
   "/identity-provider/auth/revoke-user-token",
 ];
+
+const GLOBAL_ERROR_TOAST_TTL_MS = 5000;
+const activeErrorToasts = new Map<string, number>();
+
+type ApiRequestConfig = AxiosRequestConfig & {
+  suppressGlobalErrorToast?: boolean;
+  skipGlobalErrorToast?: boolean;
+};
 
 const readLegacyToken = () => {
   if (typeof window === "undefined") return null;
@@ -66,6 +76,66 @@ const resolveAccessToken = async () => {
 const requestUrlFromError = (error: AxiosError) =>
   String(error.config?.url ?? "unknown");
 
+const shouldSuppressGlobalToast = (config?: ApiRequestConfig) =>
+  Boolean(config?.suppressGlobalErrorToast ?? config?.skipGlobalErrorToast);
+
+const pushGlobalErrorToast = (
+  key: string,
+  title: string,
+  description?: string,
+) => {
+  if (activeErrorToasts.has(key)) {
+    return;
+  }
+
+  const timer = window.setTimeout(() => {
+    activeErrorToasts.delete(key);
+  }, GLOBAL_ERROR_TOAST_TTL_MS);
+
+  activeErrorToasts.set(key, timer);
+  toast.error(title, description ? { description } : undefined);
+  addAppNotification({
+    title,
+    description,
+    level: "error",
+  });
+};
+
+const notifyBackendError = (
+  scope: RuntimeServiceName | "adapter-runtime",
+  error: AxiosError,
+  parsedMessage: string,
+) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const config = (error.config ?? {}) as ApiRequestConfig;
+  if (shouldSuppressGlobalToast(config)) {
+    return;
+  }
+
+  const status = error.response?.status;
+  const method = String(config.method ?? "GET").toUpperCase();
+  const requestUrl = requestUrlFromError(error);
+  const description = `${scope.toUpperCase()} - ${method} ${requestUrl}`;
+  const toastKey = `${scope}|${status ?? "network"}|${method}|${requestUrl}|${parsedMessage}`;
+
+  if (!error.response && error.request) {
+    pushGlobalErrorToast(toastKey, parsedMessage, description);
+    return;
+  }
+
+  if (status === 401) {
+    pushGlobalErrorToast(toastKey, parsedMessage, description);
+    return;
+  }
+
+  if (status && status >= 500) {
+    pushGlobalErrorToast(toastKey, parsedMessage, description);
+  }
+};
+
 const attachCommonInterceptors = (
   client: AxiosInstance,
   scope: RuntimeServiceName | "adapter-runtime",
@@ -99,6 +169,7 @@ const attachCommonInterceptors = (
           case 401:
             if (shouldForceLogoutOnUnauthorized(error)) {
               localStorage.removeItem("auth_token");
+              notifyBackendError(scope, error, "Sesi login berakhir. Silakan masuk lagi.");
               if (window.location.pathname !== "/login") {
                 window.location.href = "/login";
               }
@@ -107,12 +178,17 @@ const attachCommonInterceptors = (
                 "[401] Request ditolak tanpa mematikan sesi utama:",
                 requestUrlFromError(error),
               );
+              notifyBackendError(scope, error, parsedMessage);
             }
             break;
           case 403:
           case 404:
           case 500:
+          case 502:
+          case 503:
+          case 504:
             console.error(parsedMessage);
+            notifyBackendError(scope, error, parsedMessage);
             break;
           case 422:
             if (import.meta.env.DEV) {
@@ -123,9 +199,16 @@ const attachCommonInterceptors = (
               );
             }
             break;
+          default:
+            if (error.response.status >= 500) {
+              console.error(parsedMessage);
+              notifyBackendError(scope, error, parsedMessage);
+            }
+            break;
         }
       } else if (error.request) {
         console.error(parsedMessage);
+        notifyBackendError(scope, error, parsedMessage);
       }
 
       return Promise.reject(error);

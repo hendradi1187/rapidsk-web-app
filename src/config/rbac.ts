@@ -318,7 +318,7 @@ const buildRoleRoutes = (): Record<AppRole, string[]> => {
     result[role] = [
       ...MENU_ITEMS.filter((m) => m.roles.includes(role)).map((m) => m.path),
       "/settings",
-      ...(role === "SUPER_ADMIN" || role === "ADMIN" ? ["/deployment-config"] : []),
+      ...(role === "SUPER_ADMIN" ? ["/deployment-config"] : []),
     ];
   }
   return result;
@@ -366,3 +366,4 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   AUDITOR: "Auditor",
   GIS_ANALYST: "GIS Analyst",
 };
+

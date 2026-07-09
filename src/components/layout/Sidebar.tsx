@@ -3,35 +3,38 @@ import { Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { MENU_ITEMS, SECTION_LABELS, SECTION_ORDER } from "@/config/rbac";
+import { MENU_ITEMS, SECTION_LABELS, SECTION_ORDER, canAccessAny } from "@/config/rbac";
+import { canAccessManagedRoute } from "@/lib/feature-access";
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { role, roles, hasPermission } = useAuth();
   const effectiveRoles = roles.length > 0 ? roles : [role];
+  const accessContext = {
+    role,
+    roles: effectiveRoles,
+    hasPermission,
+  };
 
-  // Menu mengikuti role atau permission granular dari IAM.
   const visibleItems = MENU_ITEMS.filter((item) =>
-    effectiveRoles.some((candidate) => item.roles.includes(candidate)) ||
-    (item.permissions?.some((permission) => hasPermission(permission)) ?? false),
+    canAccessAny(effectiveRoles, item.path, hasPermission) &&
+    canAccessManagedRoute(item.path, accessContext),
   );
 
-  // Kelompokkan per grup (urut sesuai alur kerja); grup kosong otomatis tersembunyi.
   const groups = SECTION_ORDER.map((section) => ({
     section,
     label: SECTION_LABELS[section],
     items: visibleItems.filter((item) => item.section === section),
-  })).filter((g) => g.items.length > 0);
+  })).filter((group) => group.items.length > 0);
 
   return (
     <aside
       className={cn(
         "fixed left-0 top-0 h-screen bg-sidebar flex flex-col transition-all duration-300 z-50",
-        collapsed ? "w-20" : "w-64"
+        collapsed ? "w-20" : "w-64",
       )}
     >
-      {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber to-amber-glow flex items-center justify-center amber-glow">
@@ -48,7 +51,6 @@ export const Sidebar = () => {
         </div>
       </div>
 
-      {/* Navigation — dikelompokkan: Persiapan → Pemantauan & Operasional → Lainnya */}
       <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
         {groups.map((group) => (
           <div key={group.section} className="space-y-1">
@@ -74,7 +76,6 @@ export const Sidebar = () => {
         ))}
       </nav>
 
-      {/* Settings & Collapse */}
       <div className="p-4 border-t border-sidebar-border space-y-1">
         <Link to="/settings" className="nav-item">
           <Settings className="w-5 h-5 flex-shrink-0" />

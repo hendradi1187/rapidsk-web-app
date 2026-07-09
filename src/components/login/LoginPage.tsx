@@ -226,7 +226,7 @@ export const LoginPage = () => {
               return getOrgSelectionValue(preferredOption);
             }
 
-            return nextOptions[0] ? getOrgSelectionValue(nextOptions[0]) : EMPTY_ORG_SELECTION;
+            return EMPTY_ORG_SELECTION;
           });
         }
       } catch {
@@ -250,7 +250,7 @@ export const LoginPage = () => {
               return getOrgSelectionValue(preferredOption);
             }
 
-            return cachedOptions[0] ? getOrgSelectionValue(cachedOptions[0]) : EMPTY_ORG_SELECTION;
+            return EMPTY_ORG_SELECTION;
           });
         }
       }
@@ -627,3 +627,4 @@ export const LoginPage = () => {
 };
 
 export default LoginPage;
+
