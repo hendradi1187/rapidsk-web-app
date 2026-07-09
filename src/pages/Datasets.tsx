@@ -172,7 +172,7 @@ const Datasets = () => {
     // Adapter OGC hanya mendukung GET, jadi endpoint.url DIARAHKAN ke proxy FE
     // (/adapter-service) yang mengubah POST→GET + menyetel Content-Length sebelum
     // meneruskan ke adapter. documentation_url disamakan untuk konsistensi.
-    const proxyUrl = `${window.location.origin}/adapter-service/api/v1/ogc/collections/${col.domain_code}/items`;
+    const proxyUrl = `${window.location.origin}/adapter-service/api/v1/ogc/ogc/collections/${col.domain_code}/items`;
     setEditForm((f) => ({
       ...f,
       endpoint_url: proxyUrl,
@@ -1116,7 +1116,7 @@ const Datasets = () => {
                 </Label>
                 <Input
                   id="edit-doc-url"
-                  placeholder="https://adapter.example.com/api/v1/ogc/collections/WK/items"
+                  placeholder="https://adapter.example.com/api/v1/ogc/ogc/collections/WK/items"
                   value={editForm.documentation_url}
                   onChange={(e) => setEditForm((current) => ({ ...current, documentation_url: e.target.value }))}
                 />
@@ -1197,3 +1197,4 @@ const Datasets = () => {
 };
 
 export default Datasets;
+

@@ -145,8 +145,12 @@ export const adapterServiceApi = {
       body: JSON.stringify(body),
     }),
 
-  listLayers: async (provider: AdapterProvider, connectionId: string): Promise<unknown> =>
-    request<unknown>(`/remote-sources/${provider}/${encodeURIComponent(connectionId)}/layers`),
+  listLayers: async (provider: AdapterProvider, connectionId: string): Promise<unknown> => {
+    const path = provider === "arcgis"
+      ? ADAPTER.ARCGIS_LAYERS(connectionId)
+      : ADAPTER.GEOSERVER_LAYERS(connectionId);
+    return request<unknown>(path);
+  },
 
   describeGeoServerLayer: async (connectionId: string, layerName: string): Promise<unknown> =>
     request<unknown>(`/remote-sources/geoserver/${encodeURIComponent(connectionId)}/describe?layer_name=${encodeURIComponent(layerName)}`),
@@ -214,13 +218,15 @@ export const adapterServiceApi = {
     request<AdapterIngestionTask>(`/data-ingestion/${encodeURIComponent(id)}`),
 
   listCollections: async (): Promise<unknown> =>
-    request<unknown>("/ogc/collections"),
+    request<unknown>(ADAPTER.OGC_COLLECTIONS),
 
   listItems: async (domainCode: AdapterDomainCode, params?: { limit?: number; offset?: number }): Promise<unknown> => {
     const search = new URLSearchParams();
     if (typeof params?.limit === "number") search.set("limit", String(params.limit));
     if (typeof params?.offset === "number") search.set("offset", String(params.offset));
     const suffix = search.toString() ? `?${search.toString()}` : "";
-    return request<unknown>(`/ogc/collections/${encodeURIComponent(domainCode)}/items${suffix}`);
+    return request<unknown>(`${ADAPTER.OGC_ITEMS(domainCode)}${suffix}`);
   },
 };
+
+

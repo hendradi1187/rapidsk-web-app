@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
           secure: false,
         },
         // Adapter service (8584) — strip /adapter-service prefix before forwarding.
-        // OGC adapter only supports GET on /ogc/collections/*/items; connector BE calls
+        // OGC adapter only supports GET on /ogc/ogc/collections/*/items; connector BE calls
         // documentation_url with POST, so we convert POST→GET here transparently.
         "/adapter-service": {
           target: adapterTarget,
@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
             proxy.on("proxyReq", (proxyReq, req) => {
               if (
                 req.method === "POST" &&
-                /\/ogc\/collections\/[^/]+\/items/.test(req.url || "")
+                /\/ogc\/ogc\/collections\/[^/]+\/items/.test(req.url || "")
               ) {
                 proxyReq.method = "GET";
                 proxyReq.removeHeader("content-length");
@@ -72,3 +72,4 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
+

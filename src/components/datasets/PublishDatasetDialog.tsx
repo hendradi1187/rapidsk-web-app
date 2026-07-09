@@ -94,7 +94,7 @@ export function PublishDatasetDialog({
   }, [adapterEndpoint]);
 
   const applyAdapterCollection = (col: { id: string; domain_code: string; title: string }) => {
-    const ogcUrl = `${adapterEndpoint}/api/v1/ogc/collections/${col.domain_code}/items`;
+    const ogcUrl = `${adapterEndpoint}/api/v1/ogc/ogc/collections/${col.domain_code}/items`;
     setUrl(ogcUrl);
     setProtocol("OGC_API_FEATURES");
     const mappedKey = DOMAIN_CODE_TO_KEY[col.domain_code];
@@ -516,3 +516,4 @@ export function PublishDatasetDialog({
     </Dialog>
   );
 }
+

@@ -44,8 +44,6 @@ export const AUTH = {
   IAM_API_RESOURCE_BY_ID:   (id: string) => `/identity-provider/iam/api-resources/${id}`,
   IAM_PERMISSIONS:          "/identity-provider/iam/permissions/",
   IAM_PERMISSION_BY_ID:     (id: string) => `/identity-provider/iam/permissions/${id}`,
-  IAM_ROLES:                "/identity-provider/iam/roles/",
-  IAM_ROLE_BY_ID:           (id: string) => `/identity-provider/iam/roles/${id}`,
 } as const;
 
 /**
@@ -79,8 +77,8 @@ export const CTS = {
   ORG_POLICY_BY_ID:            (orgId: string, id: string) => `/governance/organizations/${orgId}/policies/${id}`,
 
   // Connection Pools
-  CONNECTION_POOLS:            "/governance/connection-pools/",
-  CONNECTION_POOL_BY_ID:       (id: string) => `/governance/connection-pools/${id}`,
+  CONNECTION_POOLS:            "/onboarding/connection-pools",
+  CONNECTION_POOL_BY_ID:       (id: string) => `/onboarding/connection-pools/${id}`,
 
   // Onboarding
   PARTICIPANTS:                "/onboarding/participants",
@@ -136,7 +134,6 @@ export const CTS = {
 // ── Connector ─────────────────────────────────────────────────────────────────
 export const CONNECTOR = {
   TRANSFERS:                   (domainId: string) => `/connector/${domainId}/transfers`,
-  TRANSFER_BY_ID:              (domainId: string, id: string) => `/connector/${domainId}/transfers/${id}`,
   TRANSFER_STATUS:             (id: string) => `/connector/${id}/status`,
   HEARTBEAT_SEND:              "/connector/runtime/heartbeat/send",
   TRANSFER_EVENTS_PUBLISH:     "/connector/runtime/transfer-events/publish",
@@ -150,7 +147,8 @@ export const ADAPTER = {
   // Adapter Service (proxy via nginx — ADAPTER_PROXY_BASE prefix handled in adapter-service.ts)
   REMOTE_CONNECTIONS:          "/remote-sources/connections/",
   REMOTE_CONNECTION_BY_ID:     (id: string) => `/remote-sources/connections/${encodeURIComponent(id)}`,
-  REMOTE_LAYERS:               (provider: string, connId: string) => `/remote-sources/${provider}/${encodeURIComponent(connId)}/layers`,
+  ARCGIS_LAYERS:               (connId: string) => `/remote-sources/arcgis/${encodeURIComponent(connId)}/layers`,
+  GEOSERVER_LAYERS:            (connId: string) => `/remote-sources/geoserver/${encodeURIComponent(connId)}/layers`,
   GEOSERVER_DESCRIBE:          (connId: string) => `/remote-sources/geoserver/${encodeURIComponent(connId)}/describe`,
   GEOSERVER_PREVIEW:           (connId: string) => `/remote-sources/geoserver/${encodeURIComponent(connId)}/preview`,
   ARCGIS_DESCRIBE:             (connId: string) => `/remote-sources/arcgis/${encodeURIComponent(connId)}/describe`,
@@ -162,11 +160,11 @@ export const ADAPTER = {
   INGEST_ARCGIS:               "/data-ingestion/arcgis",
   INGEST_TASKS:                "/data-ingestion/",
   INGEST_TASK_BY_ID:           (id: string) => `/data-ingestion/${encodeURIComponent(id)}`,
-  OGC_COLLECTIONS:             "/ogc/collections",
-  OGC_ITEMS:                   (domainCode: string) => `/ogc/collections/${encodeURIComponent(domainCode)}/items`,
-  OGC_METADATA:                '/ogc/ogc/metadata',
-  OGC_METADATA_BY_DOMAIN:      (domain: string) => `/ogc/ogc/metadata/${encodeURIComponent(domain)}`,
-  OGC_PROVIDERS:               '/ogc/ogc/providers',
+  OGC_COLLECTIONS:             "/ogc/ogc/collections",
+  OGC_ITEMS:                   (domainCode: string) => `/ogc/ogc/collections/${encodeURIComponent(domainCode)}/items`,
+  OGC_METADATA:                "/ogc/metadata",
+  OGC_METADATA_BY_DOMAIN:      (domain: string) => `/ogc/metadata/${encodeURIComponent(domain)}`,
+  OGC_PROVIDERS:               "/ogc/ogc/providers",
 
   // Adapter Runtime (routed via adapterClient)
   RUNTIME_HEALTH:              "/adapter-runtime/health",

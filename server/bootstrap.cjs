@@ -1068,11 +1068,11 @@ const server = http.createServer(async (req, res) => {
       return proxyRequest(req, res, targetUrl);
     }
 
-    // OGC adapter only supports GET on /ogc/collections/*/items; connector BE calls
+    // OGC adapter only supports GET on /ogc/ogc/collections/*/items; connector BE calls
     // documentation_url with POST. Intercept here and force GET before proxying.
     if (
       pathname.startsWith("/adapter-service/") &&
-      /\/ogc\/collections\/[^/]+\/items/.test(pathname)
+      /\/ogc\/ogc\/collections\/[^/]+\/items/.test(pathname)
     ) {
       const runtimeConfig = await readJsonFile(RUNTIME_CONFIG_PATH);
       const adapterEndpoint = getAdapterServiceUrl(runtimeConfig);
@@ -1149,3 +1149,4 @@ server.listen(PORT, HOST, async () => {
   console.log(`[rapidsk-bootstrap] dist dir: ${DIST_DIR}`);
   console.log(`[rapidsk-bootstrap] config dir: ${CONFIG_DIR}`);
 });
+
