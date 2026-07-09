@@ -338,11 +338,6 @@ const Settings = () => {
 
   // GeoServer endpoints state
   const [geoServerEndpoints, setGeoServerEndpoints] = useState<GeoServerEndpoint[]>([
-    { id: 1, name: "PHE ONWJ GeoServer", url: "https://geoserver.pheonwj.id", type: "WMS", status: "connected" },
-    { id: 2, name: "Pertamina GeoServer", url: "https://geo.phe.id", type: "WFS", status: "connected" },
-    { id: 3, name: "Chevron Data Server", url: "https://data.chevron.id", type: "WCS", status: "connected" },
-    { id: 4, name: "Medco GeoServer", url: "https://geoserver.medco.id", type: "WMS", status: "connected" },
-    { id: 5, name: "ExxonMobil GeoServer", url: "https://geo.exxon.id", type: "WMS", status: "connected" },
   ]);
 
   // Identity Provider state
@@ -822,6 +817,16 @@ const Settings = () => {
     );
   };
 
+  // URL validator — hanya http(s) yang valid
+  const isValidUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+
   // Handle add GeoServer endpoint
   const handleAddEndpoint = () => {
     const trimmedName = newEndpointForm.name.trim();
@@ -830,8 +835,8 @@ const Settings = () => {
       toast.error("Lengkapi nama dan URL endpoint dulu.");
       return;
     }
-    if (!isValidHttpUrl(trimmedUrl)) {
-      toast.error("URL endpoint harus berupa alamat http/https yang valid.");
+    if (!isValidUrl(newEndpointForm.url)) {
+      toast.error("URL tidak valid. Gunakan format https://domain.com");
       return;
     }
 

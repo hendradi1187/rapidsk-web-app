@@ -9,6 +9,12 @@ import {
   getPreferredParticipantId,
   clearSessionBinding,
 } from "@/lib/session-binding";
+import {
+  startLegacyTokenRefresh,
+  stopLegacyTokenRefresh,
+} from "@/lib/token-refresh";
+import { getParticipantOrgBinding } from "@/lib/participant-org-binding";
+import apiClient from "@/api/client";
 
 // ─── Role Types (CANONICAL — IAM-3) ────────────────────────────────────
 //
@@ -77,6 +83,8 @@ interface AuthContextType {
   permissions: string[];
   /** ID participant user aktif (null untuk superadmin). */
   participantId: string | null;
+  /** Organization ID yang ter-binding ke participant user aktif (null jika belum resolve). */
+  organizationId: string | null;
   isAuthenticated: boolean;
   /** Check if current user has at least one of the given canonical roles. */
   hasRole: (roles: AppRole[]) => boolean;
@@ -368,6 +376,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         persistUserInfo(nextUser);
       } catch {
         // Permission hydration tidak boleh memblok auth bootstrap.
+        // 401 dari IAM (effective-perms) sudah di-guard di clients.ts
+        // sebagai AUTH_SILENT_401_PATHS — tidak akan trigger force logout.
       }
     };
 
@@ -376,14 +386,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, [user, tokenVersion]);
+  }, [user?.id, tokenVersion]);
+
+
+  // ── Wire organizationId → getParticipantOrgBinding ──────────────────────────
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.participantId) {
+      setOrganizationId(null);
+      return;
+    }
+    let cancelled = false;
+
+    const syncOrgBinding = async () => {
+      const orgId = await getParticipantOrgBinding(user.participantId!, {
+        get: async (path, params) => {
+          const res = await apiClient.get(path, { params });
+          return res.data;
+        },
+      });
+      if (!cancelled) {
+        setOrganizationId(orgId ?? null);
+      }
+    };
+
+    void syncOrgBinding();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.participantId]);
 
   const setAuthUser = useCallback((userInfo: AuthUser) => {
     setUser(userInfo);
     persistUserInfo(userInfo);
+    // Start proactive token refresh untuk legacy (non-Keycloak) path.
+    // Kalau Keycloak aktif, startLegacyTokenRefresh() no-op karena
+    // Keycloak sudah punya onTokenExpired handler sendiri.
+    if (!isKeycloakConfigured()) {
+      startLegacyTokenRefresh();
+    }
   }, []);
 
   const clearAuth = useCallback(() => {
+    stopLegacyTokenRefresh();
     setUser(null);
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user_info");
@@ -420,6 +467,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         roles,
         permissions,
         participantId,
+        organizationId,
         isAuthenticated: !!user,
         hasRole,
         hasPermission,

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { connectorClient, monitoringClient } from "../client";
+import { connectorClient as apiClient } from "../clients";
 
 export interface TransferItem {
   id: string;

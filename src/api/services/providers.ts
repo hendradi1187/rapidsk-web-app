@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ctsClient } from "../client";
+import { connectorClient as apiClient } from "../clients";
 import type {
   ProviderCreateRequest,
   ProviderListResponse,
@@ -84,7 +84,14 @@ export const providersApi = {
   },
 
   deleteDomain: async (participantId: string, id: string): Promise<void> => {
-    await ctsClient.delete(`/onboarding/participants/${participantId}/domains/${id}`);
+    try {
+      await apiClient.delete(`/onboarding/participants/${participantId}/domains/${id}`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus domain participant';
+      const status = err?.response?.status;
+      console.error(`[DELETE] deleteDomain participantId=${participantId} id=${id} status=${status} msg=${msg}`);
+      throw new Error(msg);
+    }
   },
 
   // Adapters

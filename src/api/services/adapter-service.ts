@@ -1,6 +1,5 @@
-import { getFrontendApiBasePath } from "@/lib/runtime-config";
-
-const ADAPTER_PROXY_BASE = getFrontendApiBasePath("adapter");
+import { ADAPTER } from "../endpoints";
+const ADAPTER_PROXY_BASE = "/adapter-service/api/v1"; // keep for fetch() calls below — path handled by nginx proxy
 
 export type AdapterProvider = "geoserver" | "arcgis";
 export type AdapterAuthType =

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ctsClient } from "../client";
+import { ctsClient as apiClient } from "../clients";
 import type {
   Vocabulary,
   VocabularyCreateRequest,

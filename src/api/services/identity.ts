@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { authClient } from "../client";
+import { authClient as apiClient } from "../clients";
 
 export interface CodeRef {
   id: string;
