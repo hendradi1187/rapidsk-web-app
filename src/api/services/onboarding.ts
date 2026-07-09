@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ctsClient as apiClient } from "../clients";
+import { ctsClient } from "../clients";
 
 // Self-service registrasi KKKS (publik) + antrian persetujuan SKK Migas.
 export interface RegistrationItem {

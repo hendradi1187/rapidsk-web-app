@@ -1,4 +1,4 @@
-import { authClient as apiClient } from "../clients";
+import { authClient } from "../clients";
 import { AUTH } from "../endpoints";
 import { normalizeEffectivePermissions } from "@/lib/effective-permissions";
 
@@ -37,7 +37,7 @@ export const iamApi = {
     version: number;
     resources: unknown[];
   }> => {
-    const response = await apiClient.get(AUTH.IAM_POLICY_BUNDLE, {
+    const response = await authClient.get(AUTH.IAM_POLICY_BUNDLE, {
       params: { application },
     });
     return response.data;
