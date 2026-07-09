@@ -94,6 +94,7 @@ type EditUserForm = {
   password: string;
   category_id: string;
   group_id: string;
+  is_active: boolean;
 };
 
 const normalize = (value: string | null | undefined) =>
@@ -309,6 +310,7 @@ export const UserDirectoryPanel = ({
       password: "",
       category_id: user.category?.id ?? "",
       group_id: user.group?.id ?? "",
+      is_active: user.is_active === true,
     });
     setEditOpen(true);
   };
@@ -342,6 +344,7 @@ export const UserDirectoryPanel = ({
         password: string;
         category_id: string;
         group_id: string;
+        is_active: boolean;
       }> = {};
       if (editForm.username.trim()) body.username = editForm.username.trim();
       if (editForm.email.trim()) body.email = editForm.email.trim();
@@ -349,6 +352,7 @@ export const UserDirectoryPanel = ({
       if (editForm.password.trim()) body.password = editForm.password.trim();
       if (editForm.category_id) body.category_id = editForm.category_id;
       if (editForm.group_id) body.group_id = editForm.group_id;
+      body.is_active = editForm.is_active;
 
       await usersApi.update(editForm.id, body);
       toast.success("Mapping user berhasil diperbarui.");
@@ -760,6 +764,16 @@ export const UserDirectoryPanel = ({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Status akun</Label>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                  <Checkbox
+                    checked={editForm.is_active}
+                    onCheckedChange={(checked) => updateEditForm("is_active", checked === true)}
+                  />
+                  <span>Aktifkan akun ini di IAM</span>
+                </label>
               </div>
             </div>
           ) : null}

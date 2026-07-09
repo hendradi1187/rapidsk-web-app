@@ -1,5 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { authClient as apiClient } from "../clients";
+import axios from "axios";
+import { getAuthServiceBaseUrl } from "@/lib/runtime-config";
+import { authClient } from "../clients";
+
+const publicAuthClient = axios.create({
+  baseURL: getAuthServiceBaseUrl(),
+  headers: {
+    "Content-Type": "application/json",
+  },
+  timeout: 30000,
+});
 
 export interface CodeRef {
   id: string;
@@ -129,6 +139,7 @@ export const usersApi = {
       password: string;
       category_id: string;
       group_id: string;
+      is_active: boolean;
     }>,
   ): Promise<any> => {
     const res = await authClient.patch(`/identity-provider/users/${id}`, body);
@@ -160,7 +171,7 @@ export const usersApi = {
   },
   // PUBLIK - operator set password via tautan email.
   confirmEmail: async (token: string, password: string): Promise<any> => {
-    const res = await authClient.post("/identity-provider/users/confirm-email", {
+    const res = await publicAuthClient.post("/identity-provider/users/confirm-email", {
       token,
       password,
     });
@@ -168,7 +179,7 @@ export const usersApi = {
   },
   // Kirim ulang email undangan/aktivasi (token baru 24 jam). PUBLIK.
   resendConfirmation: async (email: string): Promise<any> => {
-    const res = await authClient.post(
+    const res = await publicAuthClient.post(
       "/identity-provider/users/resend-email-confirmation",
       { email },
     );

@@ -6,8 +6,8 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const proxyTarget = env.VITE_PROXY_TARGET || "http://100.66.10.14:8181";
-  const adapterTarget = env.VITE_ADAPTER_TARGET || "http://100.66.10.14:8182";
+  const proxyTarget = env.VITE_PROXY_TARGET || "http://192.168.1.55:8581";
+  const adapterTarget = env.VITE_ADAPTER_TARGET || "http://192.168.1.55:8584";
   const devPort = parseInt(env.VITE_DEV_PORT || "8282", 10);
 
   return {
@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
-        // Adapter service (8182) — strip /adapter-service prefix before forwarding.
+        // Adapter service (8584) — strip /adapter-service prefix before forwarding.
         // OGC adapter only supports GET on /ogc/collections/*/items; connector BE calls
         // documentation_url with POST, so we convert POST→GET here transparently.
         "/adapter-service": {

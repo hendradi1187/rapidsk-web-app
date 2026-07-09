@@ -743,7 +743,7 @@ const Settings = () => {
     try {
       setIsSaving(true);
       await usersService.update(user.id, {
-        name: profileForm.name.trim(),
+        full_name: profileForm.name.trim(),
         email: profileForm.email.trim(),
       });
 

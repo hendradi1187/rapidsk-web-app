@@ -1,14 +1,14 @@
 {
   "initialized": true,
   "publicAppUrl": "http://localhost:8282",
-  "apiBaseUrl": "http://100.66.10.14:8181/api/v1",
-  "adapterEndpoint": "http://100.66.10.14:8182",
+  "apiBaseUrl": "http://192.168.1.55:8581/api/v1",
+  "adapterEndpoint": "http://192.168.1.55:8584",
   "services": {
-    "auth": "http://100.66.10.14:8181/api/v1",
-    "cts": "http://100.66.10.14:8181/api/v1",
-    "connector": "http://100.66.10.14:8181/api/v1",
-    "adapter": "http://100.66.10.14:8182",
-    "monitoring": "http://100.66.10.14:8181/api/v1"
+    "auth": "http://192.168.1.55:8581/api/v1",
+    "cts": "http://192.168.1.55:8581/api/v1",
+    "connector": "http://192.168.1.55:8582/api/v1",
+    "adapter": "http://192.168.1.55:8584",
+    "monitoring": "http://192.168.1.55:8581/api/v1"
   },
   "sso": {
     "enabled": false,
