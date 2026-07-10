@@ -22,13 +22,22 @@ const REFRESH_LEAD_SECONDS = 60;   // refresh 60 detik sebelum exp
 const CHECK_INTERVAL_MS    = 30_000; // cek setiap 30 detik
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
-let isRefreshing = false;
+// Shared in-flight promise: kalau banyak request kena 401 barengan, semuanya
+// menunggu SATU refresh yang sama (bukan trigger refresh berkali-kali).
+let refreshPromise: Promise<boolean> | null = null;
 
 const readToken = (): string | null =>
   typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
 
+const readRefreshToken = (): string | null =>
+  typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+
 const saveToken = (token: string): void => {
   if (typeof window !== "undefined") localStorage.setItem("auth_token", token);
+};
+
+const saveRefreshToken = (token: string): void => {
+  if (typeof window !== "undefined") localStorage.setItem("refresh_token", token);
 };
 
 const getExpSeconds = (token: string): number | null => {
@@ -43,16 +52,11 @@ const secondsUntilExpiry = (token: string): number => {
   return exp - Math.floor(Date.now() / 1000);
 };
 
-/**
- * Coba refresh token via BE. Return true kalau berhasil.
- * Gagal diam-diam — AuthContext / interceptor yang handle logout kalau memang expired.
- */
-export const tryRefreshLegacyToken = async (): Promise<boolean> => {
-  if (isRefreshing) return false;
-  const token = readToken();
-  if (!token) return false;
+const doRefresh = async (): Promise<boolean> => {
+  // Kontrak live: POST /auth/refresh-token body { refresh_token } → { access_token, refresh_token, ... }
+  const refreshToken = readRefreshToken();
+  if (!refreshToken) return false;
 
-  isRefreshing = true;
   try {
     // Base URL diambil dari runtime-config — sama dengan authClient baseURL
     const { getAuthServiceBaseUrl } = await import("@/lib/runtime-config");
@@ -61,23 +65,35 @@ export const tryRefreshLegacyToken = async (): Promise<boolean> => {
     const res = await fetch(`${baseUrl}${AUTH.REFRESH_TOKEN}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ refresh_token: refreshToken }),
     });
 
     if (!res.ok) return false;
 
     const data = await res.json();
     const newToken: string | undefined = data?.access_token ?? data?.token;
-    if (newToken) {
-      saveToken(newToken);
-      return true;
-    }
-    return false;
+    if (!newToken) return false;
+
+    saveToken(newToken);
+    // Refresh token dirotasi BE → simpan yang baru bila ada.
+    if (data?.refresh_token) saveRefreshToken(data.refresh_token);
+    return true;
   } catch {
     return false;
-  } finally {
-    isRefreshing = false;
   }
+};
+
+/**
+ * Coba refresh token via BE. Return true kalau berhasil.
+ * Otoritas ada di BACKEND: kalau BE menolak (non-2xx) → false → pemanggil yang logout.
+ * Aman untuk dipanggil paralel: semua caller menunggu satu refresh yang sama.
+ */
+export const tryRefreshLegacyToken = async (): Promise<boolean> => {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = doRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
 };
 
 /**

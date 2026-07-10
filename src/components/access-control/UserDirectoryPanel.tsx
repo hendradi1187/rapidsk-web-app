@@ -4,6 +4,8 @@ import {
   Mail,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   RefreshCcw,
   Save,
   Trash2,
@@ -381,6 +383,22 @@ export const UserDirectoryPanel = ({
     }
   };
 
+  // Toggle aktif/nonaktif cepat lewat PATCH { is_active } (didukung UserUpdateRequest).
+  const toggleActive = async (user: UserItem) => {
+    if (!user.id) return;
+    const next = !user.is_active;
+    try {
+      setBusyAction(`toggle-active:${user.id}`);
+      await usersApi.update(user.id, { is_active: next });
+      toast.success(next ? "User diaktifkan." : "User dinonaktifkan.");
+      await onChanged();
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Gagal mengubah status aktif user."));
+    } finally {
+      setBusyAction("");
+    }
+  };
+
 
   return (
     <div className="space-y-4">
@@ -522,6 +540,21 @@ export const UserDirectoryPanel = ({
                     <Button variant="outline" onClick={() => openEditDialog(user)}>
                       <Pencil className="mr-2 h-4 w-4" />
                       Edit Mapping
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => void toggleActive(user)}
+                      disabled={busyAction === `toggle-active:${user.id}`}
+                      className={user.is_active ? "text-amber-700 hover:text-amber-800" : "text-emerald-700 hover:text-emerald-800"}
+                    >
+                      {busyAction === `toggle-active:${user.id}` ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : user.is_active ? (
+                        <PowerOff className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Power className="mr-2 h-4 w-4" />
+                      )}
+                      {user.is_active ? "Nonaktifkan" : "Aktifkan"}
                     </Button>
                     {user.email ? (
                       <Button

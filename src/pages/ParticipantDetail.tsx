@@ -305,6 +305,41 @@ const ParticipantDetail = () => {
     !poolMeta?.wellKnownJwtUrl ? "well-known JWT URL belum ada" : null,
   ].filter(Boolean) as string[];
 
+  // Urutan perapihan participant: binding → operator → registry → domain → adapter.
+  // targetTab hanya boleh "info" | "domains" | "adapters" (tab yang tersedia di halaman ini).
+  const readinessChecklist: Array<{ key: string; title: string; done: boolean; targetTab: "info" | "domains" | "adapters" }> = [
+    {
+      key: "binding",
+      title: "Binding organisasi & registrasi terverifikasi",
+      done: organizationBindingState === "VERIFIED" && registrationBindingState === "VERIFIED",
+      targetTab: "info",
+    },
+    {
+      key: "operator",
+      title: "Akun operator sudah aktif",
+      done: operatorStatus === "AKTIF",
+      targetTab: "info",
+    },
+    {
+      key: "registry",
+      title: "Registry koneksi (endpoint + JWKS) siap",
+      done: poolReady,
+      targetTab: "info",
+    },
+    {
+      key: "domain",
+      title: "Domain organisasi tertempel ke participant",
+      done: participantDomainCount > 0 && missingOrganizationDomains.length === 0,
+      targetTab: "domains",
+    },
+    {
+      key: "adapter",
+      title: "Adapter data source terpasang",
+      done: ((participantAdapters ?? []) as Array<unknown>).length > 0,
+      targetTab: "adapters",
+    },
+  ];
+
   if (isLoading) {
     return (
       <div className="min-h-screen">

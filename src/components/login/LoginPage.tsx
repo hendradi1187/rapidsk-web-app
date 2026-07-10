@@ -146,6 +146,7 @@ const fetchGovernanceOrganizationsPublic = async (): Promise<OrgOption[]> => {
 
 const clearLoginState = () => {
   localStorage.removeItem("auth_token");
+  localStorage.removeItem("refresh_token");
   localStorage.removeItem("user_info");
   localStorage.removeItem("remember_device");
 };
@@ -276,6 +277,8 @@ export const LoginPage = () => {
       const res = await authService.login({ username, password });
       const token = res.access_token;
       localStorage.setItem("auth_token", token);
+      // Simpan refresh_token untuk auto-refresh (dipakai token-refresh.ts + interceptor 401).
+      if (res.refresh_token) localStorage.setItem("refresh_token", res.refresh_token);
       localStorage.setItem("remember_device", remember ? "1" : "0");
 
       const c = decodeJwt(token);

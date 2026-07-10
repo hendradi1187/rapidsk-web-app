@@ -27,7 +27,6 @@ import {
   isKeycloakConfigured,
 } from "@/auth/keycloak";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { decodeJwt } from "@/lib/jwt";
 import {
   getAuthServiceBaseUrl,
   getCtsServiceBaseUrl,
@@ -40,6 +39,8 @@ import {
   AUTH_FORCE_LOGOUT_PATHS,
   AUTH_SILENT_401_PATHS,
 } from "@/api/endpoints";
+import { tryRefreshLegacyToken } from "@/lib/token-refresh";
+import { getServiceToken, clearServiceTokens } from "@/lib/service-tokens";
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
@@ -48,15 +49,16 @@ const readLegacyToken = (): string | null => {
   return localStorage.getItem("auth_token");
 };
 
-const isTokenExpired = (token: string | null): boolean => {
-  if (!token) return true;
-  const payload = decodeJwt(token);
-  const exp = Number(payload?.exp ?? 0);
-  if (!exp) return false; // tidak ada claim exp → anggap tidak expired
-  return Date.now() >= exp * 1000;
-};
-
 // ── Logout policy ─────────────────────────────────────────────────────────────
+//
+// Otoritas sesi = BACKEND, bukan tebakan cache lokal. Kita TIDAK lagi men-decode
+// exp token dari localStorage untuk memutuskan logout. Alurnya:
+//   • 401 dari auth-infra (validate/refresh/revoke) → sesi memang mati → logout
+//   • 401 dari path silent (IAM perms/policy-bundle) → log saja
+//   • 401 lain → minta BE refresh token; kalau berhasil → retry request;
+//     kalau BE menolak refresh → baru logout (backend yang menyatakan sesi mati)
+//   • Kalau setelah refresh masih 401 (mis. kurang izin) → diteruskan sebagai error,
+//     TIDAK logout (bukan urusan sesi).
 
 const isForceLogoutPath = (url: string): boolean =>
   AUTH_FORCE_LOGOUT_PATHS.some((ep) => url.includes(ep));
@@ -64,31 +66,12 @@ const isForceLogoutPath = (url: string): boolean =>
 const isSilentPath = (url: string): boolean =>
   AUTH_SILENT_401_PATHS.some((ep) => url.includes(ep));
 
-/**
- * Tentukan apakah 401 harus memaksa logout user.
- *
- * Aturan (dari yang paling spesifik ke umum):
- * 1. Path auth-infra (validate/refresh/revoke) → SELALU force logout
- * 2. Path silent (IAM perms/policy-bundle) → TIDAK pernah force logout
- * 3. Token tidak ada → force logout
- * 4. Token sudah expired → force logout
- * 5. Token masih valid → TIDAK force logout (kemungkinan izin kurang, bukan sesi invalid)
- */
-const shouldForceLogout = (error: AxiosError): boolean => {
-  const url = String(error.config?.url ?? "");
-
-  if (isForceLogoutPath(url)) return true;
-  if (isSilentPath(url)) return false;
-
-  const token = readLegacyToken();
-  if (!token) return true;
-  return isTokenExpired(token);
-};
-
 const performLogout = (clientName: string, url: string): void => {
+  clearServiceTokens();
   localStorage.removeItem("auth_token");
+  localStorage.removeItem("refresh_token");
   if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    console.warn(`[${clientName}][401] Session expired, redirecting to login. url=${url}`);
+    console.warn(`[${clientName}][401] Backend menolak refresh, sesi diakhiri. url=${url}`);
     window.location.href = "/login";
   }
 };
@@ -98,6 +81,7 @@ const performLogout = (clientName: string, url: string): void => {
 function createServiceClient(
   name: string,
   getBaseUrl: () => string,
+  applicationCode?: string,
 ): AxiosInstance {
   const instance = axios.create({
     headers: { "Content-Type": "application/json" },
@@ -114,6 +98,12 @@ function createServiceClient(
         const refreshed = await ensureValidToken(30);
         if (refreshed) token = getKeycloakToken();
       }
+      // Service dgn audience non-CTS (connector/adapter) butuh token ber-audience
+      // sesuai. Cetak dari refresh_token via application_code. Kalau gagal, fallback
+      // ke token login (biar tidak mem-blok; BE yang akan menolak bila memang perlu).
+      if (!token && applicationCode) {
+        token = await getServiceToken(applicationCode);
+      }
       if (!token) token = readLegacyToken();
       if (token) config.headers.Authorization = `Bearer ${token}`;
 
@@ -129,21 +119,44 @@ function createServiceClient(
   // ── Response interceptor ──────────────────────────────────────────────────
   instance.interceptors.response.use(
     (response) => response,
-    (error: AxiosError) => {
+    async (error: AxiosError) => {
       const parsedMessage = getApiErrorMessage(error);
       error.message = parsedMessage;
 
       if (error.response) {
         const url = String(error.config?.url ?? "");
+        const config = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
 
         switch (error.response.status) {
-          case 401:
-            if (shouldForceLogout(error)) {
+          case 401: {
+            // Auth-infra (validate/refresh/revoke) gagal → sesi memang mati.
+            if (isForceLogoutPath(url)) {
               performLogout(name, url);
-            } else {
+              break;
+            }
+            // Endpoint silent (IAM perms/policy-bundle) → log saja, jangan ganggu sesi.
+            if (isSilentPath(url)) {
               console.warn(`[${name}][401] Ditolak tanpa mematikan sesi:`, url);
+              break;
+            }
+            // Backend-driven: minta refresh, lalu retry SEKALI.
+            if (config && !config._retried) {
+              config._retried = true;
+              const refreshed = await tryRefreshLegacyToken();
+              if (refreshed) {
+                const newToken = readLegacyToken();
+                if (newToken) {
+                  config.headers = config.headers ?? {};
+                  (config.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+                }
+                // Retry; kalau 401 lagi (mis. kurang izin) diteruskan sbg error, TIDAK logout.
+                return instance(config);
+              }
+              // BE menolak refresh → sesi mati → logout.
+              performLogout(name, url);
             }
             break;
+          }
           case 403:
             console.error(`[${name}][403]`, parsedMessage);
             break;
@@ -178,11 +191,11 @@ export const authClient: AxiosInstance = createServiceClient("auth", getAuthServ
 /** ctsClient — governance, onboarding, policy-contract, catalog, compliance */
 export const ctsClient: AxiosInstance = createServiceClient("cts", getCtsServiceBaseUrl);
 
-/** connectorClient — connector runtime, providers, connection pool */
-export const connectorClient: AxiosInstance = createServiceClient("connector", getConnectorServiceBaseUrl);
+/** connectorClient — connector runtime, providers, connection pool (aud gxspace-connector) */
+export const connectorClient: AxiosInstance = createServiceClient("connector", getConnectorServiceBaseUrl, "CONNECTOR");
 
-/** adapterClient — adapter workspace, OGC, geospatial runtime */
-export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl);
+/** adapterClient — adapter workspace, OGC, geospatial runtime (aud gxspace-ogc-adapter) */
+export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl, "OGC_ADAPTER");
 
 /** monitoringClient — audit logs, heartbeats, transfer projections */
 export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl);

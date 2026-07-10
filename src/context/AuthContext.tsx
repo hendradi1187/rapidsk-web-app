@@ -13,6 +13,7 @@ import {
   startLegacyTokenRefresh,
   stopLegacyTokenRefresh,
 } from "@/lib/token-refresh";
+import { clearServiceTokens } from "@/lib/service-tokens";
 import { getParticipantOrgBinding } from "@/lib/participant-org-binding";
 import apiClient from "@/api/client";
 
@@ -431,8 +432,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAuth = useCallback(() => {
     stopLegacyTokenRefresh();
+    clearServiceTokens();
     setUser(null);
     localStorage.removeItem("auth_token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("user_info");
     localStorage.removeItem("remember_device");
     clearSessionBinding();

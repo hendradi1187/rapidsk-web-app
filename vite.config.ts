@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const proxyTarget = env.VITE_PROXY_TARGET || "http://192.168.1.55:8581";
   const adapterTarget = env.VITE_ADAPTER_TARGET || "http://192.168.1.55:8584";
+  // Connector service (consumer 8582). Provider ops (8583) berbagi path yang sama;
+  // consumer melayani list/status + consumer & provider ops di demo ini.
+  const connectorTarget = env.VITE_CONNECTOR_TARGET || "http://100.66.10.14:8582";
   const devPort = parseInt(env.VITE_DEV_PORT || "8282", 10);
 
   return {
@@ -21,6 +24,14 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+        },
+        // Connector service (8582) — strip /connector-api prefix sebelum forward.
+        // Dipakai connectorClient (audience gxspace-connector) untuk transfer dsb.
+        "/connector-api": {
+          target: connectorTarget,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/connector-api/, ""),
         },
         // Adapter service (8584) — strip /adapter-service prefix before forwarding.
         // OGC adapter only supports GET on /ogc/ogc/collections/*/items; connector BE calls

@@ -69,6 +69,8 @@ export interface RuntimeBootstrapState {
 const FRONTEND_API_BASE_PATH = "/api/v1";
 const FRONTEND_ADAPTER_RUNTIME_BASE_PATH = "/adapter-runtime";
 const FRONTEND_ADAPTER_SERVICE_BASE_PATH = "/adapter-service";
+// Connector service (8582/8583) di dev lewat proxy Vite `/connector-api` (strip prefix).
+const FRONTEND_CONNECTOR_SERVICE_BASE_PATH = "/connector-api/api/v1";
 
 const normalizeBaseUrl = (value: string | undefined | null): string =>
   String(value ?? "").trim().replace(/\/+$/, "");
@@ -110,7 +112,7 @@ const buildRuntimeServices = (
     return {
       auth: FRONTEND_API_BASE_PATH,
       cts: FRONTEND_API_BASE_PATH,
-      connector: FRONTEND_API_BASE_PATH,
+      connector: FRONTEND_CONNECTOR_SERVICE_BASE_PATH,
       adapter: FRONTEND_ADAPTER_SERVICE_BASE_PATH,
       monitoring: FRONTEND_API_BASE_PATH,
     };

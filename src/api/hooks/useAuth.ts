@@ -15,6 +15,7 @@ export const useLogout = () => {
 
   const logout = () => {
     localStorage.removeItem("auth_token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("user_info");
     setActiveDomainId(null);
     clearSessionBinding();
