@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { useContracts } from "@/api/hooks/useContracts";
 import { useAgreements } from "@/api/hooks/useAgreements";
 import { useTransfers } from "@/api/hooks/useTransfers";
 import { useConnectionPools, useConnectionPoolByScope } from "@/api/hooks/useConnectionPools";
-import { useProviders } from "@/api/hooks/useProviders";
+import { useParticipantAdapters, useProviders } from "@/api/hooks/useProviders";
 import { useDomain } from "@/context/DomainContext";
 import { useAuth } from "@/context/AuthContext";
 import { contractsApi, agreementsApi, type ContractDetail, type ContractItem } from "@/api/services/policy-contract";
@@ -99,7 +99,7 @@ function ScopedPoolLoader({ domainId, agreementId, domainKey, onResult }: Scoped
 }
 
 const TransferCenter = () => {
-  const { domainId } = useDomain();
+  const { domainId, domainName, availableDomains, ready: domainReady } = useDomain();
   const { participantId, role } = useAuth();
   const isSuperAdmin = role === "SUPER_ADMIN";
   const [overrideParticipantId, setOverrideParticipantId] = useState<string | null>(null);
@@ -107,6 +107,8 @@ const TransferCenter = () => {
   const [contractDetailsById, setContractDetailsById] = useState<Record<string, ContractDetail>>({});
   const effectiveParticipantId = isSuperAdmin ? overrideParticipantId : participantId;
   const adminContextReady = !isSuperAdmin || !!effectiveParticipantId;
+  const hasDomainOptions = availableDomains.length > 0;
+  const domainContextReady = Boolean(domainId);
   const [scopedPoolMap, setScopedPoolMap] = useState<Record<string, import("@/api/types/governance").ConnectionPoolItem | null>>({});
   const handleScopedPool = (domainKey: string, pool: import("@/api/types/governance").ConnectionPoolItem | null) => {
     setScopedPoolMap((prev) => ({ ...prev, [domainKey]: pool }));
@@ -193,9 +195,9 @@ const TransferCenter = () => {
     () => ((polQ.data ?? []) as Policy[]),
     [polQ.data],
   );
-  const dsName = (id: string) => datasets.find((d) => d.dataset_id === id)?.dataset_name ?? `${id.slice(0, 8)}…`;
+  const dsName = (id: string) => datasets.find((d) => d.dataset_id === id)?.dataset_name ?? `${id.slice(0, 8)}â€¦`;
 
-  // Pool untuk participant aktif — satu pool berlaku untuk semua domain transfer
+  // Pool untuk participant aktif â€” satu pool berlaku untuk semua domain transfer
   const myPool = useMemo(() => findParticipantPool(pools, effectiveParticipantId), [pools, effectiveParticipantId]);
   const poolReady = isPoolReady(myPool);
   const poolMeta = myPool ? resolvePoolMeta(myPool) : null;
@@ -584,7 +586,7 @@ const TransferCenter = () => {
       console.error("[Transfer] FAILED at step:", busy[key], e);
       const isActiveTransferError = msg.toLowerCase().includes("active transfer");
       if (isActiveTransferError) {
-        toast.warning("Transfer aktif sudah ada untuk dataset ini — tunggu sampai selesai atau gagal.", { duration: 6000 });
+        toast.warning("Transfer aktif sudah ada untuk dataset ini â€” tunggu sampai selesai atau gagal.", { duration: 6000 });
       } else {
         toast.error(`Gagal (${busy[key] ?? "?"}): ${msg}`, { duration: 8000 });
       }
@@ -659,7 +661,7 @@ const TransferCenter = () => {
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
             <UserCog className="w-5 h-5 text-amber-700 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-amber-900">Mode Admin — Pilih Participant</p>
+              <p className="text-sm font-semibold text-amber-900">Mode Admin â€” Pilih Participant</p>
               <p className="text-xs text-amber-700 mt-0.5">
                 Sebagai SUPER_ADMIN, kamu tidak punya participant_id. Pilih participant provider untuk mengaktifkan Transfer Center.
               </p>
@@ -695,13 +697,13 @@ const TransferCenter = () => {
         {isSuperAdmin && adminContextReady && (
           <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
             Konteks aktif: <strong>{selectedProvider?.provider_name ?? "Provider terpilih"}</strong>
-            {domainId ? <> · domain aktif <strong>{domainId}</strong></> : <> · domain aktif belum terbaca</>}
+            {domainId ? <> Â· domain aktif <strong>{domainId}</strong></> : <> Â· domain aktif belum terbaca</>}
           </div>
         )}
 
         {/* Kewajiban siap kirim */}
         <div className="panel overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2"><Send className="w-4 h-4 text-accent" /><h3 className="font-semibold text-sm">{`Kewajiban Pengiriman Data — ${DOMAINS.length} Domain`}</h3></div>
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2"><Send className="w-4 h-4 text-accent" /><h3 className="font-semibold text-sm">{`Kewajiban Pengiriman Data â€” ${DOMAINS.length} Domain`}</h3></div>
           <Table>
             <TableHeader>
               <TableRow className="table-header">
@@ -873,7 +875,7 @@ const TransferCenter = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       {b ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {b}…</span>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {b}â€¦</span>
                       ) : r.allSent ? (
                         <span className="inline-flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> selesai semua</span>
                       ) : r.ready ? (
@@ -927,9 +929,9 @@ const TransferCenter = () => {
                       {t.transferred_size ?? 0}{t.total_size ? ` / ${t.total_size}` : ""} B
                       {t.error_message && <span className="text-rose-600 ml-2 inline-flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" />{t.error_message}</span>}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{t.record_count ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{t.record_count ?? "â€”"}</TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground" title={t.checksum_sha256 ?? ""}>
-                      {t.checksum_sha256 ? `${t.checksum_sha256.slice(0, 12)}…` : "—"}
+                      {t.checksum_sha256 ? `${t.checksum_sha256.slice(0, 12)}â€¦` : "â€”"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -1001,7 +1003,7 @@ const TransferCenter = () => {
 
                         {String(t.status).toUpperCase() !== "FAILED"
                           && String(t.status).toUpperCase() !== "COMPLETED"
-                          && <span className="text-xs text-muted-foreground italic">—</span>}
+                          && <span className="text-xs text-muted-foreground italic">â€”</span>}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1029,3 +1031,5 @@ const TransferCenter = () => {
 };
 
 export default TransferCenter;
+
+

@@ -14,7 +14,7 @@ export const iamApi = {
   getMyEffectivePermissions: async (): Promise<string[]> => {
     const results = await Promise.allSettled(
       PLATFORM_APPLICATIONS.map((application) =>
-        apiClient
+        authClient
           .get(AUTH.IAM_EFFECTIVE_PERMS, { params: { application } })
           .then((res) => normalizeEffectivePermissions(res.data)),
       ),

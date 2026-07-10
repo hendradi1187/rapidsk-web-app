@@ -52,6 +52,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getStoredParticipantOrganizationId, setStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 import { findParticipantPool, isPoolReady, resolvePoolMeta } from "@/lib/connection-pool";
 import { useDomain } from "@/context/DomainContext";
 import { useAuth } from "@/context/AuthContext";
@@ -74,9 +75,6 @@ type BindingState = "VERIFIED" | "INFERRED" | "MISSING";
 const normalize = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-const getParticipantOrganizationBindingKey = (participantId: string) =>
-  `participant_org_binding:${participantId}`;
-
 const ParticipantDetail = () => {
   const { availableDomains } = useDomain();
   const qc = useQueryClient();
@@ -89,7 +87,7 @@ const ParticipantDetail = () => {
     ? searchParams.get("tab")!
     : "info";
   const storedOrganizationBinding = participantId
-    ? localStorage.getItem(getParticipantOrganizationBindingKey(participantId))
+    ? getStoredParticipantOrganizationId(participantId)
     : null;
 
   // Participant Detail Info
@@ -104,7 +102,7 @@ const ParticipantDetail = () => {
   const matchedOrg = useMemo(() => {
     if (!provider || !orgs) return null;
     const byName = orgs.find(
-      (o: any) => normalize(o.organization_name) === normalize(provider.organization_name),
+      (o: any) => normalize(o.organization_name) === normalize(provider.provider_name),
     );
     if (!byName) return null;
     return { data: byName, source: "name" as const };
@@ -179,7 +177,7 @@ const ParticipantDetail = () => {
   useEffect(() => {
     if (provider) {
       setFormData({
-        organization_name: provider.organization_name || "",
+        organization_name: provider.provider_name || "",
         address: provider.address || "",
       });
     }
@@ -194,7 +192,7 @@ const ParticipantDetail = () => {
   const relatedRegistration = useMemo(() => {
     if (!provider) return null;
     const regs = (registrationsQ.data ?? []) as RegistrationItem[];
-    const byParticipant = regs.find((item) => item.participant_id === provider.id);
+    const byParticipant = regs.find((item) => item.participant_id === provider.provider_id);
     if (byParticipant) return { data: byParticipant, source: "participant" as const };
 
     const operatorEmail = provider.contact_person?.email ?? null;
@@ -204,7 +202,7 @@ const ParticipantDetail = () => {
     }
 
     const byOrgName =
-      regs.find((item) => normalize(item.organization_name) === normalize(provider.organization_name)) ?? null;
+      regs.find((item) => normalize(item.organization_name) === normalize(provider.provider_name)) ?? null;
     return byOrgName ? { data: byOrgName, source: "organization_name" as const } : null;
   }, [provider, registrationsQ.data]);
 
@@ -336,7 +334,7 @@ const ParticipantDetail = () => {
   const handleEdit = async () => {
     try {
       await updateMutation.mutateAsync({
-        id: provider.id,
+        id: provider.provider_id,
         data: formData,
       });
       setIsEditDialogOpen(false);
@@ -349,7 +347,7 @@ const ParticipantDetail = () => {
 
   const handleDelete = async () => {
     try {
-      await deleteMutation.mutateAsync(provider.id);
+      await deleteMutation.mutateAsync(provider.provider_id);
       setIsDeleteDialogOpen(false);
       toast.success("Participant berhasil dihapus");
       navigate("/participants");
@@ -388,16 +386,16 @@ const ParticipantDetail = () => {
 
   const handleSaveOrganizationBinding = () => {
     if (!selectedOrganizationId) {
-      localStorage.removeItem(getParticipantOrganizationBindingKey(participantId));
+      setStoredParticipantOrganizationId(participantId, null);
       toast.success("Pilihan organisasi sumber domain dibersihkan.");
       return;
     }
-    localStorage.setItem(getParticipantOrganizationBindingKey(participantId), selectedOrganizationId);
+    setStoredParticipantOrganizationId(participantId, selectedOrganizationId);
     toast.success("Organisasi sumber domain disimpan untuk participant ini.");
   };
 
   const handleResetOrganizationBinding = () => {
-    localStorage.removeItem(getParticipantOrganizationBindingKey(participantId));
+    setStoredParticipantOrganizationId(participantId, null);
     setSelectedOrganizationId(matchedOrg?.data.organization_id || "");
     toast.success("Pilihan organisasi sumber domain dikembalikan ke hasil deteksi otomatis.");
   };
@@ -446,7 +444,7 @@ const ParticipantDetail = () => {
         domainIds: targetDomainIds,
         consumerId: consumerParticipant.provider_id,
         providerId: participantId,
-        providerName: provider.organization_name || provider.contact_person?.name || participantId,
+        providerName: provider.provider_name || provider.contact_person?.name || participantId,
       });
       qc.invalidateQueries({ queryKey: ["contracts"] });
       if (result.created === 0) {
@@ -530,7 +528,7 @@ const ParticipantDetail = () => {
   return (
     <div className="min-h-screen pb-10">
       <Header
-        title={provider.organization_name || "Participant Detail"}
+        title={provider.provider_name || "Participant Detail"}
         subtitle="Kelola informasi, domain, dan adapter (dataplane) participant"
       />
       <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -572,7 +570,7 @@ const ParticipantDetail = () => {
             <div className="panel p-6">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold">{provider.organization_name}</h2>
+                  <h2 className="text-2xl font-bold">{provider.provider_name}</h2>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant={provider.status === "ACTIVE" ? "default" : "secondary"}>
                       {provider.status || "UNKNOWN"}
@@ -600,7 +598,7 @@ const ParticipantDetail = () => {
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">ID Participant</p>
                   <p className="font-mono text-sm bg-muted/50 p-3 rounded-lg border border-border">
-                    {provider.id}
+                    {provider.provider_id}
                   </p>
                 </div>
                 <div>
@@ -1438,3 +1436,4 @@ const ParticipantDetail = () => {
 };
 
 export default ParticipantDetail;
+

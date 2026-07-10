@@ -59,6 +59,7 @@ import type { Organization, OrganizationDomain } from "@/api/types/governance";
 import { useAuth } from "@/context/AuthContext";
 import { canManageOrganizations } from "@/lib/feature-access";
 import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
+import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
 const ROLE_BY_CODE: Record<string, string> = {
   REGULATOR: "SKK Migas (Regulator)",
@@ -465,19 +466,12 @@ const Organizations = () => {
 
   useEffect(() => {
     if (!organizations || organizations.length === 0) return;
-    try {
-      localStorage.setItem(
-        "cached_orgs",
-        JSON.stringify(
-          organizations.map((org) => ({
-            id: org.organization_id,
-            name: org.organization_name,
-          })),
-        ),
-      );
-    } catch {
-      // ignore storage issue
-    }
+    setPublicOrganizationsCache(
+      organizations.map((org) => ({
+        id: org.organization_id,
+        name: org.organization_name,
+      })),
+    );
   }, [organizations]);
   useEffect(() => setPage(1), [searchQuery, pageSize]);
 

@@ -13,6 +13,7 @@ import { runtimeApi } from "@/api/services/runtime";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { canManageDeploymentConfig } from "@/lib/feature-access";
+import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
 const buildServiceForm = (runtimeConfig?: {
   apiBaseUrl?: string;
@@ -135,7 +136,7 @@ const DeploymentConfig = () => {
         ...prev.filter((item) => item !== "Cache organisasi publik sudah diperbarui dari CTS."),
         "Cache organisasi publik sudah diperbarui dari CTS.",
       ]);
-      localStorage.setItem("cached_orgs", JSON.stringify(result.data));
+      setPublicOrganizationsCache(result.data);
       toast.success(`${result.refreshed} organisasi publik berhasil disinkronkan.`);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Gagal menyinkronkan organisasi publik."));

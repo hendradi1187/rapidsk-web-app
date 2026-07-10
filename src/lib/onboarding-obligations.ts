@@ -1,8 +1,9 @@
-import { organizationsApi } from "@/api/services/governance";
+﻿import { organizationsApi } from "@/api/services/governance";
 import { type RegistrationItem } from "@/api/services/onboarding";
 import { contractsApi } from "@/api/services/policy-contract";
 import { providersApi } from "@/api/services/providers";
 import { DOMAINS } from "@/lib/fulfillment";
+import { setStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 
 type ProviderCandidate = {
   provider_id: string;
@@ -97,7 +98,7 @@ export const resolveGovernanceOrganization = async (
   return organizationsApi.create({
     organization_name: registration.organization_name,
     code: registration.organization_name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20),
-    description: `Organisasi ${registration.organization_name} — dibuat otomatis saat approve registrasi`,
+    description: `Organisasi ${registration.organization_name} â€” dibuat otomatis saat approve registrasi`,
   });
 };
 
@@ -119,11 +120,7 @@ export const bindParticipantToOrganizationDomains = async (
       .map((domainId) => providersApi.addDomain(participantId, { domain_id: domainId })),
   );
 
-  try {
-    localStorage.setItem(`participant_org_binding:${participantId}`, organizationId);
-  } catch {
-    // ignore storage issue
-  }
+  setStoredParticipantOrganizationId(participantId, organizationId);
 
   return domainIds;
 };
@@ -145,7 +142,7 @@ export const issueAutoObligationContracts = async ({
   for (const domainId of domainIds) {
     const existingContracts = await contractsApi.list(domainId).catch(() => []);
     for (const domain of DOMAINS) {
-      const contractName = `[${domain.label}] Kewajiban Data — ${providerName}`;
+      const contractName = `[${domain.label}] Kewajiban Data â€” ${providerName}`;
       const alreadyExists = existingContracts.some(
         (item) => item.provider_id === providerId && normalize(item.name) === normalize(contractName),
       );
@@ -166,3 +163,4 @@ export const issueAutoObligationContracts = async ({
 
   return { created, skipped };
 };
+

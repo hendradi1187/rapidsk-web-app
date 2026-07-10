@@ -40,6 +40,7 @@ import { DataFlowAnimation } from "@/components/login/DataFlowAnimation";
 import { BackgroundScene } from "@/components/login/BackgroundScene";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
+import { getPublicOrganizationsCache, setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 import { resolveLoginSessionBinding } from "@/lib/session-resolver";
 import type { Organization } from "@/api/types/governance";
 
@@ -66,7 +67,7 @@ const getOrgSelectionValue = (item: Pick<OrgOption, "id" | "name">) =>
 
 const readCachedOrganizations = (): OrgOption[] => {
   try {
-    const cached = JSON.parse(localStorage.getItem("cached_orgs") ?? "[]") as Array<{
+    const cached = JSON.parse(JSON.stringify(getPublicOrganizationsCache())) as Array<{
       id: string;
       name: string;
     }>;
@@ -201,9 +202,8 @@ export const LoginPage = () => {
         }
 
         if (nextOptions.length > 0) {
-          localStorage.setItem(
-            "cached_orgs",
-            JSON.stringify(nextOptions.map((item) => ({ id: item.id, name: item.name }))),
+          setPublicOrganizationsCache(
+            nextOptions.map((item) => ({ id: item.id, name: item.name })),
           );
         }
 
@@ -297,9 +297,8 @@ export const LoginPage = () => {
           providersApi.list().catch(() => []),
         ]);
 
-        localStorage.setItem(
-          "cached_orgs",
-          JSON.stringify(organizations.map((o) => ({ id: o.organization_id, name: o.organization_name }))),
+        setPublicOrganizationsCache(
+          organizations.map((o) => ({ id: o.organization_id, name: o.organization_name })),
         );
 
         const approvedRegistrations = registrations.filter((item) => item.status === "APPROVED");

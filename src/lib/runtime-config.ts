@@ -1,8 +1,4 @@
-import type { AxiosInstance } from "axios";
-
-// ─── Service URL Map ──────────────────────────────────────────────────────────
-// Logical names → base URLs. FE never hardcodes ports/IPs.
-// Loaded from /runtime-config.json (served by wrapper) before app init.
+﻿import type { AxiosInstance } from "axios";
 
 export interface RuntimeServiceMap {
   auth: string;
@@ -37,13 +33,9 @@ export interface RuntimeServicesConfig {
 export interface RuntimeConfig {
   initialized: boolean;
   publicAppUrl: string;
-  /** Legacy single API base — kept for backward compat, prefer services.* */
   apiBaseUrl: string;
-  /** Legacy adapter endpoint — kept for backward compat, prefer services.adapter */
   adapterEndpoint: string;
-  services: RuntimeServicesConfig;
   sso: RuntimeSsoConfig;
-  /** Logical service URL map — primary source of truth for all HTTP clients */
   services: RuntimeServiceMap;
 }
 
@@ -74,85 +66,90 @@ export interface RuntimeBootstrapState {
   licenseState: LicenseState | null;
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+const FRONTEND_API_BASE_PATH = "/api/v1";
+const FRONTEND_ADAPTER_RUNTIME_BASE_PATH = "/adapter-runtime";
+const FRONTEND_ADAPTER_SERVICE_BASE_PATH = "/adapter-service";
+
 const normalizeBaseUrl = (value: string | undefined | null): string =>
-  String(value || '').trim().replace(/\/+$/, '');
+  String(value ?? "").trim().replace(/\/+$/, "");
+
+const isLocalDevHost = (): boolean => {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return false;
+  }
+
+  const hostname = window.location.hostname.trim().toLowerCase();
+  return hostname === "localhost" || hostname === "127.0.0.1";
+};
+
+const defaultApiBaseUrl =
+  normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL) || FRONTEND_API_BASE_PATH;
+const defaultPrimaryApiBaseUrl = defaultApiBaseUrl;
+const defaultPublicAppUrl =
+  typeof window !== "undefined" ? window.location.origin : "";
+const defaultAdapterEndpoint =
+  normalizeBaseUrl(import.meta.env.VITE_ADAPTER_ENDPOINT) || "";
+
+const defaultSsoConfig: RuntimeSsoConfig = {
+  enabled: Boolean(
+    import.meta.env.VITE_KEYCLOAK_URL &&
+      import.meta.env.VITE_KEYCLOAK_REALM &&
+      import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
+  ),
+  keycloakUrl: import.meta.env.VITE_KEYCLOAK_URL || "",
+  realm: import.meta.env.VITE_KEYCLOAK_REALM || "",
+  clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID || "",
+};
 
 const buildRuntimeServices = (
   services?: Partial<RuntimeServicesConfig> | null,
   apiBaseUrl?: string | null,
   adapterEndpoint?: string | null,
-): RuntimeServicesConfig => {
-  const normalizedPrimary = normalizeBaseUrl(
-    services?.cts ||
-      services?.auth ||
-      services?.connector ||
-      services?.monitoring ||
-      apiBaseUrl ||
-      defaultPrimaryApiBaseUrl,
-  );
+): RuntimeServiceMap => {
+  if (isLocalDevHost()) {
+    return {
+      auth: FRONTEND_API_BASE_PATH,
+      cts: FRONTEND_API_BASE_PATH,
+      connector: FRONTEND_API_BASE_PATH,
+      adapter: FRONTEND_ADAPTER_SERVICE_BASE_PATH,
+      monitoring: FRONTEND_API_BASE_PATH,
+    };
+  }
+
+  const normalizedPrimary =
+    normalizeBaseUrl(
+      services?.cts ||
+        services?.auth ||
+        services?.connector ||
+        services?.monitoring ||
+        apiBaseUrl ||
+        defaultPrimaryApiBaseUrl,
+    ) || FRONTEND_API_BASE_PATH;
+
   const normalizedAdapter = normalizeBaseUrl(
     services?.adapter || adapterEndpoint || defaultAdapterEndpoint,
   );
 
   return {
-    auth: normalizeBaseUrl(services?.auth || normalizedPrimary),
-    cts: normalizeBaseUrl(services?.cts || normalizedPrimary),
-    connector: normalizeBaseUrl(services?.connector || normalizedPrimary),
+    auth: normalizeBaseUrl(services?.auth || normalizedPrimary) || normalizedPrimary,
+    cts: normalizeBaseUrl(services?.cts || normalizedPrimary) || normalizedPrimary,
+    connector:
+      normalizeBaseUrl(services?.connector || normalizedPrimary) || normalizedPrimary,
     adapter: normalizedAdapter,
-    monitoring: normalizeBaseUrl(services?.monitoring || normalizedPrimary),
+    monitoring:
+      normalizeBaseUrl(services?.monitoring || normalizedPrimary) || normalizedPrimary,
   };
 };
-
-// ─── Defaults ─────────────────────────────────────────────────────────────────
-const defaultApiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || "/api/v1";
-
-const defaultPublicAppUrl =
-  typeof window !== "undefined" ? window.location.origin : "";
-
-const defaultAdapterEndpoint =
-  import.meta.env.VITE_ADAPTER_ENDPOINT || "";
-
-/**
- * Build a RuntimeServiceMap from either:
- *   a) explicit services block in runtime.json  ← preferred
- *   b) fallback derived from apiBaseUrl + adapterEndpoint  ← backward compat
- */
-function deriveServices(
-  raw: Partial<RuntimeConfig> & { apiBaseUrl?: string; adapterEndpoint?: string }
-): RuntimeServiceMap {
-  if (raw.services && raw.services.auth && raw.services.cts) {
-    return raw.services;
-  }
-  // backward-compat derivation — works even with old runtime.json format
-  const base = raw.apiBaseUrl || defaultApiBaseUrl;
-  const adapter = raw.adapterEndpoint || defaultAdapterEndpoint;
-  return {
-    auth: base,
-    cts: base,
-    connector: base,
-    adapter: adapter,
-    monitoring: base,
-  };
-}
 
 const defaultRuntimeConfig: RuntimeConfig = {
   initialized: false,
   publicAppUrl: defaultPublicAppUrl,
-  apiBaseUrl: defaultApiBaseUrl,
-  adapterEndpoint: defaultAdapterEndpoint,
-  sso: {
-    enabled: Boolean(
-      import.meta.env.VITE_KEYCLOAK_URL &&
-        import.meta.env.VITE_KEYCLOAK_REALM &&
-        import.meta.env.VITE_KEYCLOAK_CLIENT_ID
-    ),
-    keycloakUrl: import.meta.env.VITE_KEYCLOAK_URL || "",
-    realm: import.meta.env.VITE_KEYCLOAK_REALM || "",
-    clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID || "",
-  },
-  services: deriveServices({}),
+  apiBaseUrl: isLocalDevHost() ? FRONTEND_API_BASE_PATH : defaultPrimaryApiBaseUrl,
+  adapterEndpoint: isLocalDevHost()
+    ? FRONTEND_ADAPTER_SERVICE_BASE_PATH
+    : defaultAdapterEndpoint,
+  sso: defaultSsoConfig,
+  services: buildRuntimeServices(undefined, defaultPrimaryApiBaseUrl, defaultAdapterEndpoint),
 };
 
 let bootstrapState: RuntimeBootstrapState = {
@@ -171,8 +168,6 @@ let bootstrapState: RuntimeBootstrapState = {
   licenseState: null,
 };
 
-// ─── Bootstrap loader ─────────────────────────────────────────────────────────
-
 const parseJson = async <T>(response: Response): Promise<T> => {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
@@ -181,32 +176,46 @@ const parseJson = async <T>(response: Response): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+const fallbackSetupStatus = (): SetupStatus => ({
+  initialized: false,
+  configValid: false,
+  licenseValid: false,
+  serverPermissionValid: false,
+  needsSetup: true,
+  warnings: [
+    "Bootstrap server tidak terdeteksi. FE memakai fallback lokal/proxy.",
+  ],
+  blockingErrors: [
+    "Wrapper runtime tidak aktif atau runtime-config server gagal dibaca.",
+  ],
+});
+
 export function normalizeRuntimeConfig(
   runtimeConfig?: Partial<RuntimeConfig> | null,
 ): RuntimeConfig {
-  const normalizedApiBaseUrl = normalizeBaseUrl(
-    runtimeConfig?.apiBaseUrl || runtimeConfig?.services?.cts || defaultPrimaryApiBaseUrl,
+  const services = buildRuntimeServices(
+    runtimeConfig?.services,
+    runtimeConfig?.apiBaseUrl,
+    runtimeConfig?.adapterEndpoint,
   );
-  const normalizedAdapterEndpoint = normalizeBaseUrl(
-    runtimeConfig?.adapterEndpoint || runtimeConfig?.services?.adapter || defaultAdapterEndpoint,
-  );
+
+  const normalizedApiBaseUrl =
+    services.cts ||
+    normalizeBaseUrl(runtimeConfig?.apiBaseUrl) ||
+    (isLocalDevHost() ? FRONTEND_API_BASE_PATH : defaultPrimaryApiBaseUrl);
+
+  const normalizedAdapterEndpoint =
+    services.adapter ||
+    normalizeBaseUrl(runtimeConfig?.adapterEndpoint) ||
+    (isLocalDevHost() ? FRONTEND_ADAPTER_SERVICE_BASE_PATH : defaultAdapterEndpoint);
 
   return {
     initialized: Boolean(runtimeConfig?.initialized),
     publicAppUrl: String(runtimeConfig?.publicAppUrl || defaultPublicAppUrl || ""),
     apiBaseUrl: normalizedApiBaseUrl,
     adapterEndpoint: normalizedAdapterEndpoint,
-    services: buildRuntimeServices(
-      runtimeConfig?.services,
-      normalizedApiBaseUrl,
-      normalizedAdapterEndpoint,
-    ),
-    sso: {
-      enabled: Boolean(runtimeConfig?.sso?.enabled),
-      keycloakUrl: String(runtimeConfig?.sso?.keycloakUrl || ""),
-      realm: String(runtimeConfig?.sso?.realm || ""),
-      clientId: String(runtimeConfig?.sso?.clientId || ""),
-    },
+    sso: runtimeConfig?.sso ?? defaultSsoConfig,
+    services,
   };
 }
 
@@ -236,32 +245,30 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
       initialized: statusPayload.initialized,
       configValid: statusPayload.configValid,
       licenseValid: statusPayload.licenseValid,
-      serverPermissionValid:
-        (statusPayload as { serverPermissionValid?: boolean })
-          .serverPermissionValid ?? true,
+      serverPermissionValid: statusPayload.serverPermissionValid ?? true,
       needsSetup: statusPayload.needsSetup,
       warnings: statusPayload.warnings ?? [],
       blockingErrors: statusPayload.blockingErrors ?? [],
     };
 
     let runtimeConfig: RuntimeConfig | null = null;
+
     if (setupStatus.initialized && !setupStatus.needsSetup) {
       const configResponse = await fetch("/runtime-config.json", {
         signal: AbortSignal.timeout(5000),
         credentials: "same-origin",
       });
+
       if (configResponse.ok) {
         const raw = await parseJson<Partial<RuntimeConfig>>(configResponse);
-        runtimeConfig = {
+        runtimeConfig = normalizeRuntimeConfig({
           initialized: raw.initialized ?? true,
           publicAppUrl: raw.publicAppUrl ?? defaultPublicAppUrl,
-          apiBaseUrl: raw.apiBaseUrl ?? defaultApiBaseUrl,
+          apiBaseUrl: raw.apiBaseUrl ?? defaultPrimaryApiBaseUrl,
           adapterEndpoint: raw.adapterEndpoint ?? defaultAdapterEndpoint,
-          sso: raw.sso ?? defaultRuntimeConfig.sso,
-          services: deriveServices(
-            raw as Partial<RuntimeConfig> & { apiBaseUrl?: string; adapterEndpoint?: string }
-          ),
-        };
+          sso: raw.sso ?? defaultSsoConfig,
+          services: raw.services,
+        });
       } else {
         setupStatus.configValid = false;
         setupStatus.needsSetup = true;
@@ -284,20 +291,8 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
     bootstrapState = {
       source: "fallback",
       ready: true,
-      setupStatus: {
-        initialized: false,
-        configValid: false,
-        licenseValid: false,
-        serverPermissionValid: false,
-        needsSetup: true,
-        warnings: [
-          "Bootstrap server tidak terdeteksi. Mode dev murni tidak bisa membaca atau menyimpan runtime config server-side.",
-        ],
-        blockingErrors: [
-          "Wrapper belum aktif. Jalankan browser bundle kalau mau setup tersimpan ke config/runtime.json dan config/license-state.json.",
-        ],
-      },
-      runtimeConfig: null,
+      setupStatus: fallbackSetupStatus(),
+      runtimeConfig: normalizeRuntimeConfig(defaultRuntimeConfig),
       licenseState: null,
     };
     return bootstrapState;
@@ -311,8 +306,6 @@ export async function initializeRuntime(): Promise<RuntimeBootstrapState> {
   }
   return state;
 }
-
-// ─── Accessors ────────────────────────────────────────────────────────────────
 
 export function getRuntimeBootstrapState(): RuntimeBootstrapState {
   if (typeof window !== "undefined" && window.__RAPIDSK_BOOTSTRAP__) {
@@ -329,45 +322,46 @@ export function setRuntimeBootstrapState(state: RuntimeBootstrapState): void {
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
-  return normalizeRuntimeConfig(getRuntimeBootstrapState().runtimeConfig ?? defaultRuntimeConfig);
+  return normalizeRuntimeConfig(
+    getRuntimeBootstrapState().runtimeConfig ?? defaultRuntimeConfig,
+  );
 }
 
 export function getRuntimeServices(): RuntimeServiceMap {
   return getRuntimeConfig().services;
 }
 
+export function getRuntimeServiceUrl(name: RuntimeServiceName): string {
+  return getRuntimeServices()[name] || "";
+}
+
 export function getRuntimePublicAppUrl(): string {
   return getRuntimeConfig().publicAppUrl || defaultPublicAppUrl;
 }
 
-/** @deprecated use getRuntimeServices().cts or appropriate service key */
 export function getRuntimeBackendApiBaseUrl(): string {
+  return getRuntimeServiceUrl("cts") || getRuntimeConfig().apiBaseUrl || FRONTEND_API_BASE_PATH;
+}
+
+export function getRuntimeAdapterEndpoint(): string {
   return (
-    getRuntimeServiceUrl("cts") ||
-    getRuntimeConfig().apiBaseUrl ||
-    normalizeBaseUrl(defaultPrimaryApiBaseUrl)
+    getRuntimeServices().adapter ||
+    getRuntimeConfig().adapterEndpoint ||
+    FRONTEND_ADAPTER_SERVICE_BASE_PATH
   );
 }
 
-/** @deprecated use getRuntimeServices().adapter */
-export function getRuntimeAdapterEndpoint(): string {
-  return getRuntimeServices().adapter || getRuntimeConfig().adapterEndpoint || "";
-}
-
-/** Path-based routing — always /api/v1 for reverse proxy in prod. */
-export function getFrontendApiBasePath(): string {
-  return "/api/v1";
+export function getFrontendApiBasePath(_service?: RuntimeServiceName): string {
+  return FRONTEND_API_BASE_PATH;
 }
 
 export function getFrontendAdapterRuntimeBasePath(): string {
-  return "/adapter-runtime";
+  return FRONTEND_ADAPTER_RUNTIME_BASE_PATH;
 }
 
 export function getRuntimeSsoConfig(): RuntimeSsoConfig {
   return getRuntimeConfig().sso;
 }
-
-// ─── Per-service base URL helpers ─────────────────────────────────────────────
 
 export function getAuthServiceBaseUrl(): string {
   return getRuntimeServices().auth || getRuntimeBackendApiBaseUrl();
@@ -389,20 +383,15 @@ export function getMonitoringServiceBaseUrl(): string {
   return getRuntimeServices().monitoring || getRuntimeBackendApiBaseUrl();
 }
 
-// ─── Client registry (populated by createLogicalClients) ─────────────────────
-// Allows services to import a pre-built AxiosInstance without circular deps.
-
-const _clients: Record<string, AxiosInstance> = {};
+const clients: Record<string, AxiosInstance> = {};
 
 export function registerLogicalClient(name: string, instance: AxiosInstance): void {
-  _clients[name] = instance;
+  clients[name] = instance;
 }
 
 export function getLogicalClient(name: string): AxiosInstance | undefined {
-  return _clients[name];
+  return clients[name];
 }
-
-// ─── Global type augmentation ─────────────────────────────────────────────────
 
 declare global {
   interface Window {

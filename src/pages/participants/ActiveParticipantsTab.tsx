@@ -54,6 +54,7 @@ import {
 import { useOrganizations, useOrganizationDomains } from "@/api/hooks/useOrganizations";
 import { providersApi } from "@/api/services/providers";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getStoredParticipantOrganizationId, setStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 import type { Provider } from "@/api/types/providers";
 import type { OrganizationDomain } from "@/api/types/governance";
 import { useAuth } from "@/context/AuthContext";
@@ -120,14 +121,11 @@ const toForm = (provider: Provider): ParticipantForm => ({
   contact_phone: provider.contact_person?.phone ?? "",
 });
 
-const getParticipantOrganizationBindingKey = (participantId: string) =>
-  `participant_org_binding:${participantId}`;
-
 const getParticipantReadiness = (
   participant: Provider,
   organizations: Array<{ organization_id: string; organization_name: string }>,
 ) => {
-  const storedOrganizationId = localStorage.getItem(getParticipantOrganizationBindingKey(participant.provider_id)) ?? "";
+  const storedOrganizationId = getStoredParticipantOrganizationId(participant.provider_id) ?? "";
   const matchedOrganization =
     organizations.find((organization) => organization.organization_id === storedOrganizationId) ?? null;
   const hasOperator = Boolean(participant.contact_person?.email);
@@ -135,8 +133,8 @@ const getParticipantReadiness = (
   const hasOrganizationBinding = Boolean(storedOrganizationId && matchedOrganization);
 
   let state: ReadinessState = "READY";
-  let label = "Siap dilanjutkan";
-  let note = "Participant sudah punya organisasi governance tersimpan dan data operator dasar.";
+  let label = "Data dasar lengkap";
+  let note = "Organisasi governance sudah dipilih dan kontak operator dasar sudah ada. Aktivasi login tetap bergantung pada akun IAM operator dan binding organisasi yang benar.";
 
   if (!hasOrganizationBinding && !hasOperator) {
     state = "MISSING";
@@ -146,9 +144,9 @@ const getParticipantReadiness = (
     state = "PARTIAL";
     label = "Perlu dilengkapi";
     note = !hasOrganizationBinding
-      ? "Organisasi governance belum diikat, jadi domain dan login bisa meleset."
+      ? "Organisasi governance belum diikat. Akun operator bisa saja ada, tapi login tetap bisa gagal karena context organisasi belum tegas."
       : !hasOperator
-        ? "Email operator belum ada, jadi aktivasi user belum aman."
+        ? "Email operator belum ada, jadi akun user operator belum bisa dipastikan."
         : "Alamat operasional belum diisi lengkap.";
   }
 
@@ -253,7 +251,7 @@ const ActiveParticipantsTab = () => {
   const openEditDialog = (participant: Provider) => {
     setSelectedParticipant(participant);
     setFormData(toForm(participant));
-    setBindOrgId(localStorage.getItem(getParticipantOrganizationBindingKey(participant.provider_id)) ?? "");
+    setBindOrgId(getStoredParticipantOrganizationId(participant.provider_id) ?? "");
     setIsEditDialogOpen(true);
   };
 
@@ -287,7 +285,7 @@ const ActiveParticipantsTab = () => {
       });
 
       if (bindOrgId && created?.id) {
-        localStorage.setItem(getParticipantOrganizationBindingKey(created.id), bindOrgId);
+        setStoredParticipantOrganizationId(created.id, bindOrgId);
       }
 
       // Bind selected governance domains to the new participant.
@@ -362,9 +360,9 @@ const ActiveParticipantsTab = () => {
         },
       });
       if (bindOrgId) {
-        localStorage.setItem(getParticipantOrganizationBindingKey(selectedParticipant.provider_id), bindOrgId);
+        setStoredParticipantOrganizationId(selectedParticipant.provider_id, bindOrgId);
       } else {
-        localStorage.removeItem(getParticipantOrganizationBindingKey(selectedParticipant.provider_id));
+        setStoredParticipantOrganizationId(selectedParticipant.provider_id, null);
       }
       setIsEditDialogOpen(false);
       setSelectedParticipant(null);
@@ -559,7 +557,7 @@ const ActiveParticipantsTab = () => {
                         </Badge>
                         <p className="max-w-[260px] text-xs leading-relaxed text-muted-foreground">
                           {readiness.organizationName
-                            ? `Org: ${readiness.organizationName}`
+                            ? `Org: ${readiness.organizationName}. ${readiness.note}`
                             : readiness.note}
                         </p>
                       </div>
@@ -1066,3 +1064,4 @@ const ParticipantFormContent = ({
 );
 
 export default ActiveParticipantsTab;
+

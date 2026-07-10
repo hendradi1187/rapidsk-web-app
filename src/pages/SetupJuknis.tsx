@@ -15,6 +15,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { organizationsApi } from "@/api/services/governance";
 import { juknisApi, type JuknisApplyResult } from "@/api/services/juknis";
 import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
+import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
 const STEPS = ["Organisasi", "Governance Domain", "Paket Juknis", "Terapkan"];
 
@@ -84,19 +85,12 @@ const SetupJuknis = () => {
 
   useEffect(() => {
     if (orgs.length === 0) return;
-    try {
-      localStorage.setItem(
-        "cached_orgs",
-        JSON.stringify(
-          orgs.map((org) => ({
-            id: org.organization_id,
-            name: org.organization_name,
-          })),
-        ),
-      );
-    } catch {
-      // ignore storage issue
-    }
+    setPublicOrganizationsCache(
+      orgs.map((org) => ({
+        id: org.organization_id,
+        name: org.organization_name,
+      })),
+    );
   }, [orgs]);
 
   const createOrg = async () => {

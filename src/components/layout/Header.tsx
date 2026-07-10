@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+﻿import { useNavigate } from "react-router-dom";
 import { Bell, Search, User, LogOut, Settings as SettingsIcon, ChevronDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,7 +61,8 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
   const { user, role } = useAuth();
   const { domainId, domainName, availableDomains, switchDomain } = useDomain();
   const notifications = useAppNotifications();
-  const canSwitchDomain = (role === "SUPER_ADMIN" || role === "ADMIN") && availableDomains.length > 1;
+  const canSeeDomainSelector = Boolean(user);
+  const canSwitchDomain = availableDomains.length > 1;
 
   const userName = user?.full_name || "User";
   const organizationName = user?.category?.name || "Organisasi belum terdeteksi";
@@ -98,34 +99,48 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
             />
           </div>
 
-          {canSwitchDomain && (
+          {canSeeDomainSelector && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="hidden md:flex items-center gap-1.5 h-8 text-xs max-w-[200px]">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={availableDomains.length === 0}
+                  className="hidden md:flex items-center gap-1.5 h-8 text-xs max-w-[200px]"
+                >
                   <Layers className="w-3.5 h-3.5 shrink-0 text-accent" />
-                  <span className="truncate">{domainName ?? "Pilih Domain"}</span>
+                  <span className="truncate">
+                    {domainName ?? (availableDomains.length > 0 ? "Pilih Domain" : "Belum ada domain terhubung")}
+                  </span>
                   <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel className="text-xs text-muted-foreground">Ganti Domain Aktif</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {availableDomains.map((d) => (
-                  <DropdownMenuItem
-                    key={d.domain_id}
-                    onClick={() => switchDomain(d)}
-                    className={cn("text-sm", d.domain_id === domainId && "bg-accent/10 font-medium")}
-                  >
-                    <Layers className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
-                    <div className="flex flex-col">
-                      <span>{d.domain_name}</span>
-                      {d.code && <span className="text-xs text-muted-foreground">{d.code}</span>}
-                    </div>
-                    {d.domain_id === domainId && (
-                      <span className="ml-auto text-xs text-accent font-medium">aktif</span>
-                    )}
-                  </DropdownMenuItem>
-                ))}
+                {availableDomains.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-muted-foreground">
+                    Belum ada domain governance yang termapping ke akun ini.
+                  </div>
+                ) : (
+                  availableDomains.map((d) => (
+                    <DropdownMenuItem
+                      key={d.domain_id}
+                      onClick={() => switchDomain(d)}
+                      disabled={!canSwitchDomain && d.domain_id === domainId}
+                      className={cn("text-sm", d.domain_id === domainId && "bg-accent/10 font-medium")}
+                    >
+                      <Layers className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                      <div className="flex flex-col">
+                        <span>{d.domain_name}</span>
+                        {d.code && <span className="text-xs text-muted-foreground">{d.code}</span>}
+                      </div>
+                      {d.domain_id === domainId && (
+                        <span className="ml-auto text-xs text-accent font-medium">aktif</span>
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -250,3 +265,4 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
     </header>
   );
 };
+

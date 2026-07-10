@@ -14,6 +14,15 @@ const getTotal = (res: any): number | null => {
   return typeof total === "number" ? total : null;
 };
 
+const normalizeProvider = (p: any) => ({
+  provider_id: p.id ?? p.provider_id,
+  provider_name: p.organization_name ?? p.provider_name,
+  organization_type: p.organization_type,
+  address: p.address,
+  status: p.status ?? "ACTIVE",
+  contact_person: p.contact_person ?? undefined,
+});
+
 export const providersApi = {
   create: async (body: ProviderCreateRequest): Promise<{ id: string }> => {
     const res = await ctsClient.post("/onboarding/participants", body);
@@ -43,24 +52,17 @@ export const providersApi = {
       merged.set(item.id, item);
     });
 
-    return Array.from(merged.values()).map((p: any) => ({
-      provider_id: p.id,
-      provider_name: p.organization_name,
-      organization_type: p.organization_type,
-      address: p.address,
-      status: p.status ?? "ACTIVE",
-      contact_person: p.contact_person ?? undefined,
-    })) as unknown as ProviderListResponse;
+    return Array.from(merged.values()).map(normalizeProvider) as unknown as ProviderListResponse;
   },
 
   getById: async (id: string): Promise<any> => {
     const res = await ctsClient.get(`/onboarding/participants/${id}`);
-    return res.data;
+    return normalizeProvider(res.data);
   },
 
   update: async (id: string, data: ProviderUpdateRequest): Promise<any> => {
     const res = await ctsClient.patch(`/onboarding/participants/${id}`, data);
-    return res.data;
+    return normalizeProvider(res.data);
   },
 
   remove: async (id: string): Promise<void> => {
@@ -87,7 +89,7 @@ export const providersApi = {
     try {
       await ctsClient.delete(`/onboarding/participants/${participantId}/domains/${id}`);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Gagal menghapus domain participant';
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || "Gagal menghapus domain participant";
       const status = err?.response?.status;
       console.error(`[DELETE] deleteDomain participantId=${participantId} id=${id} status=${status} msg=${msg}`);
       throw new Error(msg);

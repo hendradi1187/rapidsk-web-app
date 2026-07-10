@@ -16,6 +16,7 @@ import { registrationsApi, participantsApi, type RegistrationItem } from "@/api/
 import { usersApi, userCategoriesApi, userGroupsApi } from "@/api/services/identity";
 import { useProviders } from "@/api/hooks/useProviders";
 import { useAuth } from "@/context/AuthContext";
+import { getStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 import { useDomain } from "@/context/DomainContext";
 import {
   bindParticipantToOrganizationDomains,
@@ -43,6 +44,9 @@ const tempPassword = () =>
 
 const normalizeCode = (value: string | null | undefined) =>
   String(value ?? "").trim().toUpperCase();
+
+const normalizeEmail = (value: string | null | undefined) =>
+  String(value ?? "").trim().toLowerCase();
 
 const includesAnyAlias = (value: string | null | undefined, aliases: string[]) => {
   const normalized = normalizeCode(value);
@@ -110,6 +114,8 @@ type ProviderRow = {
   organization_type?: string;
 };
 
+type OperatorAccountStatus = "SIAP_LOGIN" | "AKUN_AKTIF_TAPI_BINDING_BELUM" | "BELUM" | "BELUM_DIBINDING" | "TIDAK_ADA" | "PARTICIPANT_BELUM_SINKRON" | "UNKNOWN";
+
 const RegistrationsTab = () => {
   const qc = useQueryClient();
   const { user, role, roles, hasPermission } = useAuth();
@@ -136,17 +142,41 @@ const RegistrationsTab = () => {
   useEffect(() => setPage(1), [regs.length, pageSize]);
 
   const userByEmail = useMemo(() => {
-    const m: Record<string, { is_active?: boolean; is_verified?: boolean }> = {};
-    for (const u of (usersQ.data ?? []) as OnboardingUserRow[]) {
-      if (u.email) m[String(u.email).toLowerCase()] = u;
+    const map: Record<string, { is_active?: boolean; is_verified?: boolean }> = {};
+    for (const userRow of (usersQ.data ?? []) as OnboardingUserRow[]) {
+      if (userRow.email) {
+        map[normalizeEmail(userRow.email)] = userRow;
+      }
     }
-    return m;
+    return map;
   }, [usersQ.data]);
 
-  const operatorStatus = (email: string): "AKTIF" | "BELUM" | "TIDAK_ADA" => {
-    const u = userByEmail[email.toLowerCase()];
-    if (!u) return "TIDAK_ADA";
-    return u.is_active && u.is_verified ? "AKTIF" : "BELUM";
+  const canVerifyOperatorAccount = !usersQ.isError;
+  const providerById = useMemo(() => {
+    const map: Record<string, ProviderRow> = {};
+    for (const provider of ((providers ?? []) as ProviderRow[])) {
+      if (provider.provider_id) map[provider.provider_id] = provider;
+    }
+    return map;
+  }, [providers]);
+
+  const operatorStatus = (registration: RegistrationItem): OperatorAccountStatus => {
+    if (!canVerifyOperatorAccount) return "UNKNOWN";
+    if (registration.status !== "APPROVED") return "UNKNOWN";
+
+    const matchedUser = userByEmail[normalizeEmail(registration.operator_email)];
+    if (!matchedUser) return "TIDAK_ADA";
+
+    const participantId = registration.participant_id ?? "";
+    if (!participantId || !providerById[participantId]) return "PARTICIPANT_BELUM_SINKRON";
+
+    const hasOrganizationBinding = Boolean(getStoredParticipantOrganizationId(participantId));
+    const isUserActive = Boolean(matchedUser.is_active && matchedUser.is_verified);
+
+    if (isUserActive && hasOrganizationBinding) return "SIAP_LOGIN";
+    if (isUserActive && !hasOrganizationBinding) return "AKUN_AKTIF_TAPI_BINDING_BELUM";
+    if (!isUserActive && hasOrganizationBinding) return "BELUM";
+    return "BELUM_DIBINDING";
   };
 
   const providerCat = resolveProviderCategory(catQ.data ?? []);
@@ -174,17 +204,17 @@ const RegistrationsTab = () => {
   };
 
   const resend = async (reg: RegistrationItem) => {
-    setBusy((b) => ({ ...b, [reg.id]: "kirim ulang" }));
+    setBusy((current) => ({ ...current, [reg.id]: "kirim ulang" }));
     try {
       await usersApi.resendConfirmation(reg.operator_email);
       toast.success(`Undangan dikirim ulang ke ${reg.operator_email}.`);
-    } catch (e: unknown) {
-      toast.error(getApiErrorMessage(e, "Gagal kirim ulang undangan"));
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Gagal kirim ulang undangan"));
     } finally {
-      setBusy((b) => {
-        const n = { ...b };
-        delete n[reg.id];
-        return n;
+      setBusy((current) => {
+        const next = { ...current };
+        delete next[reg.id];
+        return next;
       });
     }
   };
@@ -193,18 +223,18 @@ const RegistrationsTab = () => {
     if (!canApprove) {
       return toast.error("Akun ini belum punya izin untuk menolak pendaftaran participant.");
     }
-    setBusy((b) => ({ ...b, [reg.id]: "menolak" }));
+    setBusy((current) => ({ ...current, [reg.id]: "menolak" }));
     try {
       await registrationsApi.update(reg.id, { status: "REJECTED" });
       toast.success("Pendaftaran ditolak.");
       refresh();
-    } catch (e: unknown) {
-      toast.error(getApiErrorMessage(e, "Gagal menolak"));
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Gagal menolak"));
     } finally {
-      setBusy((b) => {
-        const n = { ...b };
-        delete n[reg.id];
-        return n;
+      setBusy((current) => {
+        const next = { ...current };
+        delete next[reg.id];
+        return next;
       });
     }
   };
@@ -228,7 +258,7 @@ const RegistrationsTab = () => {
       );
     }
 
-    const step = (s: string) => setBusy((b) => ({ ...b, [reg.id]: s }));
+    const step = (label: string) => setBusy((current) => ({ ...current, [reg.id]: label }));
     try {
       step("buat participant");
       const participant = await participantsApi.create({
@@ -278,18 +308,18 @@ const RegistrationsTab = () => {
       await registrationsApi.update(reg.id, { status: "APPROVED", participant_id: participant.id });
 
       toast.success(
-        `${reg.organization_name} disetujui — akun operator diundang dan kewajiban kontrak otomatis diterbitkan.`,
+        `${reg.organization_name} disetujui - akun operator diundang dan kewajiban kontrak otomatis diterbitkan.`,
       );
       refresh();
-    } catch (e: unknown) {
+    } catch (error: unknown) {
       toast.error(
-        `Gagal pada langkah "${busy[reg.id] ?? "?"}": ${getApiErrorMessage(e, "error")}`,
+        `Gagal pada langkah "${busy[reg.id] ?? "?"}": ${getApiErrorMessage(error, "error")}`,
       );
     } finally {
-      setBusy((b) => {
-        const n = { ...b };
-        delete n[reg.id];
-        return n;
+      setBusy((current) => {
+        const next = { ...current };
+        delete next[reg.id];
+        return next;
       });
     }
   };
@@ -297,7 +327,7 @@ const RegistrationsTab = () => {
   if (regQ.isLoading) {
     return (
       <div className="space-y-4">
-        <div className="panel p-4 space-y-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-12" />)}</div>
+        <div className="panel p-4 space-y-3">{[0, 1, 2].map((index) => <div key={index} className="skeleton h-12" />)}</div>
       </div>
     );
   }
@@ -334,9 +364,16 @@ const RegistrationsTab = () => {
       <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <span>
-            "Setujui" otomatis: buat <b>participant (ENTERPRISE)</b> → buat <b>akun operator (PROVIDER)</b> (BE mengirim email aktivasi) → terbitkan <b>5 kontrak kewajiban</b> (REQUESTED). Operator mengaktifkan akun via tautan email lalu memenuhi kewajiban.
-          </span>
+          <div className="space-y-2">
+            <span>
+              "Setujui" otomatis: buat <b>participant (ENTERPRISE)</b> - buat <b>akun operator (PROVIDER)</b> (BE mengirim email aktivasi) - terbitkan <b>5 kontrak kewajiban</b> (REQUESTED). Operator mengaktifkan akun via tautan email lalu memenuhi kewajiban.
+            </span>
+            {usersQ.isError ? (
+              <p className="text-amber-700">
+                Status akun operator tidak bisa diverifikasi penuh karena endpoint daftar user IAM sedang bermasalah. Kalau operator sudah confirm email dan bisa login, anggap akun sudah ada walau tabel ini belum sinkron.
+              </p>
+            ) : null}
+          </div>
           <Link to="/register-kkks" className="shrink-0">
             <Button variant="outline" size="sm">
               <ExternalLink className="mr-2 h-4 w-4" />
@@ -374,50 +411,67 @@ const RegistrationsTab = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              pagedRegs.map((r) => {
-                const b = busy[r.id];
+              pagedRegs.map((registration) => {
+                const currentBusy = busy[registration.id];
+                const accountStatus = operatorStatus(registration);
                 return (
-                  <TableRow key={r.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{r.organization_name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{r.wilayah_kerja}</TableCell>
+                  <TableRow key={registration.id} className="hover:bg-muted/50">
+                    <TableCell className="font-medium">{registration.organization_name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{registration.wilayah_kerja}</TableCell>
                     <TableCell>
-                      <div className="text-sm">{r.operator_name}</div>
-                      <div className="text-xs text-muted-foreground">{r.operator_email}</div>
+                      <div className="text-sm">{registration.operator_name}</div>
+                      <div className="text-xs text-muted-foreground">{registration.operator_email}</div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={STATUS_STYLE[r.status] ?? ""}>{r.status}</Badge>
+                      <Badge variant="outline" className={STATUS_STYLE[registration.status] ?? ""}>{registration.status}</Badge>
                     </TableCell>
                     <TableCell>
-                      {r.status !== "APPROVED" ? (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      ) : operatorStatus(r.operator_email) === "AKTIF" ? (
+                      {registration.status !== "APPROVED" ? (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      ) : accountStatus === "SIAP_LOGIN" ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-                          <UserCheck className="h-3.5 w-3.5" /> Aktif
+                          <UserCheck className="h-3.5 w-3.5" /> Siap login
                         </span>
-                      ) : operatorStatus(r.operator_email) === "BELUM" ? (
+                      ) : accountStatus === "AKUN_AKTIF_TAPI_BINDING_BELUM" ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                          <ShieldCheck className="h-3.5 w-3.5" /> Akun aktif, binding org belum siap
+                        </span>
+                      ) : accountStatus === "BELUM" ? (
                         <span className="inline-flex items-center gap-1 text-xs text-amber-700">
                           <Clock className="h-3.5 w-3.5" /> Belum aktivasi
+                        </span>
+                      ) : accountStatus === "BELUM_DIBINDING" ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                          <Clock className="h-3.5 w-3.5" /> Belum aktivasi, binding org belum siap
+                        </span>
+                      ) : accountStatus === "PARTICIPANT_BELUM_SINKRON" ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                          <ShieldCheck className="h-3.5 w-3.5" /> Participant belum sinkron
+                        </span>
+                      ) : accountStatus === "UNKNOWN" ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-sky-700">
+                          <ShieldCheck className="h-3.5 w-3.5" /> Status belum bisa diverifikasi
                         </span>
                       ) : (
                         <span className="text-xs italic text-muted-foreground">akun belum dibuat</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {b ? (
+                      {currentBusy ? (
                         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {b}…
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {currentBusy}...
                         </span>
-                      ) : r.status === "PENDING" ? (
+                      ) : registration.status === "PENDING" ? (
                         <div className="flex justify-end gap-2">
-                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => approve(r)} disabled={!canApprove}>
-                            <CheckCircle2 className="mr-1 h-4 w-4" /> Setujui &amp; Terbitkan
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => approve(registration)} disabled={!canApprove}>
+                            <CheckCircle2 className="mr-1 h-4 w-4" /> Setujui dan Terbitkan
                           </Button>
-                          <Button size="sm" variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => reject(r)} disabled={!canApprove}>
+                          <Button size="sm" variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => reject(registration)} disabled={!canApprove}>
                             <XCircle className="mr-1 h-4 w-4" /> Tolak
                           </Button>
                         </div>
-                      ) : r.status === "APPROVED" && operatorStatus(r.operator_email) !== "AKTIF" ? (
-                        <Button size="sm" variant="outline" onClick={() => resend(r)}>
+                      ) : registration.status === "APPROVED" && accountStatus !== "SIAP_LOGIN" ? (
+                        <Button size="sm" variant="outline" onClick={() => resend(registration)}>
                           <Mail className="mr-1 h-4 w-4" /> Kirim Ulang Undangan
                         </Button>
                       ) : (

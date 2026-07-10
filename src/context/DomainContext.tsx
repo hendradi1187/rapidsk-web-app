@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+﻿import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { organizationsApi } from "@/api/services/governance";
 import { providersApi } from "@/api/services/providers";
@@ -9,7 +9,10 @@ import {
   setPreferredOrganization,
 } from "@/lib/session-binding";
 import { getStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
-import { resolveGovernanceOrganizationBinding } from "@/lib/governance-binding";
+import {
+  normalizeBindingKey,
+  resolveGovernanceOrganizationBinding,
+} from "@/lib/governance-binding";
 
 export interface AvailableDomain {
   domain_id: string;
@@ -18,9 +21,9 @@ export interface AvailableDomain {
 }
 
 export type DomainSource =
-  | "participant_binding"   // user punya participant, domain diambil dari participant
-  | "governance_fallback"   // SUPER_ADMIN / ADMIN tanpa participant — diizinkan fallback
-  | "none";                 // domain tidak bisa ditentukan
+  | "participant_binding"
+  | "governance_fallback"
+  | "none";
 
 interface DomainContextValue {
   domainId: string | null;
@@ -46,17 +49,97 @@ const DomainContext = createContext<DomainContextValue>({
   switchDomain: () => {},
 });
 
-/**
- * Aturan governance_fallback:
- *   - HANYA diizinkan untuk SUPER_ADMIN dan ADMIN (role tanpa participant).
- *   - Regular participant yang tidak punya domain binding aktif → source = "none",
- *     domain tidak diset secara otomatis. UI harus tampil empty-state bukan
- *     auto-assign domain acak dari governance list.
- *
- * Ini mencegah data cross-participant yang tidak sengaja ketika participant
- * baru belum selesai onboarding domain-nya.
- */
-const GOVERNANCE_FALLBACK_ROLES = new Set(["SUPER_ADMIN", "ADMIN"]);
+const GOVERNANCE_FALLBACK_ROLES = new Set(["SUPER_ADMIN", "CONSUMER"]);
+
+type ParticipantDomainBinding = {
+  domain_id?: string;
+  domain_name?: string;
+  code?: string;
+  status?: string;
+};
+
+const dedupeDomains = (domains: AvailableDomain[]): AvailableDomain[] => {
+  const seen = new Set<string>();
+  return domains.filter((domain) => {
+    const id = String(domain.domain_id ?? "").trim();
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
+
+const directParticipantDomains = (
+  participantDomains: ParticipantDomainBinding[],
+): AvailableDomain[] => {
+  return dedupeDomains(
+    participantDomains
+      .filter((domain) => !domain.status || String(domain.status).toUpperCase() === "ACTIVE")
+      .map((domain) => {
+        const domainId = String(domain.domain_id ?? "").trim();
+        const domainName = String(domain.domain_name ?? domainId).trim() || domainId;
+        return {
+          domain_id: domainId,
+          domain_name: domainName,
+          code: domain.code,
+        };
+      })
+      .filter((domain) => Boolean(domain.domain_id)),
+  );
+};
+
+const mapParticipantBoundDomains = (
+  participantDomains: ParticipantDomainBinding[],
+  organizationDomainsById: Record<string, AvailableDomain[]>,
+): AvailableDomain[] => {
+  const metadataById = new Map<string, AvailableDomain>();
+
+  Object.values(organizationDomainsById)
+    .flat()
+    .forEach((domain) => {
+      const id = String(domain.domain_id ?? "").trim();
+      if (!id) return;
+      metadataById.set(id, domain);
+    });
+
+  const mergedDomains = dedupeDomains(
+    participantDomains
+      .filter((domain) => !domain.status || String(domain.status).toUpperCase() === "ACTIVE")
+      .map((domain) => {
+        const domainId = String(domain.domain_id ?? "").trim();
+        const metadata = metadataById.get(domainId);
+        return {
+          domain_id: domainId,
+          domain_name:
+            String(metadata?.domain_name ?? domain.domain_name ?? domainId).trim() || domainId,
+          code: metadata?.code ?? domain.code,
+        };
+      })
+      .filter((domain) => Boolean(domain.domain_id)),
+  );
+
+  return mergedDomains.length > 0 ? mergedDomains : directParticipantDomains(participantDomains);
+};
+
+const applyEmptyDomainState = (
+  setAvailableDomains: React.Dispatch<React.SetStateAction<AvailableDomain[]>>,
+  setDomainIdState: React.Dispatch<React.SetStateAction<string | null>>,
+  setDomainName: React.Dispatch<React.SetStateAction<string | null>>,
+  setDomainSource: React.Dispatch<React.SetStateAction<DomainSource>>,
+  setActiveOrganizationId: React.Dispatch<React.SetStateAction<string | null>>,
+  setActiveOrganizationName: React.Dispatch<React.SetStateAction<string | null>>,
+  setParticipantDomainCount: React.Dispatch<React.SetStateAction<number>>,
+  setReady: React.Dispatch<React.SetStateAction<boolean>>,
+) => {
+  setAvailableDomains([]);
+  setDomainIdState(null);
+  setDomainName(null);
+  setDomainSource("none");
+  setActiveOrganizationId(null);
+  setActiveOrganizationName(null);
+  setParticipantDomainCount(0);
+  setActiveDomainId(null);
+  setReady(true);
+};
 
 export const DomainProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated, role, participantId } = useAuth();
@@ -71,183 +154,147 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false;
+
     if (!isAuthenticated) {
+      setAvailableDomains([]);
+      setDomainId(null);
+      setDomainName(null);
+      setDomainSource("none");
+      setActiveOrganizationId(null);
+      setActiveOrganizationName(null);
+      setParticipantDomainCount(0);
       setReady(false);
       return;
     }
 
+    setReady(false);
+
     (async () => {
       try {
-        const orgs = await organizationsApi.list();
-        const items = orgs as Array<{
-          organization_id: string;
-          organization_name: string;
-        }>;
-
-        if (items.length === 0) {
-          if (!cancelled) {
-            setAvailableDomains([]);
-            setDomainSource("none");
-            setActiveOrganizationId(null);
-            setActiveOrganizationName(null);
-            setParticipantDomainCount(0);
-            setReady(true);
-          }
-          return;
-        }
-
         const preferredOrgId = getPreferredOrganizationId();
         const preferredOrgName = getPreferredOrganizationName();
         const storedParticipantOrganizationId = participantId
           ? getStoredParticipantOrganizationId(participantId)
           : null;
+        const roleAllowsFallback = GOVERNANCE_FALLBACK_ROLES.has(role ?? "");
 
-        // ── Step 1: Resolve participant domains (binding resmi dari BE) ──────
-        let participantDomainIds: string[] = [];
         const participantDetail = participantId
           ? await providersApi.getById(participantId).catch(() => null)
           : null;
-        if (participantId) {
-          try {
-            const pDomains = await providersApi.listDomains(participantId);
-            participantDomainIds = (
-              pDomains as Array<{ domain_id: string; status?: string }>
-            )
-              .filter(
-                (d) =>
-                  !d.status || String(d.status).toUpperCase() === "ACTIVE"
-              )
-              .map((d) => d.domain_id);
-          } catch {
-            /* biarkan kosong — ditangani di bawah */
-          }
-        }
+        const participantDomainsRaw = participantId
+          ? await providersApi
+              .listDomains(participantId)
+              .catch(() => [] as ParticipantDomainBinding[])
+          : [];
 
-        // ── Step 2: Guard — participant tanpa domain binding = none ──────────
-        // Regular participant (bukan admin) harus punya domain binding eksplisit.
-        // Jangan auto-fallback ke governance list — itu bisa expose data silang.
-        const roleAllowsFallback = GOVERNANCE_FALLBACK_ROLES.has(role ?? "");
+        const participantDomainIds = participantDomainsRaw
+          .filter((domain) => !domain.status || String(domain.status).toUpperCase() === "ACTIVE")
+          .map((domain) => String(domain.domain_id ?? "").trim())
+          .filter(Boolean);
+
         const hasParticipantBinding = participantDomainIds.length > 0;
 
-        if (participantId && !hasParticipantBinding && !roleAllowsFallback) {
-          // Participant terdaftar tapi belum ada domain aktif → source = none.
-          // UI wajib tampilkan empty-state / pending-onboarding notice.
-          if (!cancelled) {
-            setAvailableDomains([]);
-            setDomainId(null);
-            setDomainName(null);
-            setDomainSource("none");
-            setActiveOrganizationId(null);
-            setActiveOrganizationName(null);
-            setParticipantDomainCount(0);
-            setActiveDomainId(null);
-            setReady(true);
+        let organizations: Array<{
+          organization_id: string;
+          organization_name: string;
+        }> = [];
+        try {
+          organizations = (await organizationsApi.list()) as Array<{
+            organization_id: string;
+            organization_name: string;
+          }>;
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.warn("[DomainContext] organizationsApi.list() gagal:", error);
           }
-          return;
         }
 
-        // ── Step 3: Resolve organization binding ─────────────────────────────
-        const organizationDomainsById =
-          hasParticipantBinding
-            ? await organizationsApi.listDomainsMap(
-                items.map((org) => org.organization_id)
-              )
-            : {};
-
-        const binding = resolveGovernanceOrganizationBinding({
-          organizations: items,
-          domainsByOrganizationId: organizationDomainsById,
-          participantDomainIds,
-          participantName: String(
-            participantDetail?.organization_name ??
-              participantDetail?.provider_name ??
-              "",
-          ).trim(),
-          preferredOrganizationId: storedParticipantOrganizationId ?? preferredOrgId,
-          preferredOrganizationName: preferredOrgName,
-        });
-
-        const chosenOrg =
-          binding.organization ??
-          items.find((org) => org.organization_id === preferredOrgId) ??
-          items.find(
-            (org) =>
-              normalize(org.organization_name) === normalize(preferredOrgName)
-          ) ??
-          (roleAllowsFallback ? items[0] : null);
-
-        if (!chosenOrg) {
-          if (!cancelled) {
-            setAvailableDomains([]);
-            setDomainId(null);
-            setDomainName(null);
-            setDomainSource("none");
-            setActiveOrganizationId(null);
-            setActiveOrganizationName(null);
-            setParticipantDomainCount(participantDomainIds.length);
-            setActiveDomainId(null);
-            setReady(true);
-          }
-          return;
-        }
-
-        // ── Step 4: Load domains untuk org terpilih ──────────────────────────
-        // Untuk SUPER_ADMIN/ADMIN (governance_fallback), kumpulkan semua domains
-        // dari semua orgs sehingga domain selector di navbar tampil lengkap.
-        let domains: AvailableDomain[];
-        if (!hasParticipantBinding && roleAllowsFallback) {
-          // Load domains dari semua orgs secara paralel
-          const allDomainArrays = await Promise.all(
-            items.map((org) =>
-              organizationsApi.listDomains(org.organization_id).catch(() => [] as AvailableDomain[])
-            )
+        let organizationDomainsById: Record<string, AvailableDomain[]> = {};
+        if (organizations.length > 0) {
+          organizationDomainsById = await organizationsApi.listDomainsMap(
+            organizations.map((organization) => organization.organization_id),
           );
-          const seen = new Set<string>();
-          domains = allDomainArrays
-            .flat()
-            .filter((d: AvailableDomain) => {
-              if (seen.has(d.domain_id)) return false;
-              seen.add(d.domain_id);
-              return true;
-            });
-        } else {
-          domains = hasParticipantBinding
-            ? ((organizationDomainsById[chosenOrg.organization_id] ??
-                []) as AvailableDomain[])
-            : ((await organizationsApi.listDomains(
-                chosenOrg.organization_id
-              )) as AvailableDomain[]);
         }
 
-        // ── Step 5: Tentukan source label ─────────────────────────────────────
-        // governance_fallback HANYA untuk admin tanpa participant binding.
+        if (participantId && !hasParticipantBinding && !roleAllowsFallback) {
+          if (!cancelled) {
+            applyEmptyDomainState(
+              setAvailableDomains,
+              setDomainId,
+              setDomainName,
+              setDomainSource,
+              setActiveOrganizationId,
+              setActiveOrganizationName,
+              setParticipantDomainCount,
+              setReady,
+            );
+          }
+          return;
+        }
+
+        const binding = organizations.length > 0
+          ? resolveGovernanceOrganizationBinding({
+              organizations,
+              domainsByOrganizationId: organizationDomainsById,
+              participantDomainIds,
+              participantName: String(
+                participantDetail?.organization_name ?? participantDetail?.provider_name ?? "",
+              ).trim(),
+              preferredOrganizationId: storedParticipantOrganizationId ?? preferredOrgId,
+              preferredOrganizationName: preferredOrgName,
+            })
+          : {
+              organization: null,
+            };
+
+        const chosenOrg = organizations.length > 0
+          ? binding.organization ??
+            organizations.find((organization) => organization.organization_id === preferredOrgId) ??
+            organizations.find(
+              (organization) =>
+                normalizeBindingKey(organization.organization_name) ===
+                normalizeBindingKey(preferredOrgName),
+            ) ??
+            (roleAllowsFallback ? organizations[0] : null)
+          : null;
+
+        const governanceFallbackDomains = dedupeDomains(
+          Object.values(organizationDomainsById).flat() as AvailableDomain[],
+        );
+
+        const resolvedDomains = hasParticipantBinding
+          ? mapParticipantBoundDomains(participantDomainsRaw, organizationDomainsById)
+          : governanceFallbackDomains;
+
         const resolvedSource: DomainSource = hasParticipantBinding
           ? "participant_binding"
-          : roleAllowsFallback
+          : governanceFallbackDomains.length > 0 && roleAllowsFallback
             ? "governance_fallback"
             : "none";
 
         if (!cancelled) {
-          setPreferredOrganization(
-            chosenOrg.organization_id,
-            chosenOrg.organization_name
-          );
-          setAvailableDomains(domains);
+          if (chosenOrg) {
+            setPreferredOrganization(chosenOrg.organization_id, chosenOrg.organization_name);
+          }
+
+          setAvailableDomains(resolvedDomains);
           setDomainSource(resolvedSource);
-          setActiveOrganizationId(chosenOrg.organization_id);
-          setActiveOrganizationName(chosenOrg.organization_name);
+          setActiveOrganizationId(
+            chosenOrg?.organization_id ?? storedParticipantOrganizationId ?? preferredOrgId ?? null,
+          );
+          setActiveOrganizationName(
+            chosenOrg?.organization_name ?? preferredOrgName ?? null,
+          );
           setParticipantDomainCount(participantDomainIds.length);
 
-          // Pilih domain aktif: participant binding > persisted > first
           const persistedId = getActiveDomainId();
           const persisted = persistedId
-            ? domains.find((d) => d.domain_id === persistedId)
+            ? resolvedDomains.find((domain) => domain.domain_id === persistedId)
             : null;
           const participantDomain = hasParticipantBinding
-            ? domains.find((d) => participantDomainIds.includes(d.domain_id))
+            ? resolvedDomains.find((domain) => participantDomainIds.includes(domain.domain_id))
             : null;
-          const target =
-            participantDomain ?? persisted ?? domains[0] ?? null;
+          const target = persisted ?? participantDomain ?? resolvedDomains[0] ?? null;
 
           if (target) {
             setDomainId(target.domain_id);
@@ -258,15 +305,24 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
             setDomainName(null);
             setActiveDomainId(null);
           }
+
           setReady(true);
         }
-      } catch {
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn("[DomainContext] gagal resolve domain context:", error);
+        }
         if (!cancelled) {
-          setDomainSource("none");
-          setActiveOrganizationId(null);
-          setActiveOrganizationName(null);
-          setParticipantDomainCount(0);
-          setReady(true);
+          applyEmptyDomainState(
+            setAvailableDomains,
+            setDomainId,
+            setDomainName,
+            setDomainSource,
+            setActiveOrganizationId,
+            setActiveOrganizationName,
+            setParticipantDomainCount,
+            setReady,
+          );
         }
       }
     })();
@@ -302,4 +358,3 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useDomain = (): DomainContextValue => useContext(DomainContext);
-
