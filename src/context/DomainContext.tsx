@@ -49,7 +49,7 @@ const DomainContext = createContext<DomainContextValue>({
   switchDomain: () => {},
 });
 
-const GOVERNANCE_FALLBACK_ROLES = new Set(["SUPER_ADMIN", "CONSUMER"]);
+const GOVERNANCE_FALLBACK_ROLES = new Set(["SUPER_ADMIN"]);
 
 type ParticipantDomainBinding = {
   domain_id?: string;
