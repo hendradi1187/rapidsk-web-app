@@ -338,6 +338,15 @@ const TransferCenter = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [previewTransfer, setPreviewTransfer] = useState<TransferPreviewState | null>(null);
 
+  const normalizeUrlCandidate = (url?: string | null): string | null => {
+    if (!url) return null;
+    try {
+      return new URL(url).href.replace(/\/+$/, "").toLowerCase();
+    } catch {
+      return url.trim().replace(/\/+$/, "").toLowerCase() || null;
+    }
+  };
+
   // Adapter lookup: endpoint dataset dicocokkan dengan adapter participant yang memang terdaftar
   const adapterForDataset = (ds?: typeof datasets[number]) => {
     const datasetUrl = normalizeUrlCandidate(ds?.endpoint_url);
