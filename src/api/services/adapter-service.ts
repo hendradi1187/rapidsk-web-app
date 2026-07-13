@@ -1,4 +1,5 @@
 import { ADAPTER } from "../endpoints";
+import { getServiceToken } from "@/lib/service-tokens";
 const ADAPTER_PROXY_BASE = "/adapter-service/api/v1"; // keep for fetch() calls below — path handled by nginx proxy
 
 export type AdapterProvider = "geoserver" | "arcgis";
@@ -73,9 +74,14 @@ export interface AdapterIngestionTask {
   [key: string]: unknown;
 }
 
-const getAuthHeader = () => {
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+const getAuthHeader = async () => {
+  try {
+    const token = await getServiceToken("ALL");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
 };
 
 const parseJsonSafe = async (response: Response) => {
@@ -100,10 +106,11 @@ const unwrapList = <T>(payload: unknown): T[] => {
 };
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${ADAPTER_PROXY_BASE}${path}`, {
     ...init,
     headers: {
-      ...getAuthHeader(),
+      ...authHeader,
       ...(init?.headers ?? {}),
     },
     credentials: "same-origin",
@@ -228,5 +235,3 @@ export const adapterServiceApi = {
     return request<unknown>(`${ADAPTER.OGC_ITEMS(domainCode)}${suffix}`);
   },
 };
-
-

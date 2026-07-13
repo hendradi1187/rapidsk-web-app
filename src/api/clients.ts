@@ -192,10 +192,10 @@ export const authClient: AxiosInstance = createServiceClient("auth", getAuthServ
 export const ctsClient: AxiosInstance = createServiceClient("cts", getCtsServiceBaseUrl);
 
 /** connectorClient — connector runtime, providers, connection pool (aud gxspace-connector) */
-export const connectorClient: AxiosInstance = createServiceClient("connector", getConnectorServiceBaseUrl, "CONNECTOR");
+export const connectorClient: AxiosInstance = createServiceClient("connector", getConnectorServiceBaseUrl, "ALL");
 
 /** adapterClient — adapter workspace, OGC, geospatial runtime (aud gxspace-ogc-adapter) */
-export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl, "OGC_ADAPTER");
+export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl, "ALL");
 
 /** monitoringClient — audit logs, heartbeats, transfer projections */
 export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl);
