@@ -296,6 +296,16 @@ const statusFallback = (status?: number, fallback?: string): string => {
   }
 };
 
+// Untuk field data mentah dari BE (mis. task.error_log: string | Record<string,unknown> | null)
+// yang BUKAN exception — getApiErrorMessage tak cocok karena hanya mengenali AxiosError/Error,
+// payload mentah selalu jatuh ke fallback generik. extractMessages/dedupeMessages tahu cara
+// membongkar bentuk ini (string polos, {detail}/{error}/{message}, unified errors object, dll).
+export const getRawErrorLogMessage = (errorLog: unknown, fallback?: string): string => {
+  const messages = dedupeMessages(extractMessages(errorLog));
+  if (messages.length > 0) return messages.join(" | ");
+  return fallback || "Terjadi kesalahan yang belum diketahui.";
+};
+
 export const getApiErrorMessage = (error: unknown, fallback?: string): string => {
   if (axios.isAxiosError(error)) {
     const messages = dedupeMessages(extractMessages(error.response?.data));

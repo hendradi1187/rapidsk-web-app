@@ -26,7 +26,7 @@ import {
   type AdapterIngestionTask,
   type AdapterProvider,
 } from "@/api/services/adapter-service";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, getRawErrorLogMessage } from "@/lib/api-error";
 import { getServiceToken } from "@/lib/service-tokens";
 import {
   computeAdapterStepStatuses,
@@ -1542,7 +1542,7 @@ export function AdapterFlowWizard({
                         .filter(Boolean)
                         .join(" · ") || task.source_type || "-";
                       const keterangan = failed
-                        ? getApiErrorMessage(task.error_log, "Task gagal — cek konfigurasi sumber.")
+                        ? getRawErrorLogMessage(task.error_log, "Task gagal — cek konfigurasi sumber.")
                         : success
                           ? "Berhasil masuk koleksi"
                           : "Sedang diproses…";

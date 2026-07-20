@@ -117,16 +117,15 @@ export const deriveRole = (
   ) {
     return "SUPER_ADMIN";
   }
-  if (grp.includes("ADMIN")) {
-    return "ADMIN";
-  }
-  if (grp.includes("AUDIT") || cat.includes("AUDIT") || cat.includes("COMPLIANCE")) {
-    return "AUDITOR";
-  }
-  if (grp.includes("GIS") || cat.includes("GIS") || cat.includes("SPATIAL")) {
-    return "GIS_ANALYST";
-  }
-  // GX-Space category/group codes: PROVIDER (KKKS) & CONSUMER langsung.
+  // PENTING: identitas ORGANISASI (category) harus menang duluan atas level
+  // admin INTERNAL (group). `group.code === "ADMIN"` cuma berarti "admin di
+  // dalam organisasinya sendiri" — BUKAN admin platform (itu sudah ditangani
+  // SUPER_ADMIN di atas). Kalau cek grp.includes("ADMIN") duluan, akun KKKS
+  // yang jadi admin org-nya sendiri (category=PROVIDER, group=ADMIN) malah
+  // ketiban role "ADMIN" global dan salah masuk ke dashboard lintas-KKKS,
+  // bukan dashboard KKKS miliknya sendiri. Jadi: category PROVIDER/CONSUMER
+  // dicek DULU; grp.includes("ADMIN") jadi fallback murni kalau category
+  // tak menandakan organisasi provider/consumer sama sekali.
   if (grp.includes("PROVIDER") || cat.includes("PROVIDER") || cat.includes("KKKS") || cat.includes("ENTERPRISE")) {
     return "PROVIDER";
   }
@@ -139,6 +138,15 @@ export const deriveRole = (
     cat.includes("SKK")
   ) {
     return "CONSUMER";
+  }
+  if (grp.includes("ADMIN")) {
+    return "ADMIN";
+  }
+  if (grp.includes("AUDIT") || cat.includes("AUDIT") || cat.includes("COMPLIANCE")) {
+    return "AUDITOR";
+  }
+  if (grp.includes("GIS") || cat.includes("GIS") || cat.includes("SPATIAL")) {
+    return "GIS_ANALYST";
   }
 
   return "VIEWER";

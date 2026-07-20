@@ -349,33 +349,6 @@ const TransferCenter = () => {
       projectionCreatedAt: projection?.created_at ?? null,
     });
   };
-  // Dedup 1 transfer = 1 baris. BE mencatat tiap transfer dari 2 sisi dengan transfer_id
-  // SAMA (id/transfer_process_id beda). transfer_id HANYA ada di projeksi (list connector
-  // tak membawanya) → kunci grup = projection.transfer_id, fallback id baris bila projeksi
-  // belum ter-materialisasi. Dalam grup, simpan sisi CONSUMER/OUTBOUND.
-  const dedupeHistoryByTransfer = (rows: typeof transfers): typeof transfers => {
-    // NB: `Map` di file ini di-shadow ikon lucide — pakai globalThis.Map.
-    const byKey = new globalThis.Map<string, (typeof transfers)[number]>();
-    for (const row of rows) {
-      const key = String(projectionForTransfer(row)?.transfer_id ?? row.id);
-      const existing = byKey.get(key);
-      if (!existing) {
-        byKey.set(key, row);
-        continue;
-      }
-      // Sudah ada baris untuk transfer ini — utamakan yang benar-benar CONSUMER/OUTBOUND.
-      if (isConsumerOutboundTransfer(row) && !isConsumerOutboundTransfer(existing)) byKey.set(key, row);
-    }
-    return Array.from(byKey.values());
-  };
-  const historyTransfers = dedupeHistoryByTransfer(
-    transfers.filter((transfer) => isConsumerOutboundTransfer(transfer)),
-  ).sort((left, right) =>
-    compareHistoryDesc(
-      { id: left.id, timestamp: historyTimestamp(left) },
-      { id: right.id, timestamp: historyTimestamp(right) },
-    ),
-  );
   const selectedAgreementRecord = selectedAgreement
     ? agreements.find((item) => item.id === selectedAgreement.agreementId) ?? null
     : null;
@@ -650,6 +623,108 @@ const TransferCenter = () => {
       (typeof transfer === "string" ? null : transfer.mode ?? null);
     return normalizeTransferMode(rawMode) ?? lazyModeById[transferId] ?? null;
   };
+  // Dedup 1 transfer = 1 baris. BE mencatat tiap transfer dari 2 sisi (CONSUMER +
+  // cermin PROVIDER) dengan transfer_id SAMA tapi id baris beda.
+  //
+  //  • Kalau projeksi ada → satukan pakai `transfer_id` (paling akurat).
+  //  • Kalau projeksi TIDAK ADA (mis. 403 monitoring, kasus umum saat ini) → tak ada
+  //    transfer_id. Checksum SAJA TIDAK CUKUP — dataset yang sama ditransfer ulang
+  //    berkali-kali (kejadian nyata di data live) tetap hasilkan checksum SAMA di
+  //    waktu berbeda; checksum = penanda KONTEN, bukan penanda transaksi. Kalau
+  //    hanya checksum, transfer ulang yang beda hari malah ke-gabung → transfer baru
+  //    "hilang" ketelen transfer lama (sudah pernah terjadi, JANGAN diulang).
+  //    Pembeda yang benar antara sepasang cermin vs transfer ulang: KEDUA sisi
+  //    SELESAI hampir bersamaan. Dibuktikan dari 52 baris data transfer live:
+  //      - jarak completed_at DALAM 1 pasangan cermin  : maks 108 ms
+  //      - jarak completed_at ANTAR transaksi berbeda   : min ~10.200 ms
+  //    Window 2 detik duduk aman di tengah margin itu (>18x lipat dari kasus
+  //    terburuk observed) — tak mungkin salah gabung / salah pisah pada data ini.
+  //    Jadi: kelompokkan per (agreement|checksum), lalu satukan HANYA baris yang
+  //    completed_at-nya berdekatan (<= window). Transfer ulang tetap baris terpisah.
+  const MIRROR_WINDOW_MS = 2000;
+  const historyEventMs = (row: (typeof transfers)[number]): number | null => {
+    const raw = row.completed_at ?? row.started_at ?? null;
+    if (!raw) return null;
+    const ms = Date.parse(raw);
+    return Number.isNaN(ms) ? null : ms;
+  };
+  // Wakil klaster. Prioritas:
+  //  1. Baris yang MODE-nya kebaca (localStorage/lazy-resolved). Mode HANYA tersimpan
+  //     di sisi yang benar-benar di-initiate FE — baris cermin dari backend tak pernah
+  //     punya entri ini. Tanpa prioritas ini, representative bisa kebetulan jatuh ke
+  //     baris cermin → tampil "Belum tercatat" padahal baris satunya sudah tahu
+  //     Direct Stream/Persistent (Download vs Preview jadi salah tampil).
+  //  2. Sisi CONSUMER/OUTBOUND (bila projeksi ada).
+  //  3. Paling awal selesai — stabil & deterministik.
+  const pickMirrorRepresentative = (
+    cluster: Array<(typeof transfers)[number]>,
+  ): (typeof transfers)[number] => {
+    const knownMode = cluster.find((r) => resolvePersistedTransferMode(r) !== null);
+    if (knownMode) return knownMode;
+    const consumer = cluster.find((r) => isConsumerOutboundTransfer(r));
+    return consumer ?? cluster[0];
+  };
+  const dedupeHistoryByTransfer = (rows: typeof transfers): typeof transfers => {
+    // NB: `Map` di file ini di-shadow ikon lucide — pakai globalThis.Map.
+    const result: Array<(typeof transfers)[number]> = [];
+    const byTransferId = new globalThis.Map<string, (typeof transfers)[number]>();
+    // groupKey (agreement|checksum) → daftar baris yang belum punya transfer_id.
+    const contentGroups = new globalThis.Map<string, Array<(typeof transfers)[number]>>();
+
+    for (const row of rows) {
+      const transferId = projectionForTransfer(row)?.transfer_id;
+      if (transferId) {
+        const key = `tid:${transferId}`;
+        const existing = byTransferId.get(key);
+        if (!existing || (isConsumerOutboundTransfer(row) && !isConsumerOutboundTransfer(existing))) {
+          byTransferId.set(key, row);
+        }
+        continue;
+      }
+      const checksum = String(row.checksum_sha256 ?? "").trim();
+      // Tanpa checksum (mis. INITIATED) tak ada kunci konten aman → biarkan sendiri.
+      if (!checksum) {
+        result.push(row);
+        continue;
+      }
+      const groupKey = `${row.agreement_id}|${checksum}`;
+      const bucket = contentGroups.get(groupKey);
+      if (bucket) bucket.push(row);
+      else contentGroups.set(groupKey, [row]);
+    }
+    result.push(...byTransferId.values());
+
+    // Untuk tiap grup konten, cluster baris berdasarkan kedekatan waktu selesai.
+    for (const groupRows of contentGroups.values()) {
+      if (groupRows.length === 1) {
+        result.push(groupRows[0]);
+        continue;
+      }
+      const sorted = [...groupRows].sort((a, b) => (historyEventMs(a) ?? 0) - (historyEventMs(b) ?? 0));
+      let cluster: Array<(typeof transfers)[number]> = [sorted[0]];
+      const flush = () => result.push(pickMirrorRepresentative(cluster));
+      for (let i = 1; i < sorted.length; i++) {
+        const prevMs = historyEventMs(cluster[cluster.length - 1]);
+        const curMs = historyEventMs(sorted[i]);
+        const near = prevMs !== null && curMs !== null && Math.abs(curMs - prevMs) <= MIRROR_WINDOW_MS;
+        if (near) cluster.push(sorted[i]);
+        else {
+          flush();
+          cluster = [sorted[i]];
+        }
+      }
+      flush();
+    }
+    return result;
+  };
+  const historyTransfers = dedupeHistoryByTransfer(
+    transfers.filter((transfer) => isConsumerOutboundTransfer(transfer)),
+  ).sort((left, right) =>
+    compareHistoryDesc(
+      { id: left.id, timestamp: historyTimestamp(left) },
+      { id: right.id, timestamp: historyTimestamp(right) },
+    ),
+  );
   const persistFailedAttempt = (attemptKey: string, value: FailedTransferAttempt) => {
     setFailedAttemptMap((prev) => {
       const next = { ...prev, [attemptKey]: value };

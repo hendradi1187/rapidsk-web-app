@@ -197,8 +197,11 @@ export const connectorClient: AxiosInstance = createServiceClient("connector", g
 /** adapterClient — adapter workspace, OGC, geospatial runtime (aud gxspace-ogc-adapter) */
 export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl, "ALL");
 
-/** monitoringClient — audit logs, heartbeats, transfer projections (token ALL, konsisten dgn connector/adapter) */
-export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl, "ALL");
+/** monitoringClient — audit logs, heartbeats, transfer projections.
+ *  Endpoint `/cts/monitoring/*` dilayani service CTS (8581) & di-authorize atas
+ *  IDENTITAS USER (bukan service). Jadi pakai token login user sama seperti ctsClient
+ *  — JANGAN service token "ALL" (itu login sbg service, izin monitoring user tak terpakai → 403). */
+export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl);
 
 // ── Register ke runtime-config registry ──────────────────────────────────────
 registerLogicalClient("auth", authClient);
