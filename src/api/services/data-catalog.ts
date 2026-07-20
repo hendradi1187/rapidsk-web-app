@@ -8,9 +8,8 @@ import type {
 } from "../types/data-catalog";
 
 // GX-Space: /data-catalog/{domainId}/datasets  (envelope {data:[...]})
-const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
 
-// L0–L4 dibawa di field description GX-Space ("… klasifikasi L3").
+// L0-L4 dibawa di field description GX-Space ("... klasifikasi L3").
 const levelFromDescription = (desc?: string): string | undefined => {
   const m = (desc || "").match(/klasifikasi\s+(L[0-4])/i);
   return m ? m[1].toUpperCase() : undefined;
@@ -23,9 +22,9 @@ const toDataset = (d: any): Dataset => {
   return {
     dataset_id: d.id,
     dataset_name: d.name,
-    schema_name: d.version ? `v${d.version}` : (d.schema_id ?? "—"),
+    schema_name: d.version ? `v${d.version}` : (d.schema_id ?? "-"),
     // provider_id mentah; nama organisasi di-resolve di UI via /onboarding/participants
-    provider_name: d.provider_id ?? "—",
+    provider_name: d.provider_id ?? "-",
     provider_id: d.provider_id,
     classification: access === "PUBLIC" ? "public" : "restricted",
     status: String(d.status ?? "").toLowerCase(),
@@ -43,6 +42,7 @@ const toDataset = (d: any): Dataset => {
     endpoint_documentation_url: d.endpoint_metadata?.documentation_url ?? null,
     endpoint_data_format: d.endpoint_metadata?.data_format ?? null,
     endpoint_sla: d.endpoint_metadata?.sla ?? null,
+    endpoint_runtime: d.endpoint_metadata?.runtime ?? null,
   };
 };
 
@@ -101,13 +101,25 @@ export const datasetsApi = {
       schema_id: string;
       name: string;
       version: string;
-      domainKey: string; // → tags[0]
+      domainKey: string;
       url: string;
-      protocol: string; // OGC_API_FEATURES | REST_API
-      classification: string; // L0–L4
+      protocol: string;
+      classification: string;
+      access_type?: string;
+      auth_strategy?: Record<string, unknown> | null;
+      documentation_url?: string;
+      runtime?: Record<string, unknown> | null;
     },
   ): Promise<Dataset> => {
     const isPublic = body.classification === "L0" || body.classification === "L1";
+    const accessType = body.access_type ?? (isPublic ? "PUBLIC" : "PRIVATE");
+    // D12: jangan hardcode metadata OGC untuk protokol lain. tags[0] tetap domainKey
+    // (dipakai untuk derivasi domain), tag OGC hanya untuk OGC_API_FEATURES.
+    const isOgc = String(body.protocol ?? "").toUpperCase() === "OGC_API_FEATURES";
+    const tags = isOgc
+      ? [body.domainKey, "EPSG:4326", "OGC API Features"]
+      : [body.domainKey];
+    const dataFormat = isOgc ? "application/geo+json" : "application/json";
     const payload = {
       provider_id: body.provider_id,
       schema_id: body.schema_id,
@@ -116,16 +128,17 @@ export const datasetsApi = {
       description: `${body.name}. Klasifikasi ${body.classification}.`,
       endpoint: {
         url: body.url,
-        access_type: isPublic ? "PUBLIC" : "PRIVATE",
+        access_type: accessType,
         protocol: body.protocol,
-        auth_strategy: null, // DatasetEndpointAuthStrategy | null — null = no auth
+        auth_strategy: body.auth_strategy ?? null,
       },
       endpoint_metadata: {
         sla: "best-effort",
-        tags: [body.domainKey, "EPSG:4326", "OGC API Features"],
+        tags,
         rate_limit: {},
-        data_format: "application/geo+json",
-        documentation_url: body.url,
+        data_format: dataFormat,
+        documentation_url: body.documentation_url ?? body.url,
+        runtime: body.runtime ?? null,
       },
       metadata: [],
     };

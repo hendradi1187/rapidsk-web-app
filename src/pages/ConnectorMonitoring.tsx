@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Loader2, Play, RefreshCw, SatelliteDish, Send, ServerCog } from "lucide-react";
+import { Activity, AlertTriangle, Loader2, Play, RefreshCw, SatelliteDish, Send, ServerCog } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -346,6 +346,13 @@ const ConnectorMonitoring = () => {
           </TabsContent>
 
           <TabsContent value="provider" className="space-y-6">
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Endpoint provider (<code>/connector/provider/*</code>) hanya menerima <strong>token layanan connector</strong>, bukan token login pengguna.
+                Dipanggil dari browser dengan sesi biasa akan ditolak <strong>403 (PRINCIPAL_TYPE_NOT_ALLOWED)</strong>. Form ini untuk diagnosa/integrasi service, bukan operasi harian.
+              </span>
+            </div>
             <Card className="panel">
               <CardHeader>
                 <CardTitle>Provider Initiate</CardTitle>

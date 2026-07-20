@@ -3,6 +3,20 @@ import { ctsClient } from "../clients";
 
 // Contract & agreement (domain-scoped) — read-only.
 const unwrap = (res: any): any[] => res?.data?.data ?? res?.data ?? [];
+const unwrapOne = (res: any): any => res?.data?.data ?? res?.data ?? null;
+
+const mapAgreementItem = (a: any): AgreementItem => ({
+  id: a?.id,
+  contract_id: a?.contract_id,
+  status: a?.status,
+  effective_from: a?.effective_from,
+  effective_to: a?.effective_to,
+  created_at: a?.created_at,
+  updated_at: a?.updated_at,
+  dataset_id: a?.dataset_id ?? a?.dataset?.dataset_id ?? null,
+  consumer_participant_id: a?.consumer_participant_id ?? a?.consumer_id ?? null,
+  provider_participant_id: a?.provider_participant_id ?? a?.provider_id ?? null,
+});
 
 export interface ContractItem {
   id: string;
@@ -27,6 +41,10 @@ export interface AgreementItem {
   effective_from: string;
   effective_to: string;
   created_at?: string;
+  updated_at?: string;
+  dataset_id?: string | null;
+  consumer_participant_id?: string | null;
+  provider_participant_id?: string | null;
 }
 
 // Ambil seluruh halaman (BE max limit=100) agar matrix kepatuhan 50 KKKS lengkap.
@@ -138,14 +156,7 @@ export const agreementsApi = {
   list: async (domainId: string): Promise<AgreementItem[]> => {
     if (!domainId) return [];
     const res = await ctsClient.get(`/policy-contract/${domainId}/agreements`);
-    return unwrap(res).map((a: any) => ({
-      id: a.id,
-      contract_id: a.contract_id,
-      status: a.status,
-      effective_from: a.effective_from,
-      effective_to: a.effective_to,
-      created_at: a.created_at,
-    }));
+    return unwrap(res).map((a: any) => mapAgreementItem(a));
   },
 
   // Buat perjanjian (status auto APPROVED di BE). Tanggal dikirim ISO 8601.
@@ -157,7 +168,7 @@ export const agreementsApi = {
       `/policy-contract/${domainId}/agreements`,
       body,
     );
-    return res.data as AgreementItem;
+    return mapAgreementItem(unwrapOne(res));
   },
 
   // Ubah status agreement (mis. → ACTIVE; syarat transfer connector).
@@ -170,7 +181,7 @@ export const agreementsApi = {
       `/policy-contract/${domainId}/agreements/${agreement.id}`,
       { contract_id: agreement.contract_id, status },
     );
-    return res.data as AgreementItem;
+    return mapAgreementItem(unwrapOne(res));
   },
 };
 

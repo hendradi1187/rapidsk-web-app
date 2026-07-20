@@ -16,6 +16,11 @@ export interface TransferItem {
   error_message?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // List /connector/{domainId}/transfers membawa started_at/completed_at (BUKAN
+  // created_at/updated_at). Wajib dipetakan supaya urutan riwayat punya fallback
+  // timestamp saat projeksi monitoring tidak tersedia untuk baris tsb.
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface ConnectorHeartbeatItem {
@@ -58,7 +63,58 @@ export interface TransferProjectionItem {
 
 export type TransferMode = "direct" | "persistent";
 
-const clampMonitoringLimit = (limit: number) => Math.min(100, Math.max(1, Math.trunc(limit || 100)));
+// BE `/cts/monitoring/*` param limit: minimum 1, maximum 500 (openapi). Sebelumnya di-clamp
+// 100 secara artifisial → domain sibuk kehilangan projeksi (role/mode/waktu) baris lama.
+// Endpoint TIDAK punya offset/paging, jadi cara paling luas yang didukung BE = minta sampai 500.
+const MONITORING_LIMIT_MAX = 500;
+const clampMonitoringLimit = (limit: number) =>
+  Math.min(MONITORING_LIMIT_MAX, Math.max(1, Math.trunc(limit || 100)));
+
+// Tentukan ekstensi file hasil download seakurat mungkin. Server sering mengirim hasil
+// persistent sebagai `application/octet-stream` (blob mentah) → tanpa deteksi isi, file
+// jatuh ke ".bin" yang bikin user bingung. Urutan: (1) content-type eksplisit, (2) nama
+// dari server bila informatif, (3) ENDUS isi blob (JSON/GeoJSON/XML) — paling andal.
+const resolveDownloadExtension = async (
+  blob: Blob,
+  contentType: string,
+  serverFilename?: string,
+): Promise<string> => {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("geo+json")) return "geojson";
+  if (ct.includes("json")) return "json";
+  if (ct.includes("csv")) return "csv";
+  if (ct.includes("zip")) return "zip";
+  if (ct.includes("xml")) return "xml";
+
+  const serverExt = serverFilename?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  if (serverExt && serverExt !== "bin") return serverExt;
+
+  // Endus MAGIC BYTES dulu (deteksi format biner: zip/gzip/pdf/png) sebelum coba baca teks.
+  try {
+    const sig = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+    const starts = (...bytes: number[]) => bytes.every((b, i) => sig[i] === b);
+    if (starts(0x50, 0x4b, 0x03, 0x04) || starts(0x50, 0x4b, 0x05, 0x06)) return "zip"; // "PK.." (zip / kmz / xlsx)
+    if (starts(0x1f, 0x8b)) return "gz"; // gzip
+    if (starts(0x25, 0x50, 0x44, 0x46)) return "pdf"; // "%PDF"
+    if (starts(0x89, 0x50, 0x4e, 0x47)) return "png";
+    if (starts(0xff, 0xd8, 0xff)) return "jpg";
+  } catch {
+    // Tak terbaca sebagai byte → lanjut ke deteksi teks.
+  }
+
+  // Endus isi sebagai teks (JSON/GeoJSON/XML) — untuk hasil persistent yang berupa teks mentah.
+  try {
+    const head = (await blob.slice(0, 4096).text()).trim();
+    if (head) {
+      if (/"type"\s*:\s*"FeatureCollection"/.test(head) || /"features"\s*:\s*\[/.test(head)) return "geojson";
+      if (head[0] === "{" || head[0] === "[") return "json";
+      if (head[0] === "<") return "xml";
+    }
+  } catch {
+    // Blob tak terbaca sebagai teks → biarkan jatuh ke fallback biner.
+  }
+  return "bin";
+};
 
 export const transfersApi = {
   list: async (domainId: string): Promise<TransferItem[]> => {
@@ -80,6 +136,8 @@ export const transfersApi = {
       error_message: t.error_message,
       created_at: t.created_at,
       updated_at: t.updated_at,
+      started_at: t.started_at,
+      completed_at: t.completed_at,
     }));
   },
 
@@ -165,11 +223,17 @@ export const transfersApi = {
       { responseType: "blob" },
     );
     const disposition = String(res.headers["content-disposition"] ?? "");
-    const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
-    return {
-      blob: res.data as Blob,
-      filename: filenameMatch?.[1] ?? `transfer-${transferProcessId}.bin`,
-    };
+    const serverFilename = disposition.match(/filename="?([^"]+)"?/i)?.[1];
+    const contentType = String(res.headers["content-type"] ?? "");
+    const blob = res.data as Blob;
+    const ext = await resolveDownloadExtension(blob, contentType, serverFilename);
+    // Pakai nama dari server hanya bila informatif (bukan .bin); selain itu susun nama
+    // rapi dengan ekstensi hasil deteksi supaya file tidak pernah jatuh ke ".bin" buta.
+    const filename =
+      serverFilename && !/\.bin$/i.test(serverFilename)
+        ? serverFilename
+        : `transfer-${transferProcessId}.${ext}`;
+    return { blob, filename };
   },
 
   status: async (transferProcessId: string): Promise<TransferItem> => {
@@ -182,6 +246,8 @@ export const transfersApi = {
       dataset_id: String(data.dataset_id ?? ""),
       status: String(data.status ?? "UNKNOWN"),
       mode: typeof data.mode === "string" ? data.mode : null,
+      started_at: typeof data.started_at === "string" ? data.started_at : null,
+      completed_at: typeof data.completed_at === "string" ? data.completed_at : null,
       total_size: typeof data.total_size === "number" ? data.total_size : null,
       transferred_size: typeof data.transferred_size === "number" ? data.transferred_size : undefined,
       bytes_transferred: typeof data.bytes_transferred === "number" ? data.bytes_transferred : undefined,

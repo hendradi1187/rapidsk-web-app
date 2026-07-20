@@ -2,12 +2,86 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+// Table dengan scrollbar horizontal KEMBAR di atas: operator bisa geser kiri-kanan
+// tanpa harus scroll ke dasar tabel dulu. Bar atas hanya muncul saat konten benar-benar
+// melebar (overflow), tingginya menyamai tebal scrollbar asli, dan tersinkron dua arah
+// dengan area scroll tabel. Karena dipasang di komponen dasar, SEMUA tabel dapat ini.
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
-      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
-    </div>
-  ),
+  ({ className, ...props }, ref) => {
+    const scrollRef = React.useRef<HTMLDivElement>(null);
+    const topRef = React.useRef<HTMLDivElement>(null);
+    const spacerRef = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+      const scroller = scrollRef.current;
+      const top = topRef.current;
+      const spacer = spacerRef.current;
+      if (!scroller || !top || !spacer) return;
+
+      // Samakan lebar spacer bar-atas dengan lebar konten tabel, lalu tampilkan/sembunyikan
+      // bar-atas menurut ada-tidaknya overflow. Tinggi bar = tebal scrollbar asli (offset -
+      // client height); kalau 0 (scrollbar overlay), pakai 12px supaya tetap bisa di-drag.
+      const sync = () => {
+        const scrollWidth = scroller.scrollWidth;
+        const clientWidth = scroller.clientWidth;
+        const overflowing = scrollWidth > clientWidth + 1;
+        spacer.style.width = `${scrollWidth}px`;
+        const barThickness = scroller.offsetHeight - scroller.clientHeight;
+        top.style.height = overflowing ? `${barThickness > 0 ? barThickness : 12}px` : "0px";
+        top.style.marginBottom = overflowing ? "2px" : "0px";
+      };
+      sync();
+
+      // Sinkron dua arah dengan kunci sederhana supaya tidak saling memantul.
+      let syncing = false;
+      const onTop = () => {
+        if (syncing) return;
+        syncing = true;
+        scroller.scrollLeft = top.scrollLeft;
+        syncing = false;
+      };
+      const onScroller = () => {
+        if (syncing) return;
+        syncing = true;
+        top.scrollLeft = scroller.scrollLeft;
+        syncing = false;
+      };
+      top.addEventListener("scroll", onTop);
+      scroller.addEventListener("scroll", onScroller);
+
+      let observer: ResizeObserver | null = null;
+      if (typeof ResizeObserver !== "undefined") {
+        observer = new ResizeObserver(sync);
+        observer.observe(scroller);
+        const tableEl = scroller.querySelector("table");
+        if (tableEl) observer.observe(tableEl);
+      }
+      window.addEventListener("resize", sync);
+
+      return () => {
+        top.removeEventListener("scroll", onTop);
+        scroller.removeEventListener("scroll", onScroller);
+        window.removeEventListener("resize", sync);
+        observer?.disconnect();
+      };
+    }, []);
+
+    return (
+      <div className="relative w-full">
+        <div
+          ref={topRef}
+          aria-hidden
+          className="overflow-x-auto overflow-y-hidden"
+          style={{ height: 0 }}
+        >
+          <div ref={spacerRef} style={{ height: 1 }} />
+        </div>
+        <div ref={scrollRef} className="relative w-full overflow-auto">
+          <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+        </div>
+      </div>
+    );
+  },
 );
 Table.displayName = "Table";
 

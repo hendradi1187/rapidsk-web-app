@@ -19,6 +19,7 @@ import {
   Braces,
   FileLock2,
   Activity,
+  Boxes,
 } from "lucide-react";
 import type { AppRole } from "@/context/AuthContext";
 
@@ -119,6 +120,18 @@ export const MENU_ITEMS: MenuItem[] = [
       "dataset.read",
       "datasets.manage",
       "dataset.manage",
+    ],
+  },
+  {
+    section: "pemantauan",
+    icon: Boxes,
+    label: "Adapter Data",
+    path: "/adapter",
+    roles: ["SUPER_ADMIN", "ADMIN", "PROVIDER"],
+    permissions: [
+      "adapter.manage",
+      "participants.adapters.manage",
+      "dataplane.adapters.manage",
     ],
   },
   {

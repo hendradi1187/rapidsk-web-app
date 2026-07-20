@@ -20,6 +20,7 @@ import Organizations from "./pages/Organizations";
 import Participants from "./pages/Participants";
 import ParticipantDetail from "./pages/ParticipantDetail";
 import Datasets from "./pages/Datasets";
+import AdapterData from "./pages/AdapterData";
 import Schemas from "./pages/Schemas";
 import Vocabularies from "./pages/Vocabularies";
 import Policies from "./pages/Policies";
@@ -75,6 +76,7 @@ const App = () => (
                               <Route path="/participants/:id" element={<ParticipantDetail />} />
                               <Route path="/organizations" element={<Organizations />} />
                               <Route path="/datasets" element={<Datasets />} />
+                              <Route path="/adapter" element={<AdapterData />} />
                               <Route path="/schemas" element={<Schemas />} />
                               <Route path="/vocabularies" element={<Vocabularies />} />
                               <Route path="/policies" element={<Policies />} />

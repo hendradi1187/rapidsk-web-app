@@ -175,15 +175,35 @@ const getApiTargetBaseUrl = (runtimeConfig, pathname) => {
   return normalizeBaseUrl(services[serviceName] || services.cts || runtimeConfig?.apiBaseUrl);
 };
 
+// Path same-origin yang dilihat BROWSER. Semua request FE lewat wrapper ini (bebas CORS);
+// wrapper yang meneruskan ke upstream sesuai runtime.json (lihat resolveApiServiceName).
+const BROWSER_API_BASE_PATH = "/api/v1";
+const BROWSER_ADAPTER_BASE_PATH = "/adapter-service";
+
 const getPublicRuntimeConfig = (runtimeConfig) => {
   if (!runtimeConfig) return null;
   const services = getRuntimeServices(runtimeConfig);
   return {
     initialized: Boolean(runtimeConfig.initialized),
     publicAppUrl: runtimeConfig.publicAppUrl || "",
-    apiBaseUrl: getPrimaryApiBaseUrl(runtimeConfig),
-    adapterEndpoint: getAdapterServiceUrl(runtimeConfig),
-    services,
+    // Browser SELALU pakai path relatif wrapper — URL absolut upstream cuma dipegang
+    // wrapper (dan diekspos via `upstreams` untuk form admin), bukan buat request browser.
+    apiBaseUrl: BROWSER_API_BASE_PATH,
+    adapterEndpoint: BROWSER_ADAPTER_BASE_PATH,
+    services: {
+      auth: BROWSER_API_BASE_PATH,
+      cts: BROWSER_API_BASE_PATH,
+      connector: BROWSER_API_BASE_PATH,
+      adapter: BROWSER_ADAPTER_BASE_PATH,
+      monitoring: BROWSER_API_BASE_PATH,
+    },
+    // Nilai asli runtime.json — dipakai halaman Deployment Config supaya admin
+    // melihat/menyimpan target upstream yang sebenarnya, bukan path relatif browser.
+    upstreams: {
+      apiBaseUrl: getPrimaryApiBaseUrl(runtimeConfig),
+      adapterEndpoint: getAdapterServiceUrl(runtimeConfig),
+      services,
+    },
     sso: {
       enabled: Boolean(runtimeConfig.sso?.enabled),
       keycloakUrl: runtimeConfig.sso?.keycloakUrl || "",
@@ -765,38 +785,70 @@ const requireAuthenticated = (req, res) => {
   return true;
 };
 
+// Header hop-by-hop / yang ditolak undici fetch — wajib dibuang sebelum forward.
+// `expect: 100-continue` (dikirim beberapa HTTP client di POST) bikin undici throw
+// NotSupportedError; tanpa filter ini satu request bisa mematikan seluruh wrapper.
+const HOP_BY_HOP_HEADERS = new Set([
+  "host",
+  "content-length",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "expect",
+]);
+
 const proxyRequest = async (req, res, targetUrl) => {
   const bodyAllowed = !["GET", "HEAD"].includes(req.method || "GET");
   let requestBody = undefined;
 
-  if (bodyAllowed) {
-    requestBody = await new Promise((resolve, reject) => {
-      const chunks = [];
-      req.on("data", (chunk) => chunks.push(chunk));
-      req.on("end", () => resolve(Buffer.concat(chunks)));
-      req.on("error", reject);
+  try {
+    if (bodyAllowed) {
+      requestBody = await new Promise((resolve, reject) => {
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => resolve(Buffer.concat(chunks)));
+        req.on("error", reject);
+      });
+    }
+
+    const headers = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers[key] = value;
+    }
+
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: bodyAllowed ? requestBody : undefined,
+      redirect: "manual",
     });
+
+    const responseHeaders = {};
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() === "transfer-encoding") return;
+      responseHeaders[key] = value;
+    });
+    res.writeHead(response.status, responseHeaders);
+    const arrayBuffer = await response.arrayBuffer();
+    res.end(Buffer.from(arrayBuffer));
+  } catch (error) {
+    // Kegagalan proxy TIDAK boleh mematikan wrapper — balas 502 dengan pesan jelas.
+    console.error(`[proxy] ${req.method} ${targetUrl} gagal:`, error?.message || error);
+    if (!res.headersSent) {
+      return sendJson(res, 502, {
+        error: "Wrapper tidak bisa meneruskan request ke service upstream.",
+        detail: error instanceof Error ? error.message : String(error),
+        target: targetUrl,
+      });
+    }
+    try { res.end(); } catch { /* respon sudah setengah terkirim */ }
   }
-
-  const headers = { ...req.headers };
-  delete headers.host;
-  delete headers["content-length"];
-
-  const response = await fetch(targetUrl, {
-    method: req.method,
-    headers,
-    body: bodyAllowed ? requestBody : undefined,
-    redirect: "manual",
-  });
-
-  const responseHeaders = {};
-  response.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "transfer-encoding") return;
-    responseHeaders[key] = value;
-  });
-  res.writeHead(response.status, responseHeaders);
-  const arrayBuffer = await response.arrayBuffer();
-  res.end(Buffer.from(arrayBuffer));
 };
 
 const serveStaticFile = async (res, filePath) => {

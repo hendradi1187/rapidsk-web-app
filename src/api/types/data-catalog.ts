@@ -33,6 +33,7 @@ export interface Dataset {
   endpoint_documentation_url?: string | null;
   endpoint_data_format?: string | null;
   endpoint_sla?: string | null;
+  endpoint_runtime?: Record<string, unknown> | null;
 }
 
 /**
@@ -61,6 +62,7 @@ export interface DatasetUpdateRequest {
     rate_limit?: Record<string, unknown>;
     data_format?: string | null;
     documentation_url?: string | null;
+    runtime?: Record<string, unknown> | null;
   } | null;
   description?: string | null;
   version?: string | null;

@@ -8,12 +8,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Building2, Layers, ShieldCheck, CheckCircle2, Loader2, ArrowRight, ArrowLeft, Sparkles,
+  Building2, Layers, ShieldCheck, CheckCircle2, Loader2, ArrowRight, ArrowLeft, Sparkles, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { organizationsApi } from "@/api/services/governance";
 import { juknisApi, type JuknisApplyResult } from "@/api/services/juknis";
+import { useProviders } from "@/api/hooks/useProviders";
+import { issueAutoObligationContracts, selectConsumerParticipant } from "@/lib/onboarding-obligations";
 import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
 import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
@@ -171,6 +173,9 @@ const SetupJuknis = () => {
 
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<JuknisApplyResult | null>(null);
+  const { data: providersData } = useProviders();
+  const [selectedProviderId, setSelectedProviderId] = useState("");
+  const [issuingContracts, setIssuingContracts] = useState(false);
   const overrides = useMemo(() => {
     const mapped: Record<string, { classification: string; retention_years: number }> = {};
     for (const row of rows) {
@@ -193,6 +198,44 @@ const SetupJuknis = () => {
       toast.error(getApiErrorMessage(e, "Gagal menerapkan Juknis"));
     } finally {
       setApplying(false);
+    }
+  };
+
+  // Opsional: terbitkan kontrak kewajiban per katalog untuk sebuah provider di domain ini,
+  // tanpa harus lewat pendaftaran+approval participant. Butuh provider (penyedia) — kalau
+  // belum ada, langkah ini dilewati; apply-juknis tetap bisa jalan tanpa provider.
+  const providerCandidates = useMemo(
+    () =>
+      ((providersData ?? []) as Array<{ provider_id: string; provider_name: string; organization_type?: string }>)
+        .filter((p) => (p.organization_type ?? "").toUpperCase() === "ENTERPRISE")
+        .sort((a, b) => (a.provider_name ?? "").localeCompare(b.provider_name ?? "")),
+    [providersData],
+  );
+  const consumerParticipant = useMemo(
+    () => selectConsumerParticipant((providersData ?? []) as Array<{ provider_id: string; provider_name: string; organization_type?: string }>),
+    [providersData],
+  );
+
+  const issueContracts = async () => {
+    if (!domainId) return toast.error("Domain belum dipilih.");
+    const provider = providerCandidates.find((p) => p.provider_id === selectedProviderId);
+    if (!provider) return toast.error("Pilih provider (penyedia data) dulu.");
+    if (!consumerParticipant) {
+      return toast.error("Consumer (regulator/SKK Migas) belum terdaftar sebagai participant. Daftarkan dulu.");
+    }
+    setIssuingContracts(true);
+    try {
+      const res = await issueAutoObligationContracts({
+        domainIds: [domainId],
+        consumerId: consumerParticipant.provider_id,
+        providerId: provider.provider_id,
+        providerName: provider.provider_name,
+      });
+      toast.success(`Kontrak kewajiban: ${res.created} dibuat, ${res.skipped} dilewati (sudah ada).`);
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e, "Gagal menerbitkan kontrak kewajiban"));
+    } finally {
+      setIssuingContracts(false);
     }
   };
 
@@ -338,6 +381,52 @@ const SetupJuknis = () => {
                     {result.errors.length} item dilewati (kemungkinan sudah ada): {result.errors.slice(0, 3).join(", ")}...
                   </div>
                 )}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-1">
+                  <p className="font-semibold text-slate-700">Domain ini sudah siap governance.</p>
+                  <p>
+                    Policy + schema sudah terpasang di <strong>level domain</strong> (tidak terikat ke participant). Anda bisa <strong>langsung publish dataset</strong> di domain ini —
+                    cukup pilih participant penyedia saat publish. <strong>Tidak perlu menunggu</strong> pendaftaran/approval participant, dan participant tidak wajib di-bind ke domain ini dulu.
+                  </p>
+                  <p className="text-slate-500">Pendaftaran penyedia (participant) adalah langkah terpisah untuk otorisasi &amp; visibilitas, bukan syarat publish.</p>
+                </div>
+
+                {/* Opsional: terbitkan kontrak kewajiban per katalog untuk provider pilihan */}
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <FileText className="w-4 h-4 text-accent" /> Terbitkan Kontrak Kewajiban (opsional)
+                  </div>
+                  {providerCandidates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Belum ada provider (penyedia) terdaftar. Langkah ini dilewati — domain tetap siap. Kontrak kewajiban bisa diterbitkan nanti
+                      di sini setelah ada provider, atau otomatis saat participant di-approve.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        Membuat 5 kontrak kewajiban (satu per katalog) di domain ini untuk provider terpilih — tanpa menunggu approval participant.
+                        {consumerParticipant ? "" : " Catatan: consumer (SKK Migas) belum terdaftar sebagai participant, terbitkan kontrak belum bisa jalan."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
+                          <SelectTrigger className="h-9 w-[260px]"><SelectValue placeholder="Pilih provider penyedia data" /></SelectTrigger>
+                          <SelectContent>
+                            {providerCandidates.map((p) => (
+                              <SelectItem key={p.provider_id} value={p.provider_id}>{p.provider_name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="outline"
+                          onClick={() => void issueContracts()}
+                          disabled={issuingContracts || !selectedProviderId || !consumerParticipant}
+                        >
+                          {issuingContracts ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
+                          Terbitkan Kontrak
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>

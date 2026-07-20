@@ -37,6 +37,16 @@ export interface RuntimeConfig {
   adapterEndpoint: string;
   sso: RuntimeSsoConfig;
   services: RuntimeServiceMap;
+  /**
+   * Target upstream ASLI dari runtime.json wrapper (URL absolut). Browser tidak memakai
+   * ini untuk request — `services` sudah berisi path same-origin wrapper (bebas CORS).
+   * Dipakai halaman Deployment Config supaya admin melihat/menyimpan target sebenarnya.
+   */
+  upstreams?: {
+    apiBaseUrl: string;
+    adapterEndpoint: string;
+    services: RuntimeServiceMap;
+  } | null;
 }
 
 export interface LicenseState {
@@ -218,6 +228,7 @@ export function normalizeRuntimeConfig(
     adapterEndpoint: normalizedAdapterEndpoint,
     sso: runtimeConfig?.sso ?? defaultSsoConfig,
     services,
+    upstreams: runtimeConfig?.upstreams ?? null,
   };
 }
 
@@ -270,6 +281,7 @@ export async function loadRuntimeBootstrapState(): Promise<RuntimeBootstrapState
           adapterEndpoint: raw.adapterEndpoint ?? defaultAdapterEndpoint,
           sso: raw.sso ?? defaultSsoConfig,
           services: raw.services,
+          upstreams: raw.upstreams,
         });
       } else {
         setupStatus.configValid = false;

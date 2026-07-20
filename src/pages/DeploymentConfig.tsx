@@ -15,20 +15,39 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { canManageDeploymentConfig } from "@/lib/feature-access";
 import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
-const buildServiceForm = (runtimeConfig?: {
+type ServiceMapInput = Partial<Record<"auth" | "cts" | "connector" | "adapter" | "monitoring", string>>;
+
+interface RuntimeConfigFormSource {
   apiBaseUrl?: string;
   adapterEndpoint?: string;
-  services?: Partial<Record<"auth" | "cts" | "connector" | "adapter" | "monitoring", string>>;
-}) => {
-  const primaryApiBaseUrl = runtimeConfig?.services?.cts ?? runtimeConfig?.apiBaseUrl ?? "/api/v1";
-  const adapterServiceUrl = runtimeConfig?.services?.adapter ?? runtimeConfig?.adapterEndpoint ?? "";
+  services?: ServiceMapInput;
+  upstreams?: {
+    apiBaseUrl?: string;
+    adapterEndpoint?: string;
+    services?: ServiceMapInput;
+  } | null;
+}
+
+// Form admin harus menampilkan target UPSTREAM asli (URL absolut dari runtime.json),
+// bukan path relatif browser ("/api/v1") — kalau path relatif tersimpan balik ke
+// runtime.json, wrapper kehilangan target forward dan semua request 503.
+const formSource = (runtimeConfig?: RuntimeConfigFormSource) => ({
+  apiBaseUrl: runtimeConfig?.upstreams?.apiBaseUrl ?? runtimeConfig?.apiBaseUrl ?? "/api/v1",
+  adapterEndpoint: runtimeConfig?.upstreams?.adapterEndpoint ?? runtimeConfig?.adapterEndpoint ?? "",
+  services: runtimeConfig?.upstreams?.services ?? runtimeConfig?.services,
+});
+
+const buildServiceForm = (runtimeConfig?: RuntimeConfigFormSource) => {
+  const src = formSource(runtimeConfig);
+  const primaryApiBaseUrl = src.services?.cts ?? src.apiBaseUrl;
+  const adapterServiceUrl = src.services?.adapter ?? src.adapterEndpoint;
 
   return {
-    auth: runtimeConfig?.services?.auth ?? primaryApiBaseUrl,
+    auth: src.services?.auth ?? primaryApiBaseUrl,
     cts: primaryApiBaseUrl,
-    connector: runtimeConfig?.services?.connector ?? primaryApiBaseUrl,
+    connector: src.services?.connector ?? primaryApiBaseUrl,
     adapter: adapterServiceUrl,
-    monitoring: runtimeConfig?.services?.monitoring ?? primaryApiBaseUrl,
+    monitoring: src.services?.monitoring ?? primaryApiBaseUrl,
   };
 };
 
@@ -38,9 +57,9 @@ const DeploymentConfig = () => {
   const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const [form, setForm] = useState({
     publicAppUrl: runtimeConfig?.publicAppUrl ?? window.location.origin,
-    apiBaseUrl: runtimeConfig?.apiBaseUrl ?? "/api/v1",
-    adapterEndpoint: runtimeConfig?.adapterEndpoint ?? "",
-    services: buildServiceForm(runtimeConfig),
+    apiBaseUrl: formSource(runtimeConfig ?? undefined).apiBaseUrl,
+    adapterEndpoint: formSource(runtimeConfig ?? undefined).adapterEndpoint,
+    services: buildServiceForm(runtimeConfig ?? undefined),
     ssoEnabled: runtimeConfig?.sso.enabled ?? false,
     keycloakUrl: runtimeConfig?.sso.keycloakUrl ?? "",
     realm: runtimeConfig?.sso.realm ?? "",
@@ -56,9 +75,9 @@ const DeploymentConfig = () => {
   useEffect(() => {
     setForm({
       publicAppUrl: runtimeConfig?.publicAppUrl ?? window.location.origin,
-      apiBaseUrl: runtimeConfig?.apiBaseUrl ?? "/api/v1",
-      adapterEndpoint: runtimeConfig?.adapterEndpoint ?? "",
-      services: buildServiceForm(runtimeConfig),
+      apiBaseUrl: formSource(runtimeConfig ?? undefined).apiBaseUrl,
+      adapterEndpoint: formSource(runtimeConfig ?? undefined).adapterEndpoint,
+      services: buildServiceForm(runtimeConfig ?? undefined),
       ssoEnabled: runtimeConfig?.sso.enabled ?? false,
       keycloakUrl: runtimeConfig?.sso.keycloakUrl ?? "",
       realm: runtimeConfig?.sso.realm ?? "",

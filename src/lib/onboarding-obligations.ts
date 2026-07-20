@@ -1,4 +1,4 @@
-﻿import { organizationsApi } from "@/api/services/governance";
+import { organizationsApi } from "@/api/services/governance";
 import { type RegistrationItem } from "@/api/services/onboarding";
 import { contractsApi } from "@/api/services/policy-contract";
 import { providersApi } from "@/api/services/providers";
@@ -98,7 +98,7 @@ export const resolveGovernanceOrganization = async (
   return organizationsApi.create({
     organization_name: registration.organization_name,
     code: registration.organization_name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20),
-    description: `Organisasi ${registration.organization_name} â€” dibuat otomatis saat approve registrasi`,
+    description: `Organisasi ${registration.organization_name} - dibuat otomatis saat approve registrasi`,
   });
 };
 
@@ -142,7 +142,7 @@ export const issueAutoObligationContracts = async ({
   for (const domainId of domainIds) {
     const existingContracts = await contractsApi.list(domainId).catch(() => []);
     for (const domain of DOMAINS) {
-      const contractName = `[${domain.label}] Kewajiban Data â€” ${providerName}`;
+      const contractName = `[${domain.label}] Kewajiban Data - ${providerName}`;
       const alreadyExists = existingContracts.some(
         (item) => item.provider_id === providerId && normalize(item.name) === normalize(contractName),
       );
@@ -163,4 +163,3 @@ export const issueAutoObligationContracts = async ({
 
   return { created, skipped };
 };
-

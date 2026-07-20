@@ -197,8 +197,8 @@ export const connectorClient: AxiosInstance = createServiceClient("connector", g
 /** adapterClient — adapter workspace, OGC, geospatial runtime (aud gxspace-ogc-adapter) */
 export const adapterClient: AxiosInstance = createServiceClient("adapter", getAdapterServiceBaseUrl, "ALL");
 
-/** monitoringClient — audit logs, heartbeats, transfer projections */
-export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl);
+/** monitoringClient — audit logs, heartbeats, transfer projections (token ALL, konsisten dgn connector/adapter) */
+export const monitoringClient: AxiosInstance = createServiceClient("monitoring", getMonitoringServiceBaseUrl, "ALL");
 
 // ── Register ke runtime-config registry ──────────────────────────────────────
 registerLogicalClient("auth", authClient);

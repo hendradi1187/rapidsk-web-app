@@ -53,6 +53,10 @@ export function usePublishDataset() {
       url: string;
       protocol: string;
       classification: string;
+      access_type?: string;
+      auth_strategy?: Record<string, unknown> | null;
+      documentation_url?: string;
+      runtime?: Record<string, unknown> | null;
     }) => datasetsApi.publish(domainId!, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: datasetKeys.all }),
   });

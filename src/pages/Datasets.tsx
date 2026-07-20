@@ -1,9 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { DomainClusterTabs } from "@/components/common/DomainClusterTabs";
 import { Pager } from "@/components/common/Pager";
 import { datasetDomain, DOMAINS } from "@/lib/fulfillment";
+import { ogcRuntimeGuardError } from "@/lib/dataset-endpoint";
 import { useAuth } from "@/context/AuthContext";
+import { useDomain } from "@/context/DomainContext";
 import { PublishDatasetDialog } from "@/components/datasets/PublishDatasetDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +27,11 @@ import {
   Pencil,
   Trash2,
   Layers3,
+  Link2,
+  Settings2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -73,11 +79,31 @@ import { useDatasetLevels, LEVEL_BADGE, LEVEL_LABEL } from "@/api/hooks/useDatas
 import { useProviders } from "@/api/hooks/useProviders";
 import { useRuntime } from "@/context/RuntimeContext";
 import { adapterServiceApi } from "@/api/services/adapter-service";
+import { AdapterCollectionPicker } from "@/components/datasets/AdapterCollectionPicker";
+import { datasetAdapterLink } from "@/lib/adapter-dataset-link";
 import type { Dataset, DatasetUpdateRequest } from "@/api/types/data-catalog";
 
 const DOMAIN_CODE_TO_KEY: Record<string, string> = {
   WK: "wilayah_kerja", FLD: "lapangan", SEI: "seismik", WLL: "sumur", FP: "fasilitas",
 };
+
+const buildAdapterRuntime = (domainCode: string) => ({
+  version: "1.0",
+  domain_code: domainCode,
+  source_type: "OGC_API_FEATURES",
+  supports_bbox: true,
+  supports_head: true,
+  collection_path: "/api/v1/ogc/ogc/collections/{domain_code}/items",
+  response_format: "GEOJSON_FEATURE_COLLECTION",
+  fixed_query_params: {},
+  allowed_query_params: {},
+  supports_limit_offset: true,
+  forward_unknown_params: false,
+  include_metadata_default: false,
+});
+
+const stringifyRuntime = (runtime?: Record<string, unknown> | null) =>
+  runtime ? JSON.stringify(runtime, null, 2) : "";
 
 // ─── Helpers untuk badge style ────────────────────────────────────────
 // Classification & status sementara free string per spec — UI memberi style
@@ -117,6 +143,7 @@ type DatasetEditForm = {
   data_format: string;
   sla: string;
   tags: string;
+  runtime_json: string;
 };
 
 const toEditForm = (dataset: Dataset): DatasetEditForm => ({
@@ -131,7 +158,10 @@ const toEditForm = (dataset: Dataset): DatasetEditForm => ({
   documentation_url: dataset.endpoint_documentation_url ?? "",
   data_format: dataset.endpoint_data_format ?? "application/geo+json",
   sla: dataset.endpoint_sla ?? "best-effort",
-  tags: Array.isArray(dataset.endpoint_tags) ? dataset.endpoint_tags.join(", ") : "",
+  // D6: tags[0] = domain key (menentukan domain dataset) → dikunci, tidak ikut field editable.
+  // Field tags hanya mengelola tags[1..]; domain key selalu di-prepend saat build payload.
+  tags: Array.isArray(dataset.endpoint_tags) ? dataset.endpoint_tags.slice(1).join(", ") : "",
+  runtime_json: stringifyRuntime(dataset.endpoint_runtime),
 });
 
 const Datasets = () => {
@@ -144,6 +174,7 @@ const Datasets = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
   const { hasRole, role, participantId } = useAuth();
+  const { domainId } = useDomain();
   const { runtimeConfig } = useRuntime();
   const adapterEndpoint = runtimeConfig?.adapterEndpoint ?? "";
   const canPublish = hasRole(["PROVIDER", "SUPER_ADMIN", "ADMIN"]);
@@ -167,23 +198,56 @@ const Datasets = () => {
     }
   };
 
+  // Ringkasan koleksi yang barusan terhubung di dialog edit (untuk chip).
+  const [editConnectedCollection, setEditConnectedCollection] = useState<{ domain_code: string; title: string } | null>(null);
   const applyAdapterCol = (col: { id: string; domain_code: string; title: string }) => {
-    // Connector menarik data dari endpoint.url memakai POST dan butuh Content-Length.
-    // Adapter OGC hanya mendukung GET, jadi endpoint.url DIARAHKAN ke proxy FE
-    // (/adapter-service) yang mengubah POST→GET + menyetel Content-Length sebelum
-    // meneruskan ke adapter. documentation_url disamakan untuk konsistensi.
-    const proxyUrl = `${window.location.origin}/adapter-service/api/v1/ogc/ogc/collections/${col.domain_code}/items`;
+    // Dataset adapter sekarang menyimpan base URL adapter di endpoint.url.
+    // Jalur koleksi final dibentuk dari endpoint_metadata.runtime agar domain_code
+    // bisa diganti dinamis tanpa hardcode URL penuh per dataset.
+    const baseUrl = adapterEndpoint.replace(/\/$/, "");
+    const docsUrl = `${baseUrl}/docs`;
     setEditForm((f) => ({
       ...f,
-      endpoint_url: proxyUrl,
-      documentation_url: proxyUrl,
+      endpoint_url: baseUrl,
+      documentation_url: docsUrl,
       protocol: "OGC_API_FEATURES",
       data_format: "application/geo+json",
+      runtime_json: stringifyRuntime(buildAdapterRuntime(col.domain_code)),
     }));
+    setEditConnectedCollection({ domain_code: col.domain_code, title: col.title || col.domain_code });
     setShowAdapterCols(false);
     toast.success(`URL diisi: ${col.title || col.domain_code}`);
   };
   const [publishOpen, setPublishOpen] = useState(false);
+
+  // Deep-link CTA dari tab Adapter: /datasets?create=1&adapterCollection=WK
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [presetCollectionCode, setPresetCollectionCode] = useState<string | null>(null);
+  useEffect(() => {
+    if (searchParams.get("create") === "1") {
+      setPresetCollectionCode(searchParams.get("adapterCollection"));
+      setPublishOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      next.delete("adapterCollection");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Banner discoverability (bisa ditutup, disimpan di localStorage).
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => typeof window !== "undefined" && localStorage.getItem("datasets_adapter_banner_dismissed") === "1",
+  );
+  const dismissBanner = () => {
+    setBannerDismissed(true);
+    try {
+      localStorage.setItem("datasets_adapter_banner_dismissed", "1");
+    } catch {
+      // abaikan quota
+    }
+  };
 
   // Dialog states
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -203,6 +267,7 @@ const Datasets = () => {
     data_format: "application/geo+json",
     sla: "best-effort",
     tags: "",
+    runtime_json: "",
   });
 
   // API hooks
@@ -229,12 +294,31 @@ const Datasets = () => {
   }, [providersData]);
   const providerName = (d: Dataset): string => (d.provider_id && providerNameById[d.provider_id]) || d.provider_name || "—";
 
+  // Badge sumber dataset: "Adapter · WK" bila hasil ingest (runtime OGC), atau "Manual".
+  const sourceBadge = (d: Dataset) => {
+    const link = datasetAdapterLink(d);
+    return link.viaAdapter ? (
+      <Badge variant="outline" className="text-[10px] border-sky-200 bg-sky-50 text-sky-700" title="Dataset ini memakai koleksi hasil ingest adapter">
+        <Link2 className="mr-1 h-3 w-3" />
+        Adapter{link.domainCode ? ` · ${link.domainCode}` : ""}
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="text-[10px] border-slate-200 bg-slate-50 text-slate-600" title="Endpoint diisi manual (WFS/REST langsung)">
+        Manual
+      </Badge>
+    );
+  };
+
   // Isolasi data: KKKS (PROVIDER) hanya lihat dataset miliknya. BE sudah memfilter,
   // ini lapis pertahanan kedua di FE.
+  // D9: PROVIDER tanpa participantId tidak boleh melihat dataset milik semua orang.
+  const providerWithoutParticipant = role === "PROVIDER" && !participantId;
   const scopedDatasets = useMemo(() => {
     if (!datasets) return [];
-    if (role === "PROVIDER" && participantId)
+    if (role === "PROVIDER") {
+      if (!participantId) return [];
       return datasets.filter((d) => d.provider_id === participantId);
+    }
     return datasets;
   }, [datasets, role, participantId]);
 
@@ -304,6 +388,11 @@ const Datasets = () => {
   const openEditDialog = (dataset: Dataset) => {
     setSelectedDataset(dataset);
     setEditForm(toEditForm(dataset));
+    const link = datasetAdapterLink(dataset);
+    setEditConnectedCollection(
+      link.viaAdapter && link.domainCode ? { domain_code: link.domainCode, title: link.domainCode } : null,
+    );
+    setShowAdapterCols(false);
     setIsEditDialogOpen(true);
   };
 
@@ -324,8 +413,11 @@ const Datasets = () => {
     const docUrl = values.documentation_url.trim();
     const dataFmt = values.data_format.trim() || "application/geo+json";
     const slaVal = values.sla.trim() || "best-effort";
-    const tagsArr = values.tags.split(",").map((t) => t.trim()).filter(Boolean);
-
+    // D6: kunci domain key (tags[0]) — selalu prepend nilai lama, buang bila user mengetiknya ulang.
+    const domainTag = dataset.endpoint_tags?.[0];
+    const userTags = values.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    const tagsArr = domainTag ? [domainTag, ...userTags.filter((t) => t !== domainTag)] : userTags;
+    const runtimeValue = values.runtime_json.trim() ? JSON.parse(values.runtime_json) : null;
     // BE PATCH meng-validasi endpoint.auth_strategy secara rusak (config selalu dianggap
     // OAUTH2, dan auth_strategy:null → 500). Maka endpoint HANYA dikirim bila field-nya
     // benar-benar berubah dari data asli; edit metadata saja tidak menyentuh endpoint.
@@ -347,6 +439,7 @@ const Datasets = () => {
         sla: slaVal,
         tags: tagsArr,
         rate_limit: {},
+        runtime: runtimeValue,
       },
     };
 
@@ -370,8 +463,14 @@ const Datasets = () => {
 
   const handleUpdateDataset = async () => {
     if (!selectedDataset) return;
-    if (!editForm.name.trim()) {
-      toast.error("Nama dataset wajib diisi");
+    // D10: mutasi dataset butuh domain aktif (endpoint API domain-scoped).
+    if (!domainId) {
+      toast.error("Pilih domain aktif dulu sebelum menyimpan perubahan dataset.");
+      return;
+    }
+    // D11: samakan dengan publish — nama minimal 3 karakter.
+    if (editForm.name.trim().length < 3) {
+      toast.error("Nama dataset wajib diisi minimal 3 karakter");
       return;
     }
     if (!/^\d+\.\d+\.\d+$/.test(editForm.version.trim())) {
@@ -390,6 +489,44 @@ const Datasets = () => {
       toast.error("URL dokumentasi atau URL endpoint wajib diisi — connector membutuhkan minimal salah satu sebagai sumber data");
       return;
     }
+    // D7: runtime JSON harus valid sebelum submit — jangan biarkan JSON.parse melempar
+    // "Unexpected token" mentah ke user.
+    let parsedRuntime: Record<string, unknown> | null = null;
+    if (editForm.runtime_json.trim()) {
+      try {
+        const parsed = JSON.parse(editForm.runtime_json);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("bukan object");
+        }
+        parsedRuntime = parsed as Record<string, unknown>;
+      } catch {
+        toast.error("Runtime Context bukan JSON valid. Perbaiki isian JSON-nya atau kosongkan.");
+        return;
+      }
+    }
+    // D1: mirror guard publish — OGC_API_FEATURES wajib punya runtime.collection_path.
+    const ogcError = ogcRuntimeGuardError(editForm.protocol, parsedRuntime);
+    if (ogcError) {
+      toast.error(ogcError, { duration: 9000 });
+      return;
+    }
+    // D2: form edit tidak menangkap field kredensial, jadi endpoint auth non-NONE akan
+    // terkirim dengan config kosong dan menimpa kredensial asli → transfer privat gagal diam.
+    // Blokir bila endpoint akan berubah sekaligus memakai strategi auth selain NONE.
+    const nextAuthType = editForm.auth_strategy_type.trim().toUpperCase() || "NONE";
+    const origAuthType = String((selectedDataset.endpoint_auth_strategy as { type?: string } | null)?.type ?? "NONE").toUpperCase();
+    const endpointWillChange =
+      editForm.endpoint_url.trim() !== (selectedDataset.endpoint_url ?? "") ||
+      editForm.protocol.trim().toUpperCase() !== String(selectedDataset.protocol ?? "").toUpperCase() ||
+      editForm.access_type.trim().toUpperCase() !== String(selectedDataset.access_type ?? "").toUpperCase() ||
+      nextAuthType !== origAuthType;
+    if (endpointWillChange && editForm.endpoint_url.trim() && nextAuthType !== "NONE") {
+      toast.error(
+        "Form ini belum bisa mengisi kredensial untuk strategi autentikasi selain NONE. Menyimpan endpoint dengan auth non-NONE akan mengosongkan kredensial dan membuat transfer privat gagal. Set autentikasi ke NONE, atau publish ulang dataset dengan kredensial yang benar.",
+        { duration: 10000 },
+      );
+      return;
+    }
 
     try {
       await updateMutation.mutateAsync({
@@ -405,6 +542,11 @@ const Datasets = () => {
 
   const handleDeleteDataset = async () => {
     if (!selectedDataset) return;
+    // D10: hapus dataset butuh domain aktif (endpoint API domain-scoped).
+    if (!domainId) {
+      toast.error("Pilih domain aktif dulu sebelum menghapus dataset.");
+      return;
+    }
 
     try {
       await deleteMutation.mutateAsync(selectedDataset.dataset_id);
@@ -510,6 +652,30 @@ const Datasets = () => {
           Dataset baru sekarang dibuat lewat form <strong>Tambah Dataset</strong> supaya pemilihan domain, schema,
           klasifikasi, versi, dan endpoint konsisten dengan model dataset GX-Space yang juga dipakai saat edit.
         </div>
+
+        {canPublish && !bannerDismissed && (
+          <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+            <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+            <div className="flex-1">
+              Punya data di GeoServer/ArcGIS? Ingest dulu lewat Adapter agar muncul sebagai koleksi siap pakai, lalu pilih via tombol "Dari Adapter" saat menambah dataset.
+            </div>
+            <Button variant="outline" size="sm" className="h-7 shrink-0 border-sky-300 text-sky-800 text-xs" onClick={() => navigate("/settings?tab=adapter")}>
+              <Settings2 className="mr-1.5 h-3.5 w-3.5" /> Buka Pengaturan Adapter
+            </Button>
+            <button type="button" onClick={dismissBanner} className="shrink-0 text-sky-500 hover:text-sky-800" aria-label="Tutup">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {providerWithoutParticipant && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>
+              Akun PROVIDER ini belum tertaut ke participant KKKS, jadi katalog dataset sengaja dikosongkan supaya data milik provider lain tidak ikut tampil. Hubungi admin untuk menautkan participant terlebih dulu.
+            </span>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
@@ -627,7 +793,7 @@ const Datasets = () => {
               <Button
                 size="sm"
                 className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                onClick={() => setPublishOpen(true)}
+                onClick={() => { setPresetCollectionCode(null); setPublishOpen(true); }}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Tambah Dataset
@@ -708,7 +874,7 @@ const Datasets = () => {
                     <p className="text-xs text-muted-foreground">Provider</p>
                     <p className="text-sm font-medium truncate">{providerName(dataset)}</p>
                   </div>
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     {levelOf(dataset) && (
                       <Badge variant="outline" className={cn(LEVEL_BADGE[levelOf(dataset)!])} title={LEVEL_LABEL[levelOf(dataset)!]}>
                         {levelOf(dataset)}
@@ -719,6 +885,7 @@ const Datasets = () => {
                         {dataset.status}
                       </Badge>
                     )}
+                    {sourceBadge(dataset)}
                   </div>
                 </CardContent>
               </Card>
@@ -750,7 +917,10 @@ const Datasets = () => {
                         <div className="p-2 rounded-lg bg-accent/10 flex-shrink-0">
                           <Database className="w-4 h-4 text-accent" />
                         </div>
-                        <span className="font-medium">{dataset.dataset_name}</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">{dataset.dataset_name}</span>
+                          <span>{sourceBadge(dataset)}</span>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -818,7 +988,7 @@ const Datasets = () => {
         />
       </div>
 
-      <PublishDatasetDialog open={publishOpen} onOpenChange={setPublishOpen} />
+      <PublishDatasetDialog open={publishOpen} onOpenChange={setPublishOpen} presetAdapterCollectionCode={presetCollectionCode} />
 
       {/* View Dataset Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
@@ -1025,29 +1195,34 @@ const Datasets = () => {
                     </Button>
                   )}
                 </div>
+                <p className="text-[11px] text-muted-foreground">
+                  <strong className="text-foreground">Dari Adapter</strong> (rekomendasi untuk data hasil ingest) mengisi URL + runtime otomatis; atau isi URL manual untuk WFS/REST langsung. Kategori (WK/FLD/…) berasal dari tag saat ingest, bukan deteksi otomatis.
+                </p>
                 <Input
                   id="edit-endpoint"
                   placeholder="https://service.example.com/collections/..."
                   value={editForm.endpoint_url}
-                  onChange={(e) => setEditForm((current) => ({ ...current, endpoint_url: e.target.value }))}
+                  onChange={(e) => { setEditForm((current) => ({ ...current, endpoint_url: e.target.value })); setEditConnectedCollection(null); }}
                 />
                 {showAdapterCols && adapterCols.length > 0 && (
-                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-1.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-semibold text-accent flex items-center gap-1"><Layers3 className="w-3 h-3" /> Koleksi adapter</p>
-                      <button type="button" className="text-xs text-muted-foreground" onClick={() => setShowAdapterCols(false)}>✕</button>
-                    </div>
-                    {adapterCols.map((col) => (
-                      <button
-                        key={col.id}
-                        type="button"
-                        onClick={() => applyAdapterCol(col)}
-                        className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-accent/10 border border-transparent hover:border-accent/20 transition-colors flex items-center justify-between"
-                      >
-                        <span className="font-medium">{col.title || col.domain_code}</span>
-                        <span className="text-xs font-mono text-muted-foreground">{col.domain_code}</span>
-                      </button>
-                    ))}
+                  <AdapterCollectionPicker
+                    collections={adapterCols}
+                    onPick={applyAdapterCol}
+                    onClose={() => setShowAdapterCols(false)}
+                  />
+                )}
+                {showAdapterCols && adapterCols.length === 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className="text-xs text-amber-800">Belum ada koleksi di adapter. Ingest data dulu lewat Pengaturan → Adapter.</p>
+                    <Button type="button" variant="outline" size="sm" className="h-8 w-full border-amber-300 text-amber-800 text-xs" onClick={() => navigate("/settings?tab=adapter")}>
+                      <Settings2 className="w-3.5 h-3.5 mr-1.5" /> Setup Adapter
+                    </Button>
+                  </div>
+                )}
+                {editConnectedCollection && (
+                  <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-800">
+                    <Link2 className="w-3.5 h-3.5 shrink-0" />
+                    Terhubung: koleksi <strong>{editConnectedCollection.domain_code}</strong> — {editConnectedCollection.title} <span className="text-emerald-600">(adapter)</span>
                   </div>
                 )}
               </div>
@@ -1062,11 +1237,9 @@ const Datasets = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      {/* D4: hanya protokol yang benar-benar didukung connector (samakan dengan publish). */}
                       <SelectItem value="OGC_API_FEATURES">OGC API Features</SelectItem>
                       <SelectItem value="REST_API">REST API</SelectItem>
-                      <SelectItem value="GRPC">gRPC</SelectItem>
-                      <SelectItem value="ODATA">OData</SelectItem>
-                      <SelectItem value="GRAPHQL">GraphQL</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1120,8 +1293,8 @@ const Datasets = () => {
                   value={editForm.documentation_url}
                   onChange={(e) => setEditForm((current) => ({ ...current, documentation_url: e.target.value }))}
                 />
-                <p className="text-xs text-amber-600 font-medium">
-                  Connector menggunakan URL ini sebagai sumber data saat transfer — pastikan mengarah ke endpoint OGC/API yang valid, bukan halaman dokumentasi HTML.
+                <p className="text-xs text-muted-foreground">
+                  URL dokumentasi/katalog data untuk referensi. Untuk protokol OGC_API_FEATURES, sumber transfer sebenarnya dibentuk dari <strong>URL Endpoint + Runtime Context (collection_path)</strong>, bukan dari URL ini. Untuk REST_API, sumbernya adalah URL Endpoint langsung.
                 </p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -1146,13 +1319,34 @@ const Datasets = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-tags">Tags</Label>
+                {selectedDataset?.endpoint_tags?.[0] && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Domain (terkunci):</span>
+                    <Badge variant="outline" className="font-mono">{selectedDataset.endpoint_tags[0]}</Badge>
+                  </div>
+                )}
                 <Input
                   id="edit-tags"
-                  placeholder="geospatial, wilayah-kerja, psc (pisah koma)"
+                  placeholder="geospatial, psc (pisah koma)"
                   value={editForm.tags}
                   onChange={(e) => setEditForm((current) => ({ ...current, tags: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">Pisahkan dengan koma. Contoh: geospatial, wilayah-kerja</p>
+                <p className="text-xs text-muted-foreground">
+                  Pisahkan dengan koma. Tag domain pertama dikunci agar dataset tidak berpindah domain — field ini hanya mengelola tag tambahan.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-runtime">Runtime Context</Label>
+                <Textarea
+                  id="edit-runtime"
+                  className="font-mono text-xs min-h-40"
+                  placeholder='{"collection_path":"/api/v1/ogc/ogc/collections/{domain_code}/items"}'
+                  value={editForm.runtime_json}
+                  onChange={(e) => setEditForm((current) => ({ ...current, runtime_json: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Dipakai connector/provider untuk membentuk source URL dari base endpoint adapter. Kosongkan hanya untuk endpoint final non-runtime.
+                </p>
               </div>
             </div>
           </div>
@@ -1197,4 +1391,3 @@ const Datasets = () => {
 };
 
 export default Datasets;
-

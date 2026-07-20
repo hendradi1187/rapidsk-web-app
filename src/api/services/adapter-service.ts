@@ -105,6 +105,37 @@ const unwrapList = <T>(payload: unknown): T[] => {
   return [];
 };
 
+// Ekstrak pesan error dari payload adapter. FastAPI adapter memakai bermacam field
+// (`detail`, `error`, `message`, dan kadang nested `errors.message`). Ambil yang paling
+// informatif supaya mapping di api-error.ts (mis. "Invalid or missing input parameters")
+// tetap kena, bukan tertelan pesan generik "Adapter request failed".
+export const extractAdapterErrorMessage = (payload: unknown, status: number): string => {
+  const pickString = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const direct =
+      pickString(record.detail) ??
+      pickString(record.error) ??
+      pickString(record.message);
+    if (direct) return direct;
+    // Nested umum: { errors: { message | detail } } atau { detail: { message } }.
+    const nested = [record.errors, record.detail].find(
+      (item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item),
+    );
+    if (nested) {
+      const nestedMsg = pickString(nested.message) ?? pickString(nested.detail) ?? pickString(nested.error);
+      if (nestedMsg) return nestedMsg;
+    }
+  } else {
+    const plain = pickString(payload);
+    if (plain) return plain;
+  }
+
+  return `Adapter request failed (${status})`;
+};
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const authHeader = await getAuthHeader();
   const response = await fetch(`${ADAPTER_PROXY_BASE}${path}`, {
@@ -118,11 +149,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
   const payload = await parseJsonSafe(response);
   if (!response.ok) {
-    const message =
-      (payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string" && payload.detail) ||
-      (payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string" && payload.error) ||
-      `Adapter request failed (${response.status})`;
-    throw new Error(message);
+    throw new Error(extractAdapterErrorMessage(payload, response.status));
   }
 
   return payload as T;
@@ -151,6 +178,15 @@ export const adapterServiceApi = {
       },
       body: JSON.stringify(body),
     }),
+
+  // Konvensi REST adapter: DELETE /remote-sources/connections/{id}. Bila runtime belum
+  // punya endpoint ini (404/405), request() akan melempar pesan adapter apa adanya —
+  // caller di UI menerjemahkannya menjadi "endpoint hapus belum tersedia di adapter".
+  deleteConnection: async (id: string): Promise<void> => {
+    await request<unknown>(`/remote-sources/connections/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
 
   listLayers: async (provider: AdapterProvider, connectionId: string): Promise<unknown> => {
     const path = provider === "arcgis"
@@ -216,8 +252,10 @@ export const adapterServiceApi = {
       body: JSON.stringify(body),
     }),
 
+  // BE default limit=5 (terverifikasi live) — tanpa limit eksplisit, riwayat & provenance
+  // cuma lihat 5 task terakhir dan task sukses lama "hilang". Minta 100 sekaligus.
   listTasks: async (): Promise<AdapterIngestionTask[]> => {
-    const payload = await request<unknown>("/data-ingestion/");
+    const payload = await request<unknown>("/data-ingestion/?limit=100");
     return unwrapList<AdapterIngestionTask>(payload);
   },
 
