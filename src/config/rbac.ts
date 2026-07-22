@@ -164,7 +164,10 @@ export const MENU_ITEMS: MenuItem[] = [
     icon: Send,
     label: "Transfer Data",
     path: "/transfers",
-    roles: ["PROVIDER", "SUPER_ADMIN", "ADMIN"],
+    // CONSUMER (mis. SKK Migas) juga eksekusi transfer — dia sisi "consumer" yang menarik
+    // data dari domain provider yang sudah di-bind & kontraknya aktif. Terverifikasi: kode
+    // TransferCenter.tsx generik, tak ada asumsi role===PROVIDER di dalamnya.
+    roles: ["PROVIDER", "CONSUMER", "SUPER_ADMIN", "ADMIN"],
     permissions: [
       "transfers.read",
       "transfer.read",

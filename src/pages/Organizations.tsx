@@ -189,19 +189,19 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
           domainId: editingDomain.domain_id,
           data: payload,
         });
-        toast.success("Governance domain berhasil diperbarui");
+        toast.success("Consent berhasil diperbarui");
       } else {
         await createDomainMutation.mutateAsync({
           orgId: organization.organization_id,
           data: payload,
         });
-        toast.success("Governance domain berhasil dibuat");
+        toast.success("Consent berhasil dibuat");
       }
       setIsDomainDialogOpen(false);
       setEditingDomain(null);
       setDomainForm(emptyDomainForm);
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, "Gagal menyimpan governance domain"));
+      toast.error(getApiErrorMessage(err, "Gagal menyimpan consent"));
     }
   };
 
@@ -215,9 +215,9 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
       });
       setIsDeleteDialogOpen(false);
       setSelectedDomain(null);
-      toast.success("Governance domain berhasil dihapus");
+      toast.success("Consent berhasil dihapus");
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, "Gagal menghapus governance domain"));
+      toast.error(getApiErrorMessage(err, "Gagal menghapus consent"));
     }
   };
 
@@ -227,10 +227,10 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
         <div>
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-muted-foreground" />
-            <p className="text-sm font-semibold">Governance Domains</p>
+            <p className="text-sm font-semibold">Consents</p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Domain governance milik organisasi ini yang nanti bisa dipakai participant.
+            Consent milik organisasi ini yang nanti bisa dipakai participant.
           </p>
         </div>
         <div className="flex gap-2">
@@ -268,13 +268,13 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
             ) : isError ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-8 text-center text-sm text-destructive">
-                  Gagal memuat governance domain.
+                  Gagal memuat consent.
                 </TableCell>
               </TableRow>
             ) : !domains || domains.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                  Belum ada governance domain pada organisasi ini.
+                  Belum ada consent pada organisasi ini.
                 </TableCell>
               </TableRow>
             ) : (
@@ -327,11 +327,11 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
       <Dialog open={isDomainDialogOpen} onOpenChange={setIsDomainDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingDomain ? "Edit Governance Domain" : "Tambah Governance Domain"}</DialogTitle>
+            <DialogTitle>{editingDomain ? "Edit Consent" : "Tambah Consent"}</DialogTitle>
             <DialogDescription>
               {editingDomain
-                ? "Perbarui domain governance untuk organisasi ini."
-                : "Daftarkan domain governance baru di bawah organisasi ini."}
+                ? "Perbarui consent untuk organisasi ini."
+                : "Daftarkan consent baru di bawah organisasi ini."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -361,7 +361,7 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
                 onChange={(e) =>
                   setDomainForm((prev) => ({ ...prev, description: e.target.value }))
                 }
-                placeholder="Deskripsikan cakupan domain governance ini"
+                placeholder="Deskripsikan cakupan consent ini"
               />
             </div>
           </div>
@@ -385,9 +385,9 @@ const OrganizationDomainsManager = ({ organization }: { organization: Organizati
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Hapus Governance Domain</DialogTitle>
+            <DialogTitle>Hapus Consent</DialogTitle>
             <DialogDescription>
-              Governance domain yang dihapus tidak lagi bisa di-assign ke participant.
+              Consent yang dihapus tidak lagi bisa di-assign ke participant.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">
@@ -612,7 +612,7 @@ const Organizations = () => {
     <div className="min-h-screen">
       <Header
         title="Organizations"
-        subtitle="Kelola master organisasi governance beserta governance domain yang bisa dipakai participant"
+        subtitle="Kelola master organisasi governance beserta consent yang bisa dipakai participant"
       />
 
       <div className="space-y-6 p-6">
@@ -640,7 +640,7 @@ const Organizations = () => {
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             <span>
               Organization di sini adalah master governance. Participant operasional tetap dikelola di menu
-              <strong> Participants</strong>, lalu dihubungkan ke governance domain yang berasal dari organisasi ini.
+              <strong> Participants</strong>, lalu dihubungkan ke consent yang berasal dari organisasi ini.
             </span>
           </div>
           {!canManage && (

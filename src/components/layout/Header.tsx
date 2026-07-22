@@ -120,7 +120,7 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
                 <DropdownMenuSeparator />
                 {availableDomains.length === 0 ? (
                   <div className="px-3 py-3 text-xs text-muted-foreground">
-                    Belum ada domain governance yang termapping ke akun ini.
+                    Belum ada consent yang termapping ke akun ini.
                   </div>
                 ) : (
                   availableDomains.map((d) => (

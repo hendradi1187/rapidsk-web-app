@@ -86,12 +86,14 @@ const normalizeBaseUrl = (value: string | undefined | null): string =>
   String(value ?? "").trim().replace(/\/+$/, "");
 
 const isLocalDevHost = (): boolean => {
-  if (!import.meta.env.DEV || typeof window === "undefined") {
-    return false;
-  }
-
-  const hostname = window.location.hostname.trim().toLowerCase();
-  return hostname === "localhost" || hostname === "127.0.0.1";
+  // Cukup cek mode dev Vite — JANGAN syaratkan hostname literal "localhost"/"127.0.0.1".
+  // Proxy Vite (vite.config.ts) meneruskan berdasarkan PATH PREFIX (/connector-api, dst),
+  // bukan Host header, jadi tetap benar dipakai walau dev server diakses lewat IP LAN/Tailscale
+  // (mis. 192.168.1.55:8280) — mesin yang sama, cuma alamat aksesnya beda. Sebelumnya, akses
+  // lewat IP (bukan string "localhost") salah dianggap "bukan dev lokal" dan berpindah ke
+  // konstruksi URL absolut cross-origin dari runtime.json, yang lolos dari proxy dev sepenuhnya
+  // dan gagal (CORS / salah rute) — padahal server & config-nya identik dengan yang di localhost.
+  return Boolean(import.meta.env.DEV && typeof window !== "undefined");
 };
 
 const defaultApiBaseUrl =

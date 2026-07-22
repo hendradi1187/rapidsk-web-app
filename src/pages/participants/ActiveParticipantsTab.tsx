@@ -646,7 +646,7 @@ const ActiveParticipantsTab = () => {
           {/* Domain binding section */}
           <div className="border-t pt-4 space-y-3">
             <div>
-              <p className="text-sm font-medium">Hubungkan ke Domain Governance</p>
+              <p className="text-sm font-medium">Hubungkan ke Consent</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Domain di bawah ini mengikuti organisasi governance yang dipilih pada form participant.
               </p>
@@ -668,7 +668,7 @@ const ActiveParticipantsTab = () => {
                 {orgDomainsLoading ? (
                   <p className="text-xs text-muted-foreground">Memuat domain...</p>
                 ) : orgDomains.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Organisasi ini belum punya domain governance.</p>
+                  <p className="text-xs text-muted-foreground">Organisasi ini belum punya consent.</p>
                 ) : (
                   <div className="space-y-1.5 rounded-lg border border-border p-3">
                     {orgDomains.map((domain) => (

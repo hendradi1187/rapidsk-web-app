@@ -233,7 +233,7 @@ export function AdapterCollectionsUsage({
                   <div className="mt-3 border-t border-slate-100 pt-3">
                     <p
                       className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
-                      title="Dataset di katalog yang endpoint-nya menunjuk ke koleksi ini. Nama bisa sama karena dataset dibuat per domain governance — lihat label domain di tiap baris."
+                      title="Dataset di katalog yang endpoint-nya menunjuk ke koleksi ini. Nama bisa sama karena dataset dibuat per consent — lihat label domain di tiap baris."
                     >
                       Dirujuk oleh dataset {datasetsLoading ? "" : `(${users.length})`}
                     </p>

@@ -19,7 +19,7 @@ import { issueAutoObligationContracts, selectConsumerParticipant } from "@/lib/o
 import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
 import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
-const STEPS = ["Organisasi", "Governance Domain", "Paket Juknis", "Terapkan"];
+const STEPS = ["Organisasi", "Consent", "Paket Juknis", "Terapkan"];
 
 const LEVELS = [
   { v: "L0", l: "L0 � PUBLIK (penuh)" },
@@ -158,7 +158,7 @@ const SetupJuknis = () => {
       await domQ.refetch();
       setDomainId(createdDomain.domain_id);
       setNewDomain((prev) => ({ ...prev, code: sanitizedCode }));
-      toast.success("Governance domain dibuat.");
+      toast.success("Consent dibuat.");
     } catch (e: unknown) {
       toast.error(getApiErrorMessage(e, "Gagal membuat domain"));
     } finally {
@@ -281,7 +281,7 @@ const SetupJuknis = () => {
 
         {step === 1 && (
           <div className="panel p-6 space-y-4">
-            <div className="flex items-center gap-2"><Layers className="w-5 h-5 text-accent" /><h3 className="font-semibold">Governance Domain</h3></div>
+            <div className="flex items-center gap-2"><Layers className="w-5 h-5 text-accent" /><h3 className="font-semibold">Consent</h3></div>
             {domains.length > 0 && (
               <div className="space-y-2">
                 <Label>Domain terdaftar</Label>
@@ -294,7 +294,7 @@ const SetupJuknis = () => {
               </div>
             )}
             <div className="rounded-lg border border-dashed border-border p-3 space-y-3">
-              <Label className="text-xs text-muted-foreground">Atau buat governance domain baru</Label>
+              <Label className="text-xs text-muted-foreground">Atau buat consent baru</Label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <Input placeholder="Nama" value={newDomain.name} onChange={(e) => setNewDomain((prev) => ({ ...prev, name: e.target.value }))} />
                 <Input

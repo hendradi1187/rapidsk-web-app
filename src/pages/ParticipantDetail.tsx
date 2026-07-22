@@ -1018,7 +1018,7 @@ const ParticipantDetail = () => {
             <div className="rounded-xl border border-border bg-muted/30 p-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold">Sumber Domain Governance</p>
+                  <p className="text-sm font-semibold">Sumber Consent</p>
                   <p className="text-xs text-muted-foreground">
                     Pilih organisasi sumber jika hasil deteksi nama participant belum cocok, lalu sinkronkan domainnya ke participant ini.
                   </p>
@@ -1112,7 +1112,7 @@ const ParticipantDetail = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                Setelah Juknis diterapkan, domain governance tersimpan di organization yang dipilih di setup.
+                Setelah Juknis diterapkan, consent tersimpan di organization yang dipilih di setup.
                 Tombol ini membaca domain yang sudah ditempel ke participant lalu menerbitkan permintaan kontrak consumer secara otomatis.
               </p>
             </div>
@@ -1120,7 +1120,7 @@ const ParticipantDetail = () => {
               <div>
                 <h3 className="text-lg font-semibold">Domain Operasional</h3>
                 <p className="text-xs text-muted-foreground">
-                  Daftar domain governance tempat partisipan ini diizinkan bertukar data.
+                  Daftar consent tempat partisipan ini diizinkan bertukar data.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -1354,7 +1354,7 @@ const ParticipantDetail = () => {
             <DialogHeader>
               <DialogTitle>Tambah Domain Partisipan</DialogTitle>
               <DialogDescription>
-                Hubungkan participant dengan salah satu domain governance.
+                Hubungkan participant dengan salah satu consent.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1365,7 +1365,7 @@ const ParticipantDetail = () => {
                   onChange={(e) => setSelectedDomainId(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="">-- Pilih Domain Governance --</option>
+                  <option value="">-- Pilih Consent --</option>
                   {(orgDomains && orgDomains.length > 0 ? orgDomains : availableDomains).map((d: any) => {
                     const isAdded = participantDomains?.some((pd: any) => pd.domain_id === d.domain_id);
                     if (isAdded) return null;
@@ -1383,7 +1383,7 @@ const ParticipantDetail = () => {
                 )}
                 {(!orgDomains || orgDomains.length === 0) && availableDomains.length === 0 && (
                   <p className="text-xs text-rose-500 mt-1">
-                    Tidak ada domain governance tersedia. Daftarkan domain dulu di menu Organizations.
+                    Tidak ada consent tersedia. Daftarkan domain dulu di menu Organizations.
                   </p>
                 )}
               </div>
