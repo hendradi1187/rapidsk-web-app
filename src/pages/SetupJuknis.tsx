@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Building2, Layers, ShieldCheck, CheckCircle2, Loader2, ArrowRight, ArrowLeft, Sparkles, FileText,
 } from "lucide-react";
@@ -15,7 +16,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { organizationsApi } from "@/api/services/governance";
 import { juknisApi, type JuknisApplyResult } from "@/api/services/juknis";
 import { useProviders } from "@/api/hooks/useProviders";
-import { issueAutoObligationContracts, selectConsumerParticipant } from "@/lib/onboarding-obligations";
+import { issueAutoObligationContracts, selectConsumerParticipant, isConsumerCandidate } from "@/lib/onboarding-obligations";
 import { isValidGovernanceCode, sanitizeGovernanceCode } from "@/lib/governance-code";
 import { setPublicOrganizationsCache } from "@/lib/public-organization-cache";
 
@@ -211,17 +212,37 @@ const SetupJuknis = () => {
         .sort((a, b) => (a.provider_name ?? "").localeCompare(b.provider_name ?? "")),
     [providersData],
   );
-  const consumerParticipant = useMemo(
+  // Kandidat consumer eksplisit untuk dipilih user — jangan cuma andalkan heuristik
+  // nama ("skkmigas" bisa cocok ke banyak participant test/dummy sekaligus, mis.
+  // "SKK Migas", "TEST SKK Migas Probe", "SKK Migas Data Consumer (E2E Test)" — semua
+  // ke-rank sama, jadi yang ke-pick otomatis bisa salah tanpa user sadar).
+  const consumerCandidates = useMemo(
+    () =>
+      ((providersData ?? []) as Array<{ provider_id: string; provider_name: string; organization_type?: string }>)
+        .filter(isConsumerCandidate)
+        .sort((a, b) => (a.provider_name ?? "").localeCompare(b.provider_name ?? "")),
+    [providersData],
+  );
+  const autoConsumerParticipant = useMemo(
     () => selectConsumerParticipant((providersData ?? []) as Array<{ provider_id: string; provider_name: string; organization_type?: string }>),
     [providersData],
   );
+  const [selectedConsumerId, setSelectedConsumerId] = useState("");
+  useEffect(() => {
+    // Prefill dari heuristik lama sebagai DEFAULT saja — tetap terlihat & bisa diganti,
+    // tidak lagi diam-diam dipakai langsung tanpa sepengetahuan user.
+    if (!selectedConsumerId && autoConsumerParticipant) {
+      setSelectedConsumerId(autoConsumerParticipant.provider_id);
+    }
+  }, [autoConsumerParticipant, selectedConsumerId]);
+  const consumerParticipant = consumerCandidates.find((c) => c.provider_id === selectedConsumerId) ?? null;
 
   const issueContracts = async () => {
     if (!domainId) return toast.error("Domain belum dipilih.");
     const provider = providerCandidates.find((p) => p.provider_id === selectedProviderId);
     if (!provider) return toast.error("Pilih provider (penyedia data) dulu.");
     if (!consumerParticipant) {
-      return toast.error("Consumer (regulator/SKK Migas) belum terdaftar sebagai participant. Daftarkan dulu.");
+      return toast.error("Pilih consumer (regulator/SKK Migas) dulu.");
     }
     setIssuingContracts(true);
     try {
@@ -404,17 +425,26 @@ const SetupJuknis = () => {
                     <>
                       <p className="text-xs text-muted-foreground">
                         Membuat 5 kontrak kewajiban (satu per katalog) di domain ini untuk provider terpilih — tanpa menunggu approval participant.
-                        {consumerParticipant ? "" : " Catatan: consumer (SKK Migas) belum terdaftar sebagai participant, terbitkan kontrak belum bisa jalan."}
+                        {consumerCandidates.length === 0 ? " Catatan: belum ada participant bertipe consumer/regulator terdaftar, terbitkan kontrak belum bisa jalan." : ""}
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
-                          <SelectTrigger className="h-9 w-[260px]"><SelectValue placeholder="Pilih provider penyedia data" /></SelectTrigger>
-                          <SelectContent>
-                            {providerCandidates.map((p) => (
-                              <SelectItem key={p.provider_id} value={p.provider_id}>{p.provider_name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                          className="h-9 w-[260px]"
+                          value={selectedProviderId}
+                          onChange={setSelectedProviderId}
+                          placeholder="Pilih provider penyedia data"
+                          searchPlaceholder="Cari KKKS..."
+                          options={providerCandidates.map((p) => ({ value: p.provider_id, label: p.provider_name }))}
+                        />
+                        <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <SearchableSelect
+                          className="h-9 w-[260px]"
+                          value={selectedConsumerId}
+                          onChange={setSelectedConsumerId}
+                          placeholder="Pilih consumer tujuan (mis. SKK Migas)"
+                          searchPlaceholder="Cari consumer..."
+                          options={consumerCandidates.map((c) => ({ value: c.provider_id, label: c.provider_name, hint: c.organization_type }))}
+                        />
                         <Button
                           variant="outline"
                           onClick={() => void issueContracts()}
@@ -424,6 +454,11 @@ const SetupJuknis = () => {
                           Terbitkan Kontrak
                         </Button>
                       </div>
+                      {consumerParticipant && (
+                        <p className="text-xs text-muted-foreground">
+                          Target consumer terpilih: <span className="font-medium">{consumerParticipant.provider_name}</span> — cek ulang sebelum terbitkan, karena beberapa nama participant mirip (mis. akun test/demo).
+                        </p>
+                      )}
                     </>
                   )}
                 </div>

@@ -39,6 +39,41 @@ export function useOrganizations() {
 }
 
 /**
+ * Domain milik SEMUA organisasi, digabung jadi satu list dengan label org.
+ * Binding participant↔domain (`/onboarding/participants/{id}/domains`) tidak
+ * peduli domain itu milik organisasi mana — jadi picker-nya juga tidak boleh
+ * dibatasi ke satu organisasi (butuh ini untuk consumer lintas-KKKS seperti
+ * SKK Migas yang mengikat domain milik organisasi provider lain).
+ */
+export function useAllOrganizationDomains() {
+  const orgsQuery = useOrganizations();
+  const orgIds = (orgsQuery.data ?? []).map((o: any) => o.organization_id).filter(Boolean);
+
+  const domainsQuery = useQuery({
+    queryKey: [...organizationKeys.all, "domains", "all", orgIds.slice().sort().join(",")],
+    queryFn: () => organizationsApi.listDomainsMap(orgIds),
+    enabled: orgIds.length > 0,
+  });
+
+  const orgNameById = new Map(
+    (orgsQuery.data ?? []).map((o: any) => [o.organization_id, o.organization_name]),
+  );
+
+  const flat = Object.entries(domainsQuery.data ?? {}).flatMap(([organizationId, domains]) =>
+    (domains ?? []).map((d) => ({
+      ...d,
+      organization_id: organizationId,
+      organization_name: orgNameById.get(organizationId) ?? organizationId,
+    })),
+  );
+
+  return {
+    data: flat,
+    isLoading: orgsQuery.isLoading || domainsQuery.isLoading,
+  };
+}
+
+/**
  * Hook to create a new organization.
  */
 export function useCreateOrganization() {

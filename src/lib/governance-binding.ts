@@ -55,52 +55,58 @@ export const resolveGovernanceOrganizationBinding = <TOrg extends GovernanceOrga
   );
 
   const domainMap = buildOrganizationDomainMap(organizations, domainsByOrganizationId);
+  const overlapCountOf = (organization: TOrg) => {
+    const organizationDomainIds = domainMap.get(organization.organization_id) ?? new Set<string>();
+    return Array.from(organizationDomainIds).filter((domainId) => participantDomainSet.has(domainId)).length;
+  };
   const overlapping = organizations
-    .map((organization) => {
-      const organizationDomainIds = domainMap.get(organization.organization_id) ?? new Set<string>();
-      const overlapCount = Array.from(organizationDomainIds).filter((domainId) => participantDomainSet.has(domainId)).length;
-      return { organization, overlapCount };
-    })
+    .map((organization) => ({ organization, overlapCount: overlapCountOf(organization) }))
     .filter((item) => item.overlapCount > 0)
     .sort((left, right) => right.overlapCount - left.overlapCount);
 
   const candidates = overlapping.map((item) => item.organization);
 
+  // Urutan prioritas SENGAJA: id/nama eksplisit dicek dulu ke SEMUA organisasi (bukan
+  // cuma yang domain-nya overlap) sebelum jatuh ke heuristik domain-overlap. Kalau
+  // dibalik (domain-overlap dicek duluan), consumer yang cross-organisasi (mis. SKK
+  // Migas yang di-bind ke domain milik KKKS lain) akan salah ke-resolve jadi organisasi
+  // PEMILIK domain itu, bukan organisasi participant itu sendiri — karena organisasi
+  // consumer sendiri sering tidak punya domain apa pun untuk di-overlap-kan.
   if (preferredOrganizationId) {
-    const preferredById = overlapping.find((item) => item.organization.organization_id === preferredOrganizationId);
+    const preferredById = organizations.find((organization) => organization.organization_id === preferredOrganizationId);
     if (preferredById) {
       return {
-        organization: preferredById.organization,
+        organization: preferredById,
         matchedBy: "preferred_org",
-        overlapCount: preferredById.overlapCount,
-        candidates,
-      };
-    }
-  }
-
-  if (normalizedPreferredName) {
-    const preferredByName = overlapping.find(
-      (item) => normalizeBindingKey(item.organization.organization_name) === normalizedPreferredName,
-    );
-    if (preferredByName) {
-      return {
-        organization: preferredByName.organization,
-        matchedBy: "preferred_name",
-        overlapCount: preferredByName.overlapCount,
+        overlapCount: overlapCountOf(preferredById),
         candidates,
       };
     }
   }
 
   if (normalizedParticipantName) {
-    const participantNameMatch = overlapping.find(
-      (item) => normalizeBindingKey(item.organization.organization_name) === normalizedParticipantName,
+    const participantNameMatch = organizations.find(
+      (organization) => normalizeBindingKey(organization.organization_name) === normalizedParticipantName,
     );
     if (participantNameMatch) {
       return {
-        organization: participantNameMatch.organization,
+        organization: participantNameMatch,
         matchedBy: "participant_name",
-        overlapCount: participantNameMatch.overlapCount,
+        overlapCount: overlapCountOf(participantNameMatch),
+        candidates,
+      };
+    }
+  }
+
+  if (normalizedPreferredName) {
+    const preferredByName = organizations.find(
+      (organization) => normalizeBindingKey(organization.organization_name) === normalizedPreferredName,
+    );
+    if (preferredByName) {
+      return {
+        organization: preferredByName,
+        matchedBy: "preferred_name",
+        overlapCount: overlapCountOf(preferredByName),
         candidates,
       };
     }
@@ -128,38 +134,8 @@ export const resolveGovernanceOrganizationBinding = <TOrg extends GovernanceOrga
     }
   }
 
-  const fallbackById =
-    preferredOrganizationId
-      ? organizations.find((organization) => organization.organization_id === preferredOrganizationId) ?? null
-      : null;
-  if (fallbackById) {
-    return {
-      organization: fallbackById,
-      matchedBy: "preferred_org",
-      overlapCount: 0,
-      candidates,
-    };
-  }
-
-  const fallbackByName =
-    organizations.find(
-      (organization) =>
-        normalizeBindingKey(organization.organization_name) === normalizedParticipantName ||
-        normalizeBindingKey(organization.organization_name) === normalizedPreferredName,
-    ) ?? null;
-
-  if (fallbackByName) {
-    return {
-      organization: fallbackByName,
-      matchedBy:
-        normalizeBindingKey(fallbackByName.organization_name) === normalizedParticipantName
-          ? "participant_name"
-          : "preferred_name",
-      overlapCount: 0,
-      candidates,
-    };
-  }
-
+  // Catatan: preferredOrganizationId/participantName/preferredName sudah dicek di atas
+  // terhadap SEMUA organisasi, jadi tidak perlu fallback id/nama lagi di sini.
   return {
     organization: null,
     matchedBy: "none",

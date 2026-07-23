@@ -14,7 +14,7 @@ import {
   useDeleteParticipantAdapter,
 } from "@/api/hooks/useProviders";
 import { useConnectionPools } from "@/api/hooks/useConnectionPools";
-import { useOrganizations, useOrganizationDomains } from "@/api/hooks/useOrganizations";
+import { useOrganizations, useOrganizationDomains, useAllOrganizationDomains } from "@/api/hooks/useOrganizations";
 import { useProviders } from "@/api/hooks/useProviders";
 import { usersApi } from "@/api/services/identity";
 import { registrationsApi, type RegistrationItem } from "@/api/services/onboarding";
@@ -54,7 +54,6 @@ import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getStoredParticipantOrganizationId, setStoredParticipantOrganizationId } from "@/lib/participant-org-binding";
 import { findParticipantPool, isPoolReady, resolvePoolMeta } from "@/lib/connection-pool";
-import { useDomain } from "@/context/DomainContext";
 import { useAuth } from "@/context/AuthContext";
 import {
   issueAutoObligationContracts,
@@ -76,7 +75,6 @@ const normalize = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const ParticipantDetail = () => {
-  const { availableDomains } = useDomain();
   const qc = useQueryClient();
   const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -124,6 +122,10 @@ const ParticipantDetail = () => {
   const { data: orgDomains, isLoading: loadingOrgDomains } = useOrganizationDomains(
     selectedOrganizationId || matchedOrg?.data.organization_id || null
   );
+  // Lintas-organisasi: dipakai khusus untuk picker "Tambah Domain" & resolusi nama,
+  // karena binding participant↔domain tidak dibatasi ke organisasi participant sendiri
+  // (mis. SKK Migas selaku consumer perlu mengikat domain milik KKKS/provider lain).
+  const { data: allOrgDomains } = useAllOrganizationDomains();
 
   // Participant Domains
   const {
@@ -183,10 +185,11 @@ const ParticipantDetail = () => {
     }
   }, [provider]);
 
-  // Map domain_id to name helper
+  // Map domain_id to name helper — cek domain organisasi sendiri dulu, lalu fallback ke
+  // daftar lintas-organisasi (domain yang dibind bisa saja milik organisasi lain).
   const getDomainName = (domId: string) => {
-    const found = orgDomains?.find((d) => d.domain_id === domId);
-    return found ? `${found.domain_name} (${found.code})` : domId;
+    const found = orgDomains?.find((d) => d.domain_id === domId) ?? allOrgDomains?.find((d) => d.domain_id === domId);
+    return found ? `${found.domain_name}${found.code ? ` (${found.code})` : ""}` : domId;
   };
 
   const relatedRegistration = useMemo(() => {
@@ -1366,22 +1369,22 @@ const ParticipantDetail = () => {
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">-- Pilih Consent --</option>
-                  {(orgDomains && orgDomains.length > 0 ? orgDomains : availableDomains).map((d: any) => {
+                  {(allOrgDomains ?? []).map((d) => {
                     const isAdded = participantDomains?.some((pd: any) => pd.domain_id === d.domain_id);
                     if (isAdded) return null;
                     return (
                       <option key={d.domain_id} value={d.domain_id}>
-                        {d.domain_name}{d.code ? ` (${d.code})` : ""}
+                        {d.domain_name}{d.code ? ` (${d.code})` : ""} — {d.organization_name}
                       </option>
                     );
                   })}
                 </select>
-                {(!orgDomains || orgDomains.length === 0) && availableDomains.length > 0 && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Organisasi participant belum terhubung — menampilkan domain dari domain aktif. Pilih organisasi sumber di bagian atas untuk filter domain yang tepat.
-                  </p>
-                )}
-                {(!orgDomains || orgDomains.length === 0) && availableDomains.length === 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Daftar ini mencakup domain dari SEMUA organisasi (bukan cuma organisasi participant ini) —
+                  binding participant↔domain memang lintas-organisasi, mis. consumer perlu mengikat domain
+                  milik KKKS/provider lain.
+                </p>
+                {(!allOrgDomains || allOrgDomains.length === 0) && (
                   <p className="text-xs text-rose-500 mt-1">
                     Tidak ada consent tersedia. Daftarkan domain dulu di menu Organizations.
                   </p>

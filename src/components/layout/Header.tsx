@@ -59,13 +59,17 @@ export const Header = ({ title, subtitle }: HeaderProps) => {
   const navigate = useNavigate();
   const logout = useLogout();
   const { user, role } = useAuth();
-  const { domainId, domainName, availableDomains, switchDomain } = useDomain();
+  const { domainId, domainName, availableDomains, switchDomain, activeOrganizationName } = useDomain();
   const notifications = useAppNotifications();
   const canSeeDomainSelector = Boolean(user);
   const canSwitchDomain = availableDomains.length > 1;
 
   const userName = user?.full_name || "User";
-  const organizationName = user?.category?.name || "Organisasi belum terdeteksi";
+  // activeOrganizationName = nama organisasi yang beneran ke-resolve (mis. "SKK Migas") dari
+  // binding participant↔organisasi di DomainContext. user.category.name itu CUMA jenis
+  // kategori ("Consumer"/"Provider"), bukan nama organisasi — jangan dipakai sebagai fallback
+  // utama, itu penyebab header dulu nampilin "Org: CONSUMER" alih-alih nama organisasi asli.
+  const organizationName = activeOrganizationName || "Organisasi belum terdeteksi";
   const userInitials = userName
     .split(" ")
     .map((n: string) => n[0])

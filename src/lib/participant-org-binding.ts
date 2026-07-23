@@ -38,6 +38,14 @@ export const setStoredParticipantOrganizationId = (
   participantBindingStore.delete(participantId);
 };
 
+// WAJIB dipanggil saat logout — tanpa ini, binding organisasi participant yang salah
+// (mis. ke-cache ke organisasi lain) akan nempel di tab browser yang sama untuk akun
+// berikutnya yang login, walau participant_id-nya beda. Cache ini in-memory per tab,
+// jadi hanya reset kalau tab di-reload penuh atau fungsi ini dipanggil eksplisit.
+export const clearParticipantOrgBindingCache = (): void => {
+  participantBindingStore.clear();
+};
+
 export interface ApiClientLike {
   get: (path: string, params?: Record<string, unknown>) => Promise<unknown>;
 }

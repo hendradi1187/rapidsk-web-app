@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertCircle, FileSignature, Eye, Inbox, Loader2, ArrowRight, Plus, CalendarCheck } from "lucide-react";
+import { AlertCircle, FileSignature, Eye, Inbox, Loader2, ArrowRight, Plus, CalendarCheck, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import { useContracts } from "@/api/hooks/useContracts";
 import { useAgreements } from "@/api/hooks/useAgreements";
 import { useProviders } from "@/api/hooks/useProviders";
@@ -17,6 +18,7 @@ import { useDatasets } from "@/api/hooks/useDatasets";
 import { useDomain } from "@/context/DomainContext";
 import { useAuth } from "@/context/AuthContext";
 import { RequestContractDialog } from "@/components/contracts/RequestContractDialog";
+import { EditContractDialog } from "@/components/contracts/EditContractDialog";
 import { contractsApi, type ContractItem, type ContractDetail } from "@/api/services/policy-contract";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -101,6 +103,25 @@ const Contracts = () => {
     }
   };
 
+  // Edit contract — bisa dipicu dari row tabel maupun dari dalam detail dialog,
+  // terlepas dari status (REQUESTED atau ACTIVE sekalipun).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<ContractDetail | null>(null);
+  const [loadingEditTarget, setLoadingEditTarget] = useState(false);
+  const openEdit = async (c: ContractItem) => {
+    if (!domainId) return;
+    setLoadingEditTarget(true);
+    try {
+      const full = await contractsApi.get(domainId, c.id);
+      setEditTarget(full);
+      setEditOpen(true);
+    } catch {
+      toast.error("Gagal memuat detail contract untuk diedit.");
+    } finally {
+      setLoadingEditTarget(false);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <Header title="Contracts" subtitle="Kontrak penyediaan data KKKS ↔ SKK Migas" />
@@ -165,9 +186,19 @@ const Contracts = () => {
                       <TableCell>{nameOf(c.provider_id)}</TableCell>
                       <TableCell>{nameOf(c.consumer_id)}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openDetail(c); }}>
-                          <Eye className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openDetail(c); }}>
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={loadingEditTarget}
+                            onClick={(e) => { e.stopPropagation(); void openEdit(c); }}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -197,7 +228,19 @@ const Contracts = () => {
             <div className="space-y-4 py-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{detail.name}</h3>
-                <Badge variant="outline" className={STATUS_STYLE[detail.status] ?? ""}>{detail.status}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className={STATUS_STYLE[detail.status] ?? ""}>{detail.status}</Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditTarget(detail);
+                      setEditOpen(true);
+                    }}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+                  </Button>
+                </div>
               </div>
               {detail.description && <p className="text-sm text-muted-foreground">{detail.description}</p>}
               <div className="flex items-center gap-3 text-sm">
@@ -247,6 +290,18 @@ const Contracts = () => {
       </Dialog>
 
       <RequestContractDialog open={reqOpen} onOpenChange={setReqOpen} />
+      <EditContractDialog
+        open={editOpen}
+        onOpenChange={(o) => {
+          setEditOpen(o);
+          // Kalau detail dialog kontrak yang sama masih kebuka, refresh biar sinkron
+          // tanpa harus tutup-buka manual.
+          if (!o && editTarget && detail?.id === editTarget.id && domainId) {
+            void contractsApi.get(domainId, editTarget.id).then(setDetail);
+          }
+        }}
+        contract={editTarget}
+      />
     </div>
   );
 };

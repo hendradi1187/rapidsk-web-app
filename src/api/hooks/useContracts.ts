@@ -34,6 +34,25 @@ export function useCreateContract() {
   });
 }
 
+/** Mutasi edit nama/deskripsi/dataset tertaut kontrak — bisa dipakai di status apapun. */
+export function useUpdateContract() {
+  const { domainId } = useDomain();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      contract: { id: string; consumer_id: string; provider_id: string };
+      body: {
+        name: string;
+        description?: string;
+        datasets?: { dataset_id: string; dataset_policy_id?: string }[];
+      };
+    }) => contractsApi.update(domainId!, vars.contract, vars.body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: contractKeys.all });
+    },
+  });
+}
+
 /** Mutasi ubah status kontrak (approve/reject/activate). Tulis nyata ke BE. */
 export function useUpdateContractStatus() {
   const { domainId } = useDomain();

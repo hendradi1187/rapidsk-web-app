@@ -104,6 +104,26 @@ export const contractsApi = {
     return res.data as ContractDetail;
   },
 
+  // Edit nama/deskripsi/dataset tertaut kontrak — terlepas dari status (REQUESTED
+  // maupun sudah ACTIVE). BE (ContractUpdateRequest) mewajibkan consumer_id,
+  // provider_id, name tetap dikirim ulang walau yang berubah cuma sebagian field.
+  update: async (
+    domainId: string,
+    contract: { id: string; consumer_id: string; provider_id: string },
+    body: {
+      name: string;
+      description?: string;
+      datasets?: { dataset_id: string; dataset_policy_id?: string }[];
+    },
+  ): Promise<ContractDetail> => {
+    const res = await ctsClient.patch(`/policy-contract/${domainId}/contracts/${contract.id}`, {
+      consumer_id: contract.consumer_id,
+      provider_id: contract.provider_id,
+      ...body,
+    });
+    return res.data as ContractDetail;
+  },
+
   // Ubah status kontrak (REQUESTED → APPROVED → ACTIVE, atau REJECTED).
   // BE mewajibkan consumer_id, provider_id, name di body PATCH (bukan status saja).
   updateStatus: async (

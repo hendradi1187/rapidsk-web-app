@@ -7,13 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -159,18 +153,13 @@ export function RequestContractDialog({
             {participantId ? (
               <Input value={consumerName || "Organisasi saya"} disabled />
             ) : (
-              <Select value={consumerId} onValueChange={setConsumerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih pemohon" />
-                </SelectTrigger>
-                <SelectContent>
-                  {participants.map((p) => (
-                    <SelectItem key={p.provider_id} value={p.provider_id}>
-                      {p.provider_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={consumerId}
+                onChange={setConsumerId}
+                placeholder="Pilih pemohon"
+                searchPlaceholder="Cari organisasi..."
+                options={participants.map((p) => ({ value: p.provider_id, label: p.provider_name, hint: p.organization_type }))}
+              />
             )}
           </div>
 
@@ -210,19 +199,13 @@ export function RequestContractDialog({
           {/* Penyedia (provider) */}
           <div className="space-y-2">
             <Label>Penyedia (Provider / KKKS)</Label>
-            <Select value={providerId} onValueChange={setProviderId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih penyedia" />
-              </SelectTrigger>
-              <SelectContent>
-                {providerOptions.map((p) => (
-                  <SelectItem key={p.provider_id} value={p.provider_id}>
-                    {p.provider_name}
-                    {p.organization_type ? ` · ${p.organization_type}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={providerId}
+              onChange={setProviderId}
+              placeholder="Pilih penyedia"
+              searchPlaceholder="Cari KKKS..."
+              options={providerOptions.map((p) => ({ value: p.provider_id, label: p.provider_name, hint: p.organization_type }))}
+            />
           </div>
 
           {/* Nama */}

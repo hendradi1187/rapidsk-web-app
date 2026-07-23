@@ -233,27 +233,56 @@ const TransferCenter = () => {
         : [],
     [adminContextReady, dsData, effectiveParticipantId],
   );
+  // Semua dataset published di domain ini, TANPA restriksi kepemilikan — dipakai KHUSUS
+  // untuk resolusi dataset yang sudah eksplisit ter-link ke contract (contract.datasets).
+  // Consumer dari contract itu wajar melihat dataset itu walau bukan "miliknya" (dia
+  // bukan provider-nya) — beda dengan `datasets` di atas yang tetap dibatasi ke milik
+  // sendiri untuk kasus fallback (baris di bawah) supaya provider A tidak kebocoran
+  // lihat/pilih dataset provider B saat contract belum ada link dataset eksplisit.
+  const allPublishedDatasets = useMemo(
+    () =>
+      adminContextReady
+        ? ((dsData ?? []) as Dataset[]).filter((dataset) => String(dataset.status).toLowerCase() === "published")
+        : [],
+    [adminContextReady, dsData],
+  );
   const contracts = useMemo(
     () =>
       adminContextReady
         ? ((cData ?? []) as ContractItem[]).filter(
-            (contract) => !effectiveParticipantId || contract.provider_id === effectiveParticipantId,
+            (contract) =>
+              !effectiveParticipantId ||
+              contract.provider_id === effectiveParticipantId ||
+              contract.consumer_id === effectiveParticipantId,
           )
         : [],
     [adminContextReady, cData, effectiveParticipantId],
   );
   const agreements = agData ?? [];
-  const transfers = useMemo(
-    () =>
-      adminContextReady
-        ? (trData ?? []).filter(
-            (transfer) =>
-              !effectiveParticipantId ||
-              datasets.some((dataset) => dataset.dataset_id === transfer.dataset_id),
-          )
-        : [],
-    [adminContextReady, trData, effectiveParticipantId, datasets],
-  );
+  const transfers = useMemo(() => {
+    if (!adminContextReady) return [];
+    // GET /connector/{domainId}/transfers sudah discope oleh backend ke identitas
+    // (participant_id) di JWT pemanggil — user non-superadmin cuma bisa lihat domainnya
+    // sendiri, jadi trData di sini memang sudah miliknya. JANGAN filter ulang pakai
+    // kepemilikan dataset (provider_id): itu cuma benar untuk sisi PROVIDER, dan akun
+    // CONSUMER (penerima transfer) tidak pernah "memiliki" dataset itu — hasilnya
+    // riwayat selalu kosong walau transfer sudah COMPLETED (terverifikasi live).
+    if (!isSuperAdmin) return trData ?? [];
+    // Superadmin bisa override participant via dropdown ("lihat sebagai X") — di sini
+    // trData tidak otomatis discope ke participant pilihan itu, jadi baru perlu filter
+    // manual: relevan kalau dataset-nya miliknya (provider) ATAU proyeksi monitoring
+    // mencatat dia sebagai participant di transfer itu.
+    return (trData ?? []).filter((transfer) => {
+      if (!effectiveParticipantId) return true;
+      if (datasets.some((dataset) => dataset.dataset_id === transfer.dataset_id)) return true;
+      const projections = (transferProjectionQ.data ?? []) as TransferProjectionItem[];
+      return projections.some(
+        (item) =>
+          (item.transfer_process_id === transfer.id || item.transfer_id === transfer.id) &&
+          item.participant_id === effectiveParticipantId,
+      );
+    });
+  }, [adminContextReady, isSuperAdmin, trData, effectiveParticipantId, datasets, transferProjectionQ.data]);
   const pools = (poolsData ?? []) as ConnectionPoolItem[];
   const participantAdapters = useMemo(
     () =>
@@ -268,7 +297,10 @@ const TransferCenter = () => {
     () => ((polQ.data ?? []) as Policy[]),
     [polQ.data],
   );
-  const dsName = (id: string) => datasets.find((d) => d.dataset_id === id)?.dataset_name ?? `${id.slice(0, 8)}...`;
+  const dsName = (id: string) =>
+    datasets.find((d) => d.dataset_id === id)?.dataset_name ??
+    allPublishedDatasets.find((d) => d.dataset_id === id)?.dataset_name ??
+    `${id.slice(0, 8)}...`;
   // Ringkas identitas teknis dataset (versi/protokol/format/akses) supaya operator
   // tahu persis varian mana yang dipilih — bukan cuma nama. Protokol penting karena
   // OGC_API_FEATURES butuh endpoint adapter (collection path), sedangkan REST_API
@@ -436,7 +468,11 @@ const TransferCenter = () => {
         const detail = contract ? contractDetailsById[contract.id] : undefined;
         const linkedDatasetIds = (detail?.datasets ?? []).map((dataset) => dataset.dataset_id);
         const linkedDatasets = linkedDatasetIds
-          .map((datasetId) => datasets.find((dataset) => dataset.dataset_id === datasetId))
+          .map(
+            (datasetId) =>
+              datasets.find((dataset) => dataset.dataset_id === datasetId) ??
+              allPublishedDatasets.find((dataset) => dataset.dataset_id === datasetId),
+          )
           .filter(Boolean) as Dataset[];
         const fallbackDatasets = datasets.filter((dataset) => datasetDomain(dataset) === (dom.key as DomainKey));
         const availableDatasets = linkedDatasets.length > 0 ? linkedDatasets : fallbackDatasets;
@@ -511,7 +547,7 @@ const TransferCenter = () => {
             policyResolution.status === "matched",
         };
       }),
-    [contractDetailsById, contracts, datasetPolicies, datasets, myPool, scopedPoolMap, selectedDatasetByDomain, transfers, transferProjections],
+    [contractDetailsById, contracts, datasetPolicies, datasets, allPublishedDatasets, myPool, scopedPoolMap, selectedDatasetByDomain, transfers, transferProjections],
   );
 
   const failedAttemptForRow = (row: (typeof rows)[number]) =>

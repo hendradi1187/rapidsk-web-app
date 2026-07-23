@@ -9,6 +9,7 @@ import {
   getPreferredParticipantId,
   clearSessionBinding,
 } from "@/lib/session-binding";
+import { clearParticipantOrgBindingCache } from "@/lib/participant-org-binding";
 import {
   startLegacyTokenRefresh,
   stopLegacyTokenRefresh,
@@ -447,6 +448,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem("user_info");
     localStorage.removeItem("remember_device");
     clearSessionBinding();
+    clearParticipantOrgBindingCache();
   }, []);
 
   const hasRole = useCallback(
